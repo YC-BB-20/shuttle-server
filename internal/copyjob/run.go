@@ -150,7 +150,7 @@ func (j *Job) copyPhase(ctx context.Context, e env, jr *Journal, accepting func(
 		j.dropCheckpoints(en.I)
 	}
 
-	if j.st.Spec.checkLater() {
+	if j.st.Spec.checkLater() || j.st.Spec.copyOnly() {
 		for cur := nextPending(); cur != nil; cur = nextPending() {
 			if !accepting() {
 				return waitErr{"Waiting for memory to free up"}
@@ -158,6 +158,12 @@ func (j *Job) copyPhase(ctx context.Context, e env, jr *Journal, accepting func(
 			j.setLive(func(l *live) { l.file = cur.P })
 			began := time.Now()
 			recs, err := j.copyOnly(ctx, e, cur, src.Path(cur.P), filepath.Join(dst, filepath.FromSlash(cur.P)))
+			if err == nil && j.st.Spec.copyOnly() && len(recs) == 1 && recs[0].St == "copied" {
+				// No check in this job: the copy, flushed, gets its real name now.
+				if err = j.placeProven(tempFor(filepath.Join(dst, filepath.FromSlash(cur.P))), filepath.Join(dst, filepath.FromSlash(cur.P)), cur); err == nil {
+					recs[0].St = "hashed"
+				}
+			}
 			if err != nil {
 				if !isFileErr(err) {
 					return err
@@ -410,12 +416,18 @@ func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, fina
 			c = hs.Sum128().String()
 		}
 
+		withS2 := j.st.Spec.S2 == "now"
 		s2ch := make(chan hashRes, 1)
-		go func() {
-			h, err := j.hashFileQuiet(ctx, e, e.src, srcPath, en.I, "s2")
-			s2ch <- hashRes{h, err}
-		}()
-		j.setLive(func(l *live) { l.stage = "Reading back the copy (D1) and the source again (S2)" })
+		if withS2 {
+			go func() {
+				h, err := j.hashFileQuiet(ctx, e, e.src, srcPath, en.I, "s2")
+				s2ch <- hashRes{h, err}
+			}()
+			j.setLive(func(l *live) { l.stage = "Reading back the copy (D1) and the source again (S2)" })
+		} else {
+			s2ch <- hashRes{}
+			j.setLive(func(l *live) { l.stage = "Reading back the copy (D1)" })
+		}
 		d1, err := j.hashFile(ctx, e, e.dst, tmp, en.I, "d1", false)
 		if err == nil && d1.String() != c {
 			// Read the destination once more before believing it.
@@ -435,6 +447,14 @@ func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, fina
 			continue
 		}
 		rec.C, rec.D1 = c, d1.String()
+		if !withS2 {
+			// The destination is checked; the source is not read again.
+			if err := j.placeProven(tmp, final, en); err != nil {
+				return nil, err
+			}
+			rec.St, rec.A = "verified", attempt+1
+			return []Rec{rec}, nil
+		}
 		if s2.err == nil && s2.h == d1 {
 			if err := j.placeProven(tmp, final, en); err != nil {
 				return nil, err

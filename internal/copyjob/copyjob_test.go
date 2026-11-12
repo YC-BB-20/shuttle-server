@@ -430,8 +430,8 @@ func TestNewJobsHashWhileCopyingAndOldJobsKeepTheirScheme(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if j.st.Spec.Hash != HashDuringCopy || j.st.Spec.S2 != "now" {
-		t.Fatalf("new job: %+v (hashing while copying needs S2)", j.st.Spec)
+	if j.st.Spec.Hash != HashDuringCopy || j.st.Spec.S2 != "skip" {
+		t.Fatalf("new job: %+v (since 0.2.15 the source re-read can be left out)", j.st.Spec)
 	}
 	if (Spec{S2: "now"}).hashDuringCopy() {
 		t.Fatal("a job saved before 0.2.3 (no hash field) must keep the separate first read")

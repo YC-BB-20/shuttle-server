@@ -16,7 +16,8 @@
   header, main { max-width: 960px; margin: 0 auto; }
   header { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
   header > * { min-width:0; }
-  h1 { font-size:20px; margin:0; flex:1; }
+  h1 { font-size:20px; margin:0; }
+  header .live { margin-left:auto; }
   .ver { color:var(--mute); font-size:14px; font-weight:400; }
   button { font:inherit; border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:8px; padding:6px 12px; }
   .live { font-size:13px; color:var(--mute); white-space:nowrap; }
@@ -46,6 +47,10 @@
   .vers .v:last-child { border-bottom:0; }
   .vers .v > div { flex:1; min-width:0; }
   .vers .v .t { overflow-wrap:anywhere; font-size:14px; color:var(--mute); }
+  .upd { font-size:13px; padding:3px 10px; border-radius:999px; white-space:nowrap; }
+  .upd.go { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .upd:disabled { opacity:1; color:var(--mute); }
+  .opt.in { margin-left:26px; }
   .hint { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 16px; }
   .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--mute); margin:0 0 6px; }
@@ -188,6 +193,7 @@
 <body>
 <header>
   <h1>Shuttle Server <span class="ver" id="ver"></span></h1>
+  <button type="button" class="upd" id="updTop" hidden></button>
   <span class="live" id="live">Connecting</span>
   <nav class="tabs" role="tablist"><button type="button" role="tab" id="tabStatusBtn" aria-selected="true">Status</button><button type="button" role="tab" id="tabSettingsBtn" aria-selected="false">Settings</button></nav>
   <button id="aboutBtn" type="button">About</button>
@@ -203,7 +209,6 @@
       <dl class="mlines" id="monLines"></dl>
     </div>
   </div>
-  <p class="hint" id="updHint" hidden><span id="updHintText"></span><button type="button" id="updHintBtn">Open Settings</button></p>
   <div class="jobs-head"><h2>Queue</h2><div class="row"><button type="button" id="verBtn" title="Read a copied folder or file again and compare it with the hashes stored when it was copied">Verify…</button><button class="primary" type="button" id="newBtn">New copy</button></div></div>
   <p class="mute" id="noJobs">Nothing in the queue. Press New copy to copy a card, a folder or some files to another disk, with every file verified.</p>
   <div class="jobs" id="jobs"></div>
@@ -253,10 +258,19 @@
     <label for="dst">Copy to (a new or existing folder on the destination)</label>
     <div class="row"><input type="text" id="dst" placeholder="/Volumes/BACKUP_1/Day 01/A001"><button type="button" data-pick="dst">Choose…</button></div>
     <label>Proof</label>
-    <div class="opt"><input type="radio" name="proof" id="pfCopy" value="copy" checked><span>Hash while copying, then read the source a second time (strongest, and best for camera cards; the source is read twice)</span></div>
-    <div class="opt"><input type="radio" name="proof" id="pfLater" value="later"><span>Copy everything first, hashed as it is read, then check every copy in a second pass (the copy read back and the source read again). Each copy keeps a temporary name until it is checked</span></div>
-    <div class="opt"><input type="radio" name="proof" id="pfFirst" value="first"><span>Read the source on its own first, then copy, then read it again (equally strong, slower; the source is read three times)</span></div>
-    <div class="opt"><input type="radio" name="proof" id="pfQuick" value="quick"><span>Read the source first and skip the second read (faster, weaker; not for cards you will erase)</span></div>
+    <label class="opt"><input type="checkbox" id="ckCopy" checked disabled><span>Copy, hashing the source as it is read</span></label>
+    <label class="opt"><input type="checkbox" id="ckDest" checked><span>Verify the destination: read each copy back</span></label>
+    <label class="opt"><input type="checkbox" id="ckSrc" checked><span>Read the source again: catches a bad read from the card or cable</span></label>
+    <div id="ckMore">
+      <label>When to check</label>
+      <div id="whenBox">
+        <label class="opt"><input type="radio" name="when" id="whenFile" checked><span>As each file is copied</span></label>
+        <label class="opt"><input type="radio" name="when" id="whenEnd"><span>After all files are copied (each copy keeps a temporary name until it is checked)</span></label>
+      </div>
+      <label class="opt"><input type="checkbox" id="ckSep"><span>Check in a separate queue item, after the copy (files get their real names straight away)</span></label>
+      <label class="opt in"><input type="checkbox" id="ckPaused"><span>Add that item paused, to start when you choose</span></label>
+    </div>
+    <p class="mute" id="proofSum"></p>
     <p class="mute">The source is only read, never changed. Files already at the destination are compared, never replaced.</p>
     <p class="err" id="newErr"></p>
   </div>
@@ -334,7 +348,6 @@ function showTab(name) {
 }
 $("tabStatusBtn").onclick = () => showTab("status");
 $("tabSettingsBtn").onclick = () => showTab("settings");
-$("updHintBtn").onclick = () => showTab("settings");
 showTab(location.hash === "#settings" ? "settings" : "status");
 
 function loadHistory() {
@@ -407,17 +420,40 @@ $("newBtn").onclick = () => {
   const last = ((latest && latest.jobs) || []).concat(olderViews).filter(v => v.kind !== "verify").reduce((a, v) => !a || v.created > a.created ? v : a, null);
   if (last && !$("src").value && !$("dst").value) {
     $("src").value = last.source; $("dst").value = last.dest;
-    $(last.hash === "later" ? "pfLater" : last.hash === "first" ? (last.s2 === "skip" ? "pfQuick" : "pfFirst") : "pfCopy").checked = true;
+    const sep = last.check === "none" && !!last.verify_next;
+    $("ckDest").checked = last.check !== "none" || sep;
+    $("ckSrc").checked = $("ckDest").checked && last.s2 !== "skip";
+    $("ckSep").checked = sep; $("ckPaused").checked = last.verify_next === "paused";
+    $(last.hash === "later" ? "whenEnd" : "whenFile").checked = true;
   }
+  proofForm();
   $("newDlg").showModal();
 };
 $("startBtn").onclick = () => {
   $("newErr").textContent = "";
-  const hash = $("pfCopy").checked ? "copy" : $("pfLater").checked ? "later" : "first";
-  post("/api/jobs", { source: $("src").value, dest: $("dst").value, only: srcOnly, hash, s2: $("pfQuick").checked ? "skip" : "now" })
+  const dest = $("ckDest").checked, s2 = $("ckSrc").checked ? "now" : "skip";
+  const proof = !dest ? { check: "none" } : $("ckSep").checked ? { check: "none", verify: $("ckPaused").checked ? "paused" : "run", s2 } :
+    { hash: $("whenEnd").checked ? "later" : "copy", s2 };
+  post("/api/jobs", Object.assign({ source: $("src").value, dest: $("dst").value, only: srcOnly }, proof))
     .then(() => { $("newDlg").close(); $("src").value = ""; $("dst").value = ""; setOnly([]); })
     .catch(e => $("newErr").textContent = e.message);
 };
+
+// Proof checkboxes: each includes the one above it. Below them, when and
+// where the check runs, and one line saying what the choice means.
+function proofForm(changed) {
+  if (changed === "ckSrc" && $("ckSrc").checked) $("ckDest").checked = true;
+  if (changed === "ckDest" && !$("ckDest").checked) $("ckSrc").checked = false;
+  const dest = $("ckDest").checked, src = $("ckSrc").checked, sep = $("ckSep").checked;
+  $("ckMore").hidden = !dest; $("whenBox").hidden = sep;
+  $("ckPaused").disabled = !sep; $("ckPaused").closest(".opt").hidden = !sep;
+  $("proofSum").textContent = !dest ? "Copy only: fastest, the source is read once, but nothing checks the copy. Not for cards you will erase." :
+    (src ? "Strongest: the copy read back and the source read again must both match what was copied. Right for camera cards."
+         : "The copy is read back and compared with what was read for it. A bad read from the card or cable would not be noticed.") +
+    (sep ? " The check is its own item in the queue" + ($("ckPaused").checked ? ", added paused." : ", started when the copy finishes.") : "");
+}
+["ckDest", "ckSrc", "ckSep", "ckPaused", "whenFile", "whenEnd"].forEach(id => $(id).onchange = () => proofForm(id));
+proofForm();
 
 // Picker: Home, this computer's disk and every connected disk and server on
 // top; the path as buttons; for the source, files and folders can be ticked.
@@ -579,7 +615,7 @@ function card(v) {
   mb.style.background = v.missing ? "var(--bad)" : v.state === "running" ? "var(--accent)" :
     v.state === "finished" ? (problems ? "var(--warn)" : "var(--ok)") : "var(--mute)";
   // One status line.
-  const proven = v.verified + v.identical;
+  const proven = v.verified + v.identical, only = !ver && v.check === "none", again = ver && v.s2 === "now" && v.source !== v.dest;
   let sub = "", subCls = "sub";
   if (v.state === "waiting") { sub = v.reason; subCls += v.missing ? " bad" : " warn"; }
   else if (v.state === "running" && scanning && ver) sub = "Reading the stored hashes — " + v.scanned + " files so far";
@@ -590,7 +626,8 @@ function card(v) {
   else if (v.state === "finished") { sub = (v.finished ? when(v.finished) + " · " : "") + took(v.created, v.finished) + " · " + size(v.bytes) +
       (secs(v.created, v.finished) >= 1 && v.bytes ? " · " + rate(v.bytes / secs(v.created, v.finished)) + " average" : "") +
       (ver ? " · " + (v.failed ? v.verified + " match, " + v.failed + " do not" : v.verified + (v.verified === 1 ? " file matches" : " files match")) :
-      problems ? " · " + (v.failed ? v.failed + " failed" : "") + (v.failed && v.s2_warnings ? ", " : "") + (v.s2_warnings ? v.s2_warnings + " source warnings" : "") : " · " + proven + " files verified");
+      problems ? " · " + (v.failed ? v.failed + " failed" : "") + (v.failed && v.s2_warnings ? ", " : "") + (v.s2_warnings ? v.s2_warnings + " source warnings" : "") :
+      only ? " · " + (v.hashed + v.identical) + " files copied, not verified" : " · " + proven + " files verified");
     if (problems) subCls += " warn"; }
   else sub = (v.finished ? when(v.finished) + " · " : "") + "Stopped by you · " + proven + (ver ? " files checked and matching" : " files verified and kept");
   q(".sub").textContent = sub; q(".sub").className = subCls;
@@ -598,11 +635,13 @@ function card(v) {
   let line = "";
   if (v.state === "running" && !scanning) line = "Now: " + v.file + " — " + v.stage + (v.file_size ? ", " + size(v.file_done) + " of " + size(v.file_size) : "");
   else if (v.state === "finished" && ver) line = v.failed ? "Some files do not match the stored hashes — see the files marked Error. Nothing was changed." :
-      "Every file read in full matches the hash stored when it was copied." + (v.skipped ? " " + v.skipped + " files had no stored hash (never verified by the copy) and were not checked." : "");
-  else if (v.state === "finished") line = problems ? "Finished with problems — see the files marked Error." : "Finished. Every file is verified" + (v.s2 === "now" ? " twice (source read again)." : ".");
+      "Every file read in full matches the hash stored when it was copied" + (again ? ", and the source read again matches too." : ".") + (v.skipped ? " " + v.skipped + " files had no stored hash (never verified by the copy) and were not checked." : "");
+  else if (v.state === "finished" && only) line = problems ? "Finished with problems — see the files marked Error." : "Finished. Every file is copied and hashed; no copy was read back." +
+      (v.verify_next ? " The check is its own item in the queue." : " Not proof enough to erase a card.");
+  else if (v.state === "finished") line = problems ? "Finished with problems — see the files marked Error." : "Finished. Every file is verified" + (v.s2 === "now" ? " twice (source read again)." : " (the copy read back; the source was not read again).");
   else if (v.state === "paused") line = "Paused by you. Resume continues exactly where it stopped.";
   else if (!old && v.state !== "running") line = "Added " + when(v.created);
-  if (ver && !old) line += (line ? " · " : "") + "Read in full and compared with the hashes stored when it was copied. Nothing is changed.";
+  if (ver && !old) line += (line ? " · " : "") + "Read in full and compared with the hashes stored when it was copied" + (again ? ", with the source read again beside it" : "") + ". Nothing is changed.";
   q(".line").textContent = line;
   q(".bar.file").hidden = v.state !== "running" || scanning;
   q(".bar.file > i").style.width = v.state === "running" ? pct(v.file_done, v.file_size) + "%" : "0%";
@@ -612,9 +651,10 @@ function card(v) {
   q(".speed").textContent = !live ? "" :
     [ver && rate(v.rate) && "Speed " + rate(v.rate), rate(v.source_rate) && "source disk reading " + rate(v.source_rate), rate(v.dest_rate) && "destination disk " + rate(v.dest_rate)].filter(Boolean).join(" · ") || (ver ? "Measuring speed…" : "");
   q(".fcounts").hidden = ver || old || scanning;
-  if (!ver && !old && !scanning) q(".fcounts").textContent = fileCounts(v);
+  if (!ver && !old && !scanning) q(".fcounts").textContent = only ? "Copied " + (v.hashed + v.identical + v.failed) + " of " + v.files + " · not read back" : fileCounts(v);
   q(".counts").textContent = ver ? "Matching " + v.verified + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
-    (v.failed ? " · do not match: " + v.failed : "") + (v.skipped ? " · no stored hash: " + v.skipped : "") : "Verified " + proven + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
+    (again ? " · source read again and matching: " + v.strong : "") + (v.failed ? " · do not match: " + v.failed : "") + (v.skipped ? " · no stored hash: " + v.skipped : "") : only ? "Copied " + (v.hashed + v.identical) + " of " + v.files + " files, not verified" + (v.identical ? " · " + v.identical + " were already there (compared)" : "") +
+    (v.failed ? " · failed: " + v.failed : "") + (v.skipped ? " · not copied (links etc.): " + v.skipped : "") : "Verified " + proven + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
     (v.copied ? " · copied, check to come: " + v.copied : "") +
     (v.identical ? " · " + v.identical + " were already there" : "") + (v.s2 === "now" ? " · read twice: " + v.strong : "") +
     (v.failed ? " · failed: " + v.failed : "") + (v.s2_warnings ? " · source warnings: " + v.s2_warnings : "") + (v.skipped ? " · not copied (links etc.): " + v.skipped : "");
@@ -698,19 +738,22 @@ function renderUpdate(u, s) {
   if (u.error) note = u.error;
   else if (u.last_check) note = note || "Last checked " + ago(u.last_check) + " ago.";
   $("updLine").textContent = line; $("updNote").textContent = note;
-  const hint = u.busy ? line : (u.available && !u.waiting_for_copy) ? "Update " + u.available.version + " is available." : u.error ? "Updates: " + u.error : "";
-  $("updHint").hidden = !hint; $("updHintText").textContent = hint;
+  // Next to the title: one click installs; while busy it says what it is doing.
+  const top = $("updTop");
+  const busyText = { checking: "Checking…", downloading: "Downloading…", installing: "Installing…" }[u.busy];
+  top.hidden = !(busyText || (u.available && !u.waiting_for_copy) || u.waiting_for_copy || (u.error && u.key_set));
+  top.disabled = !!busyText || !!u.waiting_for_copy;
+  top.className = "upd" + (u.available && !u.busy && !u.waiting_for_copy ? " go" : "");
+  top.textContent = busyText || (u.waiting_for_copy ? "Update after this copy" : u.available ? "Update to " + u.available.version : "Updates: problem");
+  top.title = u.available ? u.available.version + " — " + u.available.title : u.error || "";
+  top.onclick = u.available && !u.busy ? () => installUpdate(u, running) : () => showTab("settings");
   $("updNote").className = u.error ? "err" : "mute";
   $("keyBox").hidden = u.key_set && !$("keyBox").dataset.open;
   $("undo").textContent = u.undo ? "To undo the last update by hand: " + u.undo : "";
   const btns = [];
   const btn = (t, f, cls) => { const b = document.createElement("button"); b.type = "button"; b.textContent = t; b.onclick = f; if (cls) b.className = cls; btns.push(b); };
   if (u.key_set && !u.busy) {
-    if (u.available && !u.waiting_for_copy) btn("Install " + u.available.version, async () => {
-      let now = false;
-      if (running) { if (!await confirmBox("A copy is running", "Install now? The copy pauses where it is and continues after the restart. Or choose Keep copying, and the update installs when the copy finishes.", "Install now")) { post("/api/update/install", { now: false }); return; } now = true; }
-      post("/api/update/install", { now }).catch(e => alert(e.message));
-    }, "primary");
+    if (u.available && !u.waiting_for_copy) btn("Install " + u.available.version, () => installUpdate(u, running), "primary");
     btn("Check now", () => post("/api/update/check").catch(e => alert(e.message)));
     btn("Change key", () => { $("keyBox").dataset.open = "1"; $("keyBox").hidden = false; });
   }
@@ -726,6 +769,11 @@ function renderUpdate(u, s) {
   });
   const key = btns.map(b => b.textContent).join("|") + running;
   if (updKey !== key) { updKey = key; $("updBtns").replaceChildren(...btns); }
+}
+async function installUpdate(u, running) {
+  let now = false;
+  if (running) { if (!await confirmBox("A copy is running", "Install " + u.available.version + " now? The copy pauses where it is and continues after the restart. Or choose Keep copying, and the update installs when the copy finishes.", "Install now")) { post("/api/update/install", { now: false }); return; } now = true; }
+  post("/api/update/install", { now }).catch(e => alert(e.message));
 }
 $("keySave").onclick = () => {
   $("keyErr").textContent = "";
@@ -763,8 +811,8 @@ $("moreHist").onclick = () => {
 // Files of one copy: filters, paged rows, the file being worked on with its
 // own bar. Refreshed every 2 s while the copy runs and the page is visible.
 const fv = {};
-const fileLabel = { waiting: "Waiting", proven: "Verified", strong: "Verified · read twice", failed: "Error", warning: "Source warning", copied: "Copied · check to come" };
-const fileChip = { proven: "ok", strong: "ok", failed: "bad", warning: "waiting", working: "running", copied: "running" };
+const fileLabel = { waiting: "Waiting", proven: "Verified", strong: "Verified · read twice", failed: "Error", warning: "Source warning", copied: "Copied · check to come", hashed: "Copied · not verified" };
+const fileChip = { proven: "ok", strong: "ok", failed: "bad", warning: "waiting", working: "running", copied: "running", hashed: "waiting" };
 function toggleFiles(v, c) {
   if (fv[v.id]) { fv[v.id].box.remove(); delete fv[v.id]; return; }
   const box = el("div", "files");
@@ -814,7 +862,7 @@ const hashName = { c: "Source — full read, as it was copied", s1: "Source — 
 // A file already at the destination was not copied: the source was read on
 // its own and compared with the file that was there.
 const alreadyHashName = { s1: "Source — full read, compared with the file already there (not copied)", d1: "Destination — full read of the file already there", s2: "Source — second full read (safety check)" };
-const verifyHashName = { c: "Stored when it was copied", d1: "Destination — full read now" };
+const verifyHashName = { c: "Stored when it was copied", d1: "Destination — full read now", s2: "Source — read again now" };
 function kv(pairs) {
   const dl = el("dl", "kv");
   pairs.filter(p => p[1] !== "" && p[1] != null).forEach(([k, v]) => { dl.append(el("dt", "", k)); const d = el("dd"); if (v instanceof Node) d.append(v); else d.textContent = v; dl.append(d); });

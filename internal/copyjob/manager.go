@@ -70,6 +70,9 @@ func (m *Manager) Load() error {
 		m.jobs = append(m.jobs, j)
 	}
 	sort.Slice(m.jobs, func(a, b int) bool { return m.jobs[a].st.Created.Before(m.jobs[b].st.Created) })
+	for _, j := range append([]*Job(nil), m.jobs...) {
+		m.queueVerify(j) // a copy that finished just before a crash still gets its Verify job
+	}
 	return nil
 }
 
@@ -145,10 +148,18 @@ func (m *Manager) Add(s Spec) (*Job, error) {
 		return nil, errors.New("copies to or from a network server are not supported yet; connect the disk by cable")
 	}
 	if s.Hash != HashFirst && s.Hash != HashCheckLater {
-		s.Hash = HashDuringCopy // hashing while copying needs the second source read to be proof
+		s.Hash = HashDuringCopy
 	}
-	if s.S2 != "skip" || s.Hash != HashFirst {
+	if s.S2 != "skip" {
 		s.S2 = "now"
+	}
+	switch {
+	case s.Check != "none":
+		s.Check, s.Verify = "", ""
+	case s.Verify != "run" && s.Verify != "paused":
+		s.Hash, s.Verify = HashDuringCopy, "" // copy only, nothing read back
+	default:
+		s.Hash = HashDuringCopy // copied now, checked by its own Verify job
 	}
 	s.Source, s.Dest = src, dst
 	now := time.Now()
@@ -164,7 +175,7 @@ func (m *Manager) Add(s Spec) (*Job, error) {
 	m.mu.Lock()
 	m.jobs = append(m.jobs, j)
 	m.mu.Unlock()
-	m.Log.Info("copy job added", "job", id, "source", src, "destination", dst, "hash", s.Hash, "s2", s.S2, "same_disk", j.st.SameVolume)
+	m.Log.Info("copy job added", "job", id, "source", src, "destination", dst, "hash", s.Hash, "s2", s.S2, "check", s.Check, "verify", s.Verify, "same_disk", j.st.SameVolume)
 	m.poke()
 	return j, nil
 }
@@ -336,7 +347,8 @@ func (m *Manager) runOne(ctx context.Context, j *Job) {
 		c := j.c
 		j.mu.Unlock()
 		m.Log.Info("copy job finished", "job", j.st.ID, "verified", c.Verified, "already_there", c.Identical,
-			"failed", c.Failed, "s2_ok", c.Strong, "s2_warnings", c.S2Warn)
+			"failed", c.Failed, "s2_ok", c.Strong, "s2_warnings", c.S2Warn, "copied_only", c.Hashed)
+		m.queueVerify(j)
 	case errors.Is(cause, errOwnerPause), ctx.Err() != nil:
 		j.setLive(func(l *live) { l.reason, l.missing = "", "" })
 	case errors.Is(err, diskio.ErrGone), errors.Is(cause, diskio.ErrGone):

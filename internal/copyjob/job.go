@@ -31,13 +31,20 @@ const (
 	stStrong   byte = 3 // and S2 equals D1
 	stS2Warn   byte = 4 // S2 differed: source changed or unstable
 	stCopied   byte = 5 // copied and hashed (C), still under its temporary name, check pass to come
+	stHashed   byte = 6 // copy only: copied, hashed (C) and given its real name, never read back
 )
 
 // Spec is what the owner asked for.
 type Spec struct {
 	Source string `json:"source"`
 	Dest   string `json:"dest"`
-	S2     string `json:"s2"`             // "now" or "skip"; always "now" with Hash "copy"
+	S2     string `json:"s2"` // "now" or "skip" (since 0.2.15 also with Hash "copy" and "later"); a Verify job: "now" also reads the source again
+	// Check (added in 0.2.15): "" reads the copy back in this job (D1, and S2
+	// unless skipped); "none" copies and hashes only, the file gets its real
+	// name after the copy. Verify, only with "none": "run" or "paused" queues
+	// a Verify job for the copied files when this job finishes.
+	Check  string `json:"check,omitempty"`
+	Verify string `json:"verify,omitempty"`
 	Hash   string `json:"hash,omitempty"` // "copy" (hash while copying), "later" (hash while copying, check everything in a second pass) or "first" (own read before); empty in jobs from before 0.2.3 means "first"
 	// Only lists the chosen files and folders inside Source, by name; empty
 	// means the whole folder.
@@ -67,6 +74,9 @@ const (
 // hashDuringCopy: the bytes read for the copy are hashed (C), in both the
 // per-file scheme and the copy-then-check scheme.
 func (s Spec) hashDuringCopy() bool { return s.Hash == HashDuringCopy || s.Hash == HashCheckLater }
+
+// copyOnly: no read-back in this job; any check is a separate Verify job.
+func (s Spec) copyOnly() bool { return s.Check == "none" }
 
 // checkLater: every file is copied first; D1 and S2 run in a second pass.
 func (s Spec) checkLater() bool { return s.Hash == HashCheckLater }
@@ -99,6 +109,7 @@ type state struct {
 	CheckEnd      int64                 `json:"check_journal_end,omitempty"` // journal size when the check pass began
 	Checkpoints   map[string]Checkpoint `json:"checkpoints,omitempty"`
 	Finished      time.Time             `json:"finished,omitzero"`
+	VerifyJob     string                `json:"verify_job,omitempty"` // the Verify job queued when this copy finished
 }
 
 // Job is one copy job.
@@ -133,6 +144,7 @@ type counts struct {
 	BytesProven                                 int64
 	BytesFailed                                 int64 // Verify jobs: bytes of files that did not match, for the bar
 	Copied                                      int   // copy-then-check: copied, waiting for the check pass
+	Hashed                                      int   // copy only: copied and hashed, not read back
 	BytesCopied                                 int64 // copy-then-check: bytes through the copy pass
 }
 
@@ -194,7 +206,7 @@ func (j *Job) apply(r Rec) {
 	case "verified", "identical", "match": // match: a Verify job read the copy again and it matches
 		if unproven {
 			j.c.BytesProven += r.N
-			if j.st.Spec.checkLater() && j.status[r.I] != stCopied {
+			if (j.st.Spec.checkLater() || j.st.Spec.copyOnly()) && j.status[r.I] != stCopied {
 				j.c.BytesCopied += r.N
 			}
 		}
@@ -214,6 +226,12 @@ func (j *Job) apply(r Rec) {
 		j.status[r.I] = stStrong
 		j.c.Verified++
 		j.c.Strong++
+	case "hashed": // copy only: named after the copy, never read back
+		if unproven {
+			j.c.BytesCopied += r.N
+		}
+		j.status[r.I] = stHashed
+		j.c.Hashed++
 	case "failed":
 		j.status[r.I] = stFailed
 		j.c.Failed++

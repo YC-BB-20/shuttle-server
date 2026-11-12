@@ -89,6 +89,56 @@ func (m *Manager) addVerify(s Spec) (*Job, error) {
 	return j, nil
 }
 
+// verifyIDSuffix names the Verify job a copy queues for itself, so a crash
+// between the two saves never queues it twice.
+const verifyIDSuffix = "-verify"
+
+// queueVerify adds the Verify job a finished copy asked for (Spec.Verify):
+// the copy read back in full and, when the copy's S2 is "now", its source
+// read again beside it. It is added paused when the owner chose that.
+func (m *Manager) queueVerify(cj *Job) {
+	cj.mu.Lock()
+	st := cj.st
+	cj.mu.Unlock()
+	if st.Spec.isVerify() || st.Spec.Verify == "" || st.Phase != "done" || st.Choice == "stopped" || st.VerifyJob != "" {
+		return
+	}
+	id := st.ID + verifyIDSuffix
+	if m.find(id) == nil {
+		choice := "run"
+		if st.Spec.Verify == "paused" {
+			choice = "paused"
+		}
+		src, srcVol := st.Spec.Dest, st.DestVol
+		if st.Spec.S2 == "now" {
+			src, srcVol = st.Spec.Source, st.SourceVol
+		}
+		j := &Job{dir: filepath.Join(m.Dir, id), st: state{FormatVersion: FormatVersion, ID: id, Created: time.Now(), Choice: choice, Phase: "scan",
+			Spec:      Spec{Kind: KindVerify, Source: src, Dest: st.Spec.Dest, S2: st.Spec.S2, From: []string{st.ID}},
+			SourceVol: srcVol, DestVol: st.DestVol, SameVolume: srcVol == st.DestVol}}
+		if err := os.MkdirAll(j.dir, 0o700); err != nil {
+			m.Log.Error("could not queue the Verify job for a copy", "job", st.ID, "err", err)
+			return
+		}
+		if err := j.save(); err != nil {
+			m.Log.Error("could not queue the Verify job for a copy", "job", st.ID, "err", err)
+			return
+		}
+		m.mu.Lock()
+		m.jobs = append(m.jobs, j)
+		m.mu.Unlock()
+		m.Log.Info("verify job queued for a finished copy", "job", id, "copy", st.ID, "paused", choice == "paused", "source_again", st.Spec.S2 == "now")
+	}
+	cj.mu.Lock()
+	cj.st.VerifyJob = id
+	cj.mu.Unlock()
+	cj.save()
+	m.poke()
+}
+
+// readsSource: this Verify job reads the source again (S2) beside the copy.
+func (s Spec) readsSource() bool { return s.isVerify() && s.S2 == "now" && s.Source != s.Dest }
+
 // slot is one stored hash in the scan's lookup file: 32 hex characters at
 // offset index*32, zeros where a file has no proven hash. The lookup file
 // lives on disk, so memory does not grow with the number of files.
@@ -133,6 +183,10 @@ func (j *Job) verifyScan(ctx context.Context) error {
 				if len(r.D1) == slot {
 					copy(b[:], r.D1)
 				}
+			case "hashed": // copy only: the hash of what was read for the copy
+				if len(r.C) == slot {
+					copy(b[:], r.C)
+				}
 			}
 			lf.WriteAt(b[:], int64(r.I)*slot)
 			return true
@@ -147,10 +201,10 @@ func (j *Job) verifyScan(ctx context.Context) error {
 		for it.Next() {
 			e := it.E
 			full := filepath.Join(cj.st.Spec.Dest, filepath.FromSlash(e.P))
-			if !inside(full, spec.Source) {
+			if !inside(full, spec.Dest) {
 				continue
 			}
-			rel, _ := filepath.Rel(spec.Source, full)
+			rel, _ := filepath.Rel(spec.Dest, full)
 			if spec.File != "" && rel != spec.File {
 				continue
 			}
@@ -231,6 +285,7 @@ func (j *Job) verifyPhase(ctx context.Context, e env, jr *Journal, accepting fun
 		j.setLive(func(l *live) { l.file, l.stage, l.done, l.size = en.P, "Reading the copy in full", 0, en.S })
 		start := time.Now()
 		rec := Rec{I: en.I, N: en.S, C: en.H, T: time.Now().Unix()}
+		var extra Rec // the source read again, when this job does that
 		fail := func(why string) { rec.St, rec.P, rec.Err = "failed", en.P, why }
 		size, _, serr := statSM(p)
 		switch {
@@ -241,7 +296,24 @@ func (j *Job) verifyPhase(ctx context.Context, e env, jr *Journal, accepting fun
 		case size != en.S:
 			fail(fmt.Sprintf("wrong size: %d bytes instead of %d", size, en.S))
 		default:
+			withS2 := j.st.Spec.readsSource()
+			s2ch := make(chan hashRes, 1)
+			if withS2 {
+				sp := filepath.Join(j.st.Spec.Source, filepath.FromSlash(en.P))
+				go func() {
+					h, err := j.hashFileQuiet(ctx, e, e.src, sp, en.I, "s2")
+					s2ch <- hashRes{h, err}
+				}()
+				j.setLive(func(l *live) { l.stage = "Reading the copy in full and the source again" })
+			}
 			h, err := j.hashFile(ctx, e, e.dst, p, en.I, "v1", false)
+			var s2 hashRes
+			if withS2 {
+				s2 = <-s2ch // always wait: the source read must not outlive this file
+				if s2.err != nil && !isFileErr(s2.err) {
+					return s2.err
+				}
+			}
 			if err != nil && !isFileErr(err) {
 				return err
 			}
@@ -263,16 +335,54 @@ func (j *Job) verifyPhase(ctx context.Context, e env, jr *Journal, accepting fun
 			default:
 				fail("differs: the copy read twice does not match the hash stored when it was copied")
 			}
+			if withS2 && rec.St == "match" {
+				extra = s2Verdict(en, filepath.Join(j.st.Spec.Source, filepath.FromSlash(en.P)), s2)
+				if extra.St == "failed" {
+					rec, extra = extra, Rec{}
+					rec.C, rec.D1, rec.T = en.H, h.String(), time.Now().Unix()
+				}
+			}
 		}
 		rec.Ms = time.Since(start).Milliseconds()
-		jr.Append(rec)
-		j.mu.Lock()
-		j.apply(rec)
-		j.mu.Unlock()
+		for _, out := range []Rec{rec, extra} {
+			if out.St == "" {
+				continue
+			}
+			jr.Append(out)
+			j.mu.Lock()
+			j.apply(out)
+			j.mu.Unlock()
+		}
+		extra = Rec{}
 		j.dropCheckpoint(en.I, "v1")
 		j.dropCheckpoint(en.I, "v2")
+		j.dropCheckpoint(en.I, "s2")
 	}
 	return nil
+}
+
+// s2Verdict compares the source, read again, with the hash stored when the
+// copy was made (the copy itself already matches it). Nothing is changed.
+// A source that changed since it was listed is a warning; a source that
+// reads differently without having changed means the copy may hold a bad
+// read, so the file fails.
+func s2Verdict(en entry, srcPath string, s2 hashRes) Rec {
+	out := Rec{I: en.I, N: en.S, S2: s2.h.String(), D1: en.H}
+	if s2.err == nil && s2.h.String() == en.H {
+		out.St = "s2ok"
+		return out
+	}
+	out.P = en.P
+	if sz, m, err := statSM(srcPath); err != nil || sz != en.S || m != en.M {
+		out.St, out.Err = "s2changed", "the source changed after the copy, or is no longer there (not a copy error)"
+		return out
+	}
+	out.St, out.Err = "failed", "the source read now differs from what was copied; the copy may hold a bad read from the card or cable: copy this file again"
+	if s2.err != nil {
+		out.S2 = ""
+		out.Err = "the source could not be read again: " + s2.err.Error()
+	}
+	return out
 }
 
 // runVerify carries a Verify job forward from wherever it stands.

@@ -39,7 +39,11 @@ type View struct {
 	Strong     int       `json:"strong"`
 	S2Warn     int       `json:"s2_warnings"`
 	Proven     int64     `json:"bytes_proven"`
-	Copied     int       `json:"copied,omitempty"` // copy-then-check: copied, waiting for the check pass
+	Copied     int       `json:"copied,omitempty"`      // copy-then-check: copied, waiting for the check pass
+	Hashed     int       `json:"hashed,omitempty"`      // copy only: copied and hashed, not read back
+	Check      string    `json:"check,omitempty"`       // "none": copy only in this job
+	VerifyNext string    `json:"verify_next,omitempty"` // "run" or "paused": a Verify job follows this copy
+	VerifyJob  string    `json:"verify_job,omitempty"`
 	Skipped    int       `json:"skipped"`
 	SameVolume bool      `json:"same_volume"`
 	SrcRate    int64     `json:"source_rate"`
@@ -74,7 +78,7 @@ func progress(st state, c counts, l live) float64 {
 		if st.Files == 0 {
 			return 1
 		}
-		return float64(c.Verified+c.Identical+c.Failed) / float64(st.Files)
+		return float64(c.Verified+c.Identical+c.Failed+c.Hashed) / float64(st.Files)
 	}
 	size, done := float64(l.size), float64(l.done)
 	if st.Spec.isVerify() {
@@ -82,6 +86,12 @@ func progress(st state, c counts, l live) float64 {
 	}
 	has := func(p string) bool { return strings.HasPrefix(l.stage, p) }
 	var part float64
+	if st.Spec.copyOnly() {
+		if has("Copying") {
+			part = done
+		}
+		return min(1, (float64(c.BytesCopied)+part)/float64(st.Bytes))
+	}
 	if st.Spec.checkLater() {
 		// The copy pass is the first half of the work, the check pass the second.
 		if has("Copying") || has("Reading the source (S1)") || has("Reading back") || has("Checking") {
@@ -195,7 +205,8 @@ func baseView(j *Job) (View, state, live) {
 	v := View{ID: st.ID, Source: st.Spec.Source, Dest: st.Spec.Dest, S2: st.Spec.S2, Hash: st.Spec.Hash, Only: len(st.Spec.Only),
 		Kind: st.Spec.Kind, VerifyFile: st.Spec.File,
 		Created: st.Created, Finished: st.Finished, Phase: st.Phase, Files: st.Files, Bytes: st.Bytes, Skipped: st.Skipped,
-		Verified: c.Verified, Identical: c.Identical, Failed: c.Failed, Strong: c.Strong, S2Warn: c.S2Warn, Copied: c.Copied,
+		Verified: c.Verified, Identical: c.Identical, Failed: c.Failed, Strong: c.Strong, S2Warn: c.S2Warn, Copied: c.Copied, Hashed: c.Hashed,
+		Check: st.Spec.Check, VerifyNext: st.Spec.Verify, VerifyJob: st.VerifyJob,
 		Proven: c.BytesProven, SameVolume: st.SameVolume, Scanned: l.scanned, ScannedB: l.scannedBytes,
 		Progress: progress(st, c, l)}
 	if st.Phase == "done" && st.Choice == "stopped" {
@@ -297,6 +308,8 @@ func rowStatus(st byte) string {
 		return "warning"
 	case stCopied:
 		return "copied"
+	case stHashed:
+		return "hashed"
 	}
 	return "waiting"
 }
@@ -306,7 +319,7 @@ func filterOK(filter, status string) bool {
 	case "todo":
 		return status == "waiting" || status == "working" || status == "copied"
 	case "done":
-		return status == "proven" || status == "strong"
+		return status == "proven" || status == "strong" || status == "hashed"
 	case "problems":
 		return status == "failed" || status == "warning"
 	}
@@ -431,6 +444,7 @@ var eventText = map[string]string{
 	"failed":     "Failed",
 	"match":      "Verified again: the copy was read in full and matches the hash stored when it was copied",
 	"copied":     "Copied and hashed as it was read; the check (copy read back, source read again) comes in the second pass",
+	"hashed":     "Copied and hashed as it was read, and given its real name; the copy was not read back",
 	"s2ok":       "Source read a second time: matches",
 	"s2changed":  "Source read a second time: the source had changed after the copy",
 	"s2unstable": "Source read a second time: it read differently",
@@ -521,6 +535,10 @@ func (m *Manager) FileInfo(id string, i int) (FileInfo, error) {
 	m.mu.Unlock()
 	if spec.isVerify() {
 		switch fi.Status {
+		case "strong":
+			fi.Proof = "Verified: the copy read in full and the source read again both match the hash stored when it was copied"
+		case "warning":
+			fi.Proof = "The copy matches the hash stored when it was copied; the source has changed since"
 		case "proven":
 			fi.Proof = "Verified again: the copy read in full matches the hash stored when it was copied"
 		case "failed":
@@ -544,6 +562,11 @@ func (m *Manager) FileInfo(id string, i int) (FileInfo, error) {
 		fi.Proof = "Verified against what was read, with a warning about the source"
 	case "copied":
 		fi.Proof = "Not yet: copied, waiting for the check pass; it keeps a temporary name until then"
+	case "hashed":
+		fi.Proof = "Not verified: copied and hashed as it was read, but the copy was not read back"
+		if spec.Verify != "" {
+			fi.Proof += "; its own Verify item in the queue checks it"
+		}
 	default:
 		fi.Proof = "Not yet: this file has not been copied"
 	}

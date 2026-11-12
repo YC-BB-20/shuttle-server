@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.15 — 12 November 2026
+
+- **Simpler proof choices in New copy: three boxes, each adding to the one above.** "Copy, hashing the source as it is read" (always on); "Verify the destination: read each copy back"; "Read the source again: catches a bad read from the card or cable". All three are ticked the first time; after that the form remembers your last choice. A line under the boxes says in plain words what the choice means. Copy only is the fastest, but nothing checks the copy, so it is not for cards you will erase.
+- **When to check:** "As each file is copied" (the default) or "After all files are copied", or **"Check in a separate queue item"**: the copy finishes first and its files get their real names straight away, then a Verify item reads the copies back (and the source again, if ticked). That item can be **added paused**, to start when you choose. If the source reads differently from what was copied, the Verify item marks the file as an error ("the copy may hold a bad read") and changes nothing.
+- The option to read the source on its own before the copy is no longer offered for new copies. Copies already made with it keep working and show as before.
+- **The update button sits next to the title** ("Update to 0.2.16"): one click installs, and it says "Checking…" or "Installing…" in place while it works. The line under the status panel is gone.
+
 ## 0.2.14 — 12 November 2026
 
 - **Read any fingerprint again.** In a file's info, each fingerprint line has a button: "Read the source again" or "Read the copy again". Shuttle reads that file in full once more and adds the new fingerprint below with its date, marked "same as the first" or "differs" (and says so if the source has changed since it was copied). It shows its progress, waits for a running copy to finish so a disk is never asked for two things at once, and only reads: nothing is changed.
