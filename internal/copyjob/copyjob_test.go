@@ -158,6 +158,14 @@ func TestExistingFilesAreNeverOverwritten(t *testing.T) {
 	if len(p) != 1 || p[0].Path != diff || !strings.Contains(p[0].Why, "left untouched") {
 		t.Fatalf("problems %+v", p)
 	}
+	// File info says the identical file was compared, not copied.
+	for i := 0; i < len(files); i++ {
+		if fi, err := m.FileInfo(j.st.ID, i); err == nil && fi.Path == same && (!fi.Already || fi.Hash.S1 == "" || fi.Hash.C != "") {
+			t.Fatalf("already-there file info %+v", fi)
+		} else if err == nil && fi.Path != same && fi.Already {
+			t.Fatalf("%s marked as already there", fi.Path)
+		}
+	}
 }
 
 func TestBadCopyIsRetriedThenKeptAside(t *testing.T) {

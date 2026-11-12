@@ -785,7 +785,10 @@ function drawFiles(f, note) {
   f.box.querySelector(".files > button").hidden = f.next < 0;
 }
 // File info: what the file is, where it went, its hashes and its story.
-const hashName = { c: "Source — full read, as it was copied", s1: "Source — full read, before the copy", d1: "Destination — full read of the copy", s2: "Source — second full read after the copy (safety check)" };
+const hashName = { c: "Source — full read, as it was copied", s1: "Source — full read on its own, before the copy", d1: "Destination — full read of the copy", s2: "Source — second full read after the copy (safety check)" };
+// A file already at the destination was not copied: the source was read on
+// its own and compared with the file that was there.
+const alreadyHashName = { s1: "Source — full read, compared with the file already there (not copied)", d1: "Destination — full read of the file already there", s2: "Source — second full read (safety check)" };
 const verifyHashName = { c: "Stored when it was copied", d1: "Destination — full read now" };
 function kv(pairs) {
   const dl = el("dl", "kv");
@@ -813,7 +816,7 @@ function loadInfo() {
     const dest = fi.dest_exists ? (fi.dest_size === fi.size ? "there, same size" : "there, but " + size(fi.dest_size) + " — not the same size") : "not there yet";
     body.push(el("h3", "", "Where"), kv(fi.kind === "verify" ? [["File", el("span", "path", fi.dest)], ["At the destination", dest]] :
       [["From", el("span", "path", fi.source)], ["To", el("span", "path", fi.dest)], ["At the destination", dest]]));
-    const hs = Object.entries(fi.kind === "verify" ? verifyHashName : hashName).filter(([k]) => fi.hash[k]);
+    const hs = Object.entries(fi.kind === "verify" ? verifyHashName : fi.already ? alreadyHashName : hashName).filter(([k]) => fi.hash[k]);
     if (hs.length) {
       const ref = fi.hash.c || fi.hash.s1;
       body.push(el("h3", "", "Fingerprints (XXH128 hashes)"), el("p", "mute", fi.kind === "verify" ? "The copy was read again in full; its fingerprint must equal the one stored when it was copied." :

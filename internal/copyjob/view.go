@@ -397,7 +397,8 @@ type FileInfo struct {
 	DestExists bool      `json:"dest_exists"`
 	DestSize   int64     `json:"dest_size,omitempty"`
 	Proof      string    `json:"proof"`
-	Kind       string    `json:"kind,omitempty"` // "verify" when the file belongs to a Verify job
+	Kind       string    `json:"kind,omitempty"`    // "verify" when the file belongs to a Verify job
+	Already    bool      `json:"already,omitempty"` // it was already at the destination: compared, not copied
 	Hash       Hashes    `json:"hash"`
 	Events     []Event   `json:"events"`
 }
@@ -467,6 +468,9 @@ func (m *Manager) FileInfo(id string, i int) (FileInfo, error) {
 	ReadJournal(j.path("journal.log"), 0, func(r Rec) bool {
 		if r.I != i {
 			return true
+		}
+		if r.St == "identical" {
+			fi.Already = true
 		}
 		for _, h := range []struct {
 			dst *string
