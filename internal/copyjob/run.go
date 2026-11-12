@@ -149,6 +149,31 @@ func (j *Job) copyPhase(ctx context.Context, e env, jr *Journal, accepting func(
 		j.dropCheckpoints(en.I)
 	}
 
+	if j.st.Spec.hashDuringCopy() {
+		for cur := nextPending(); cur != nil; cur = nextPending() {
+			if !accepting() {
+				return waitErr{"Waiting for memory to free up"}
+			}
+			j.setLive(func(l *live) { l.file = cur.P })
+			recs, err := j.oneFileHashed(ctx, e, cur, src.Path(cur.P), filepath.Join(dst, filepath.FromSlash(cur.P)))
+			if err != nil {
+				if !isFileErr(err) {
+					return err
+				}
+				fail(cur, err)
+				continue
+			}
+			for _, r := range recs {
+				jr.Append(r)
+				j.mu.Lock()
+				j.apply(r)
+				j.mu.Unlock()
+			}
+			j.dropCheckpoints(cur.I)
+		}
+		return nil
+	}
+
 	cur := nextPending()
 	var pre *hashRes // S1 of cur, if already done in parallel
 	for cur != nil {
@@ -254,7 +279,7 @@ func (j *Job) oneFile(ctx context.Context, e env, en *entry, srcPath, final stri
 			j.dropCheckpoints(en.I)
 		}
 		j.setLive(func(l *live) { l.stage = "Copying" })
-		if err := j.copyFile(ctx, e, srcPath, tmp, en.I); err != nil {
+		if err := j.copyFile(ctx, e, srcPath, tmp, en.I, nil); err != nil {
 			if errors.Is(err, errNoSpace) {
 				return rec, waitErr{"Waiting for free space on the destination"}
 			}
@@ -291,6 +316,114 @@ func (j *Job) oneFile(ctx context.Context, e env, en *entry, srcPath, final stri
 	kept := placeFailed(tmp, final)
 	j.setLive(func(l *live) { l.temp = "" })
 	return rec, perFile("the copy does not match the source after two attempts; the last copy was kept as %s", filepath.Base(kept))
+}
+
+// oneFileHashed copies one file while hashing the bytes read for the copy
+// (C). Then the copy is read back (D1) on the destination disk while the
+// source is read a second time (S2) on the source disk, at the same moment.
+// The file gets its real name only when C, D1 and S2 all agree — or, if S2
+// differs because the source itself has changed since, as a proven copy of
+// what was read, with a warning. Anything else is tried once more, then
+// kept aside under a plain name; nothing is deleted.
+func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, final string) ([]Rec, error) {
+	rec := Rec{I: en.I, N: en.S}
+	if _, err := os.Lstat(final); err == nil {
+		// Never overwrite: compare what is there instead. S2 follows in s2Phase.
+		j.setLive(func(l *live) { l.stage = "Reading the source (S1)" })
+		s1, err := j.hashFile(ctx, e, e.src, srcPath, en.I, "s1", true)
+		if err != nil {
+			return nil, err
+		}
+		j.setLive(func(l *live) { l.stage = "Checking the file already at the destination" })
+		d1, err := j.hashFile(ctx, e, e.dst, final, en.I, "d1", false)
+		if err != nil {
+			return nil, err
+		}
+		if d1 != s1 {
+			return nil, perFile("a different file with this name is already at the destination; it was left untouched")
+		}
+		rec.St, rec.S1, rec.D1 = "identical", s1.String(), d1.String()
+		return []Rec{rec}, nil
+	}
+	tmp := tempName(final)
+	why := ""
+	for attempt := 0; attempt < 2; attempt++ {
+		if attempt > 0 {
+			j.dropCheckpoints(en.I)
+		}
+		hs := xxh3.New()
+		j.setLive(func(l *live) { l.stage = "Copying (the source is hashed as it is read)" })
+		if err := j.copyFile(ctx, e, srcPath, tmp, en.I, hs); err != nil {
+			if errors.Is(err, errNoSpace) {
+				return nil, waitErr{"Waiting for free space on the destination"}
+			}
+			return nil, err
+		}
+		c := hs.Sum128()
+
+		s2ch := make(chan hashRes, 1)
+		go func() {
+			h, err := j.hashFileQuiet(ctx, e, e.src, srcPath, en.I, "s2")
+			s2ch <- hashRes{h, err}
+		}()
+		j.setLive(func(l *live) { l.stage = "Reading back the copy (D1) and the source again (S2)" })
+		d1, err := j.hashFile(ctx, e, e.dst, tmp, en.I, "d1", false)
+		if err == nil && d1 != c {
+			// Read the destination once more before believing it.
+			j.dropCheckpoint(en.I, "d1")
+			j.setLive(func(l *live) { l.stage = "Reading back the copy again" })
+			d1, err = j.hashFile(ctx, e, e.dst, tmp, en.I, "d1", false)
+		}
+		s2 := <-s2ch // always wait: the source read must not outlive this file
+		if err != nil {
+			return nil, err
+		}
+		if s2.err != nil && !isFileErr(s2.err) {
+			return nil, s2.err
+		}
+		if d1 != c {
+			why = "the copy does not match what was read from the source"
+			continue
+		}
+		rec.C, rec.D1 = c.String(), d1.String()
+		if s2.err == nil && s2.h == d1 {
+			if err := j.placeProven(tmp, final, en); err != nil {
+				return nil, err
+			}
+			rec.St, rec.S2 = "strong", s2.h.String()
+			return []Rec{rec}, nil
+		}
+		if sz, m, serr := statSM(srcPath); serr == nil && (sz != en.S || m != en.M) {
+			// The source changed after it was listed: the copy is proven against
+			// what was read for it, which is not a copy error.
+			if err := j.placeProven(tmp, final, en); err != nil {
+				return nil, err
+			}
+			rec.St = "verified"
+			return []Rec{rec, {I: en.I, N: en.S, D1: rec.D1, St: "s2changed", P: en.P,
+				Err: "the source changed after the copy (not a copy error)"}}, nil
+		}
+		why = "the source read differently the second time; its disk or cable may be failing"
+		if s2.err != nil {
+			why += " (" + s2.err.Error() + ")"
+		}
+	}
+	kept := placeFailed(tmp, final)
+	j.setLive(func(l *live) { l.temp = "" })
+	return nil, perFile("%s, after two attempts; the last copy was kept as %s", why, filepath.Base(kept))
+}
+
+// placeProven gives a proven copy its real name and modified time.
+func (j *Job) placeProven(tmp, final string, en *entry) error {
+	setTimes(tmp, en.M, os.FileMode(en.O))
+	if err := place(tmp, final); err != nil {
+		if errors.Is(err, errExists) {
+			return perFile("a file with this name appeared at the destination during the copy; the copy was kept as %s", placeFailed(tmp, final))
+		}
+		return perFile("could not give the copy its name: %v", err)
+	}
+	j.setLive(func(l *live) { l.temp = "" })
+	return nil
 }
 
 // s2Phase reads every proven source file again and compares it with D1.

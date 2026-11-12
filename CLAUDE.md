@@ -28,7 +28,7 @@ The design lives in the claude.ai project (`GOALS.md`, `DESIGN.md`, `COMPATIBILI
 | `internal/xxh3` | XXH128 in plain Go, saveable state; `testdata/` holds the official vectors |
 | `internal/diskio` | All user-disk I/O: read-only opens, cache bypass, chunk retries, per-disk limit and stall timer, volume ids, `VolumeMounted` |
 | `internal/location` | The source boundary (section 17): today only `Folder` |
-| `internal/copyjob` | Copy jobs: scan → manifest, S1/copy/D1 pipeline, S2, journal with grouped flush, checkpoints, manager and views |
+| `internal/copyjob` | Copy jobs: scan → manifest, copy hashed as it is read then D1 and S2 at once (default) or S1/copy/D1 then S2, journal with grouped flush, checkpoints, manager and views |
 | `internal/update` | One-click updates from the newest green CI run (GitHub Actions API, key in `secrets/github-update-key`, 0600, never logged); backups in `bin/backups`; rollback |
 | `internal/launcher` | Writes `~/Applications/Shuttle Server.app` |
 | `internal/soak` | Long-run resource test |

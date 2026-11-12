@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.3 — 12 November 2026
+
+- **Hash while copying, now the default.** The bytes read from the source for the copy are hashed at the same moment they are written, instead of in a separate read before. Then the copy is read back from the destination while the source is read a second time, both at once, one on each disk. A file gets its real name only when all three agree. The source is read twice instead of three times, and the whole job takes about two passes instead of three, with the same strongest proof.
+- Because a faulty cable or card could make the copy and its hash wrong in the same way, the second source read is always on in this mode. If it disagrees, the file is copied again; if it still disagrees, the copy is kept aside as `.shuttle-failed-copy` and the file is reported, never given its real name.
+- If the source itself changed after the copy (not a copy error), the copy keeps its name as a proven copy of what was read, with a warning.
+- The older scheme (read the source on its own first) is still offered in New copy, and copies started before 0.2.3 carry on with it.
+- Pausing, power cuts and crashes during the copy keep the hash's place too, so a resumed copy is still hashed from where it stopped.
+
 ## 0.2.2 — 12 November 2026
 
 - Fixed: the menu bar icon did not appear when Shuttle was started from the Shuttle Server app. The app started it with `nohup`, which on macOS moves a program out of your login session, where it cannot show icons. The app now starts it normally, and Shuttle rewrites the app in Applications by itself when the app is out of date, so this fix arrives with the update.

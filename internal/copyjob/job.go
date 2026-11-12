@@ -1,7 +1,9 @@
-// Package copyjob is the disk-to-disk copy of DESIGN.md section 15: the
-// source is read and hashed (S1), copied with no hashing in the copy path,
-// the copy is flushed and read back (D1), and S1 must equal D1 before the
-// file gets its real name. Optionally the source is read again (S2).
+// Package copyjob is the disk-to-disk copy of DESIGN.md section 15. By
+// default the source is hashed as it is read for the copy (C), the copy is
+// flushed, then read back (D1) while the source is read a second time (S2),
+// one read on each disk at once; the file gets its real name only when C, D1
+// and S2 agree. The older scheme ("first") hashes the source in its own read
+// before the copy (S1), compares S1 with D1, and optionally reads it again (S2).
 package copyjob
 
 import (
@@ -33,8 +35,17 @@ const (
 type Spec struct {
 	Source string `json:"source"`
 	Dest   string `json:"dest"`
-	S2     string `json:"s2"` // "now" or "skip"
+	S2     string `json:"s2"`             // "now" or "skip"; always "now" with Hash "copy"
+	Hash   string `json:"hash,omitempty"` // "copy" (hash while copying) or "first" (own read before); empty in jobs from before 0.2.3 means "first"
 }
+
+// Hash schemes.
+const (
+	HashDuringCopy = "copy"
+	HashFirst      = "first"
+)
+
+func (s Spec) hashDuringCopy() bool { return s.Hash == HashDuringCopy }
 
 // Checkpoint is where a paused or interrupted step stopped.
 type Checkpoint struct {
@@ -137,6 +148,13 @@ func (j *Job) apply(r Rec) {
 		} else {
 			j.c.Verified++
 		}
+	case "strong": // hashed while copying: C, D1 and S2 agree, in one record
+		if j.status[r.I] == stPending || j.status[r.I] == stFailed {
+			j.c.BytesProven += r.N
+		}
+		j.status[r.I] = stStrong
+		j.c.Verified++
+		j.c.Strong++
 	case "failed":
 		j.status[r.I] = stFailed
 		j.c.Failed++
@@ -172,6 +190,12 @@ func (j *Job) saveCheckpoint(c Checkpoint) error {
 	j.st.Checkpoints[ckKey(c.Index, c.Stage)] = c
 	j.mu.Unlock()
 	return j.save()
+}
+
+func (j *Job) dropCheckpoint(i int, stage string) {
+	j.mu.Lock()
+	delete(j.st.Checkpoints, ckKey(i, stage))
+	j.mu.Unlock()
 }
 
 func (j *Job) dropCheckpoints(i int) {

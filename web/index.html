@@ -114,8 +114,9 @@
     <label for="dst">Copy to (a new or existing folder on the destination)</label>
     <div class="row"><input type="text" id="dst" placeholder="/Volumes/BACKUP_1/Day 01/A001"><button type="button" data-pick="dst">Choose…</button></div>
     <label>Proof</label>
-    <div class="opt"><input type="radio" name="s2" id="s2now" value="now" checked><span>Read the source again at the end (strongest; the source is read three times)</span></div>
-    <div class="opt"><input type="radio" name="s2" id="s2skip" value="skip"><span>Skip the second source read (faster; the copy is still read back and compared)</span></div>
+    <div class="opt"><input type="radio" name="proof" id="pfCopy" value="copy" checked><span>Hash while copying, then read the source a second time (strongest, and best for camera cards; the source is read twice)</span></div>
+    <div class="opt"><input type="radio" name="proof" id="pfFirst" value="first"><span>Read the source on its own first, then copy, then read it again (equally strong, slower; the source is read three times)</span></div>
+    <div class="opt"><input type="radio" name="proof" id="pfQuick" value="quick"><span>Read the source first and skip the second read (faster, weaker; not for cards you will erase)</span></div>
     <p class="mute">The source is only read, never changed. Files already at the destination are compared, never replaced.</p>
     <p class="err" id="newErr"></p>
   </div>
@@ -213,7 +214,7 @@ const rate = n => n > 0 ? size(n) + "/s" : "";
 $("newBtn").onclick = () => { $("newErr").textContent = ""; $("newDlg").showModal(); };
 $("startBtn").onclick = () => {
   $("newErr").textContent = "";
-  post("/api/jobs", { source: $("src").value, dest: $("dst").value, s2: $("s2skip").checked ? "skip" : "now" })
+  post("/api/jobs", { source: $("src").value, dest: $("dst").value, hash: $("pfCopy").checked ? "copy" : "first", s2: $("pfQuick").checked ? "skip" : "now" })
     .then(() => { $("newDlg").close(); $("src").value = ""; $("dst").value = ""; })
     .catch(e => $("newErr").textContent = e.message);
 };

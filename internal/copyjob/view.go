@@ -10,6 +10,7 @@ type View struct {
 	Source     string    `json:"source"`
 	Dest       string    `json:"dest"`
 	S2         string    `json:"s2"`
+	Hash       string    `json:"hash"`
 	Created    time.Time `json:"created"`
 	Finished   time.Time `json:"finished,omitzero"`
 	State      string    `json:"state"` // running, waiting, paused, queued, finished, stopped
@@ -58,7 +59,7 @@ func (m *Manager) Views() []View {
 		j.mu.Lock()
 		st, c, l := j.st, j.c, j.live
 		j.mu.Unlock()
-		v := View{ID: st.ID, Source: st.Spec.Source, Dest: st.Spec.Dest, S2: st.Spec.S2, Created: st.Created,
+		v := View{ID: st.ID, Source: st.Spec.Source, Dest: st.Spec.Dest, S2: st.Spec.S2, Hash: st.Spec.Hash, Created: st.Created,
 			Finished: st.Finished, Phase: st.Phase, Files: st.Files, Bytes: st.Bytes, Skipped: st.Skipped,
 			Verified: c.Verified, Identical: c.Identical, Failed: c.Failed, Strong: c.Strong, S2Warn: c.S2Warn,
 			Proven: c.BytesProven, SameVolume: st.SameVolume, Scanned: l.scanned, ScannedB: l.scannedBytes}

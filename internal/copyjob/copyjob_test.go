@@ -235,7 +235,7 @@ func TestStopKeepsProvenFilesAndRemovesPartial(t *testing.T) {
 	j, _ := m.Add(Spec{Source: src, Dest: dst, S2: "skip"})
 	for {
 		v := waitState(t, m, j.st.ID, "running", "finished")
-		if v.Stage == "Copying" && v.FileSize == 40<<20 && v.FileDone > 1<<20 {
+		if strings.HasPrefix(v.Stage, "Copying") && v.FileSize == 40<<20 && v.FileDone > 1<<20 {
 			break
 		}
 		time.Sleep(time.Millisecond)
@@ -259,6 +259,12 @@ func TestKilledMidCopyResumesCorrectly(t *testing.T) {
 	if os.Getenv("SHUTTLE_CRASH_CHILD") != "" {
 		return
 	}
+	for _, mode := range []string{HashDuringCopy, HashFirst} {
+		t.Run(mode, func(t *testing.T) { killedMidCopy(t, mode) })
+	}
+}
+
+func killedMidCopy(t *testing.T, mode string) {
 	root := t.TempDir()
 	src, dst, state := filepath.Join(root, "src"), filepath.Join(root, "dst"), filepath.Join(root, "state")
 	files := makeTree(t, src, 30<<20)
@@ -271,7 +277,7 @@ func TestKilledMidCopyResumesCorrectly(t *testing.T) {
 	}
 	for round := 0; round < 3; round++ {
 		cmd := exec.Command(os.Args[0], "-test.run=TestCrashChild", "-test.v")
-		cmd.Env = append(os.Environ(), "SHUTTLE_CRASH_CHILD=1", "SRC="+src, "DST="+dst, "STATE="+state)
+		cmd.Env = append(os.Environ(), "SHUTTLE_CRASH_CHILD=1", "HASH="+mode, "SRC="+src, "DST="+dst, "STATE="+state)
 		cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
 		if err := cmd.Start(); err != nil {
 			t.Fatal(err)
@@ -303,10 +309,10 @@ func TestCrashChild(t *testing.T) {
 	if os.Getenv("SHUTTLE_CRASH_CHILD") == "" {
 		t.Skip("helper for TestKilledMidCopyResumesCorrectly")
 	}
-	chunkDelay = 2 * time.Millisecond // slow enough to be killed mid-file
+	chunkDelay = 3 * time.Millisecond // slow enough to be killed mid-file
 	m := newManager(t, os.Getenv("STATE"))
 	if len(m.jobs) == 0 {
-		if _, err := m.Add(Spec{Source: os.Getenv("SRC"), Dest: os.Getenv("DST"), S2: "now"}); err != nil {
+		if _, err := m.Add(Spec{Source: os.Getenv("SRC"), Dest: os.Getenv("DST"), S2: "now", Hash: os.Getenv("HASH")}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -322,5 +328,88 @@ func TestAddRefusesNestedFolders(t *testing.T) {
 	}
 	if _, err := m.Add(Spec{Source: filepath.Join(root, "nope"), Dest: filepath.Join(root, "x")}); err == nil {
 		t.Fatal("missing source accepted")
+	}
+}
+
+// Hashing while copying reads the source twice (copy, S2) instead of three
+// times (S1, copy, S2), and still ends with every file Strong.
+func TestHashWhileCopyingReadsSourceTwice(t *testing.T) {
+	for mode, reads := range map[string]int64{HashDuringCopy: 2, HashFirst: 3} {
+		root := t.TempDir()
+		src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
+		files := makeTree(t, src, 2<<20+77)
+		var total int64
+		for _, b := range files {
+			total += int64(len(b))
+		}
+		m := newManager(t, filepath.Join(root, "state"))
+		ctx, cancel := context.WithCancel(context.Background())
+		go m.Run(ctx)
+		j, err := m.Add(Spec{Source: src, Dest: dst, S2: "now", Hash: mode})
+		if err != nil {
+			t.Fatal(err)
+		}
+		v := waitState(t, m, j.st.ID, "finished")
+		cancel()
+		if v.Hash != mode || v.Strong != len(files) || v.Verified != len(files) || v.Failed != 0 {
+			t.Fatalf("%s: %+v", mode, v)
+		}
+		if got := j.srcBytes.Load(); got != reads*total {
+			t.Fatalf("%s: source bytes read %d, want %d (%d reads)", mode, got, reads*total, reads)
+		}
+		checkDest(t, dst, files)
+	}
+}
+
+// A bad read from the source during the copy makes the hash and the copy
+// wrong in the same way; only the second source read (S2) shows it. The file
+// must then be copied again, and never get its real name while in doubt.
+func TestBadSourceReadDuringCopyIsCaught(t *testing.T) {
+	for _, always := range []bool{false, true} {
+		root := t.TempDir()
+		src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
+		os.MkdirAll(src, 0o755)
+		want := bytes.Repeat([]byte("x"), 300<<10)
+		os.WriteFile(filepath.Join(src, "a.mov"), want, 0o644)
+		m := newManager(t, filepath.Join(root, "state"))
+		bad := 0
+		m.CopyRead = func(b []byte) {
+			if bad == 0 || always {
+				bad++
+				b[0] ^= 1 // what a faulty cable might do
+			}
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		go m.Run(ctx)
+		j, _ := m.Add(Spec{Source: src, Dest: dst})
+		v := waitState(t, m, j.st.ID, "finished")
+		cancel()
+		got, errFinal := os.ReadFile(filepath.Join(dst, "a.mov"))
+		_, errKept := os.Stat(filepath.Join(dst, "a.mov.shuttle-failed-copy"))
+		if !always && (v.Strong != 1 || errFinal != nil || !bytes.Equal(got, want)) {
+			t.Fatalf("one bad read should be copied again and pass: %+v", v)
+		}
+		if always {
+			p := m.Problems(j.st.ID, 10)
+			if v.Failed != 1 || errFinal == nil || errKept != nil || len(p) != 1 || !strings.Contains(p[0].Why, "read differently") {
+				t.Fatalf("a source that never reads the same must fail, keep no final name, be kept aside: %+v final=%v kept=%v problems=%+v", v, errFinal, errKept, p)
+			}
+		}
+	}
+}
+
+func TestNewJobsHashWhileCopyingAndOldJobsKeepTheirScheme(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, "src"), 0o755)
+	m := newManager(t, filepath.Join(root, "state"))
+	j, err := m.Add(Spec{Source: filepath.Join(root, "src"), Dest: filepath.Join(root, "dst"), S2: "skip"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j.st.Spec.Hash != HashDuringCopy || j.st.Spec.S2 != "now" {
+		t.Fatalf("new job: %+v (hashing while copying needs S2)", j.st.Spec)
+	}
+	if (Spec{S2: "now"}).hashDuringCopy() {
+		t.Fatal("a job saved before 0.2.3 (no hash field) must keep the separate first read")
 	}
 }

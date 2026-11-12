@@ -35,6 +35,7 @@ type env struct {
 	src       *diskio.Disk
 	dst       *diskio.Disk
 	afterCopy func(tmp string) // test hook
+	copyRead  func(b []byte)   // test hook
 }
 
 func statSM(p string) (int64, int64, error) {
@@ -134,10 +135,12 @@ func (j *Job) hashFileOpt(ctx context.Context, e env, d *diskio.Disk, path strin
 	return h.Sum128(), nil
 }
 
-// copyFile copies src to tmp at disk speed, with no hashing. It continues a
-// partial copy from its checkpoint, and flushes to the drive at the end, so
-// the read-back that follows reads what the drive holds.
-func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int) error {
+// copyFile copies src to tmp at disk speed. With hs set, the bytes read for
+// the copy are hashed into hs at the same time as they are written, so the
+// hash never holds up the disks unless it is slower than both. It continues a
+// partial copy from its checkpoint (with the hasher's saved state), and
+// flushes to the drive at the end, so the read-back reads what the drive holds.
+func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int, hs *xxh3.Hasher) error {
 	size, mtime, err := statSM(src)
 	if err != nil {
 		if !diskio.Present(e.src) {
@@ -148,8 +151,20 @@ func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int) err
 	var off int64
 	if c, ok := j.checkpoint(idx, "copy"); ok && c.Size == size && c.Mtime == mtime {
 		if fi, err := os.Stat(tmp); err == nil && fi.Size() >= c.Offset {
-			off = c.Offset
+			if hs == nil || (hs.UnmarshalBinary(c.State) == nil && int64(hs.Size()) == c.Offset) {
+				off = c.Offset
+			}
 		}
+	}
+	if hs != nil && off == 0 {
+		hs.Reset()
+	}
+	hashState := func() []byte {
+		if hs == nil {
+			return nil
+		}
+		b, _ := hs.MarshalBinary()
+		return b
 	}
 	if v, err := diskio.VolumeOf(tmp); err == nil && v.Free < uint64(size-off)+(64<<20) {
 		return errNoSpace
@@ -230,6 +245,9 @@ func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int) err
 				return
 			}
 			j.srcBytes.Add(int64(n))
+			if e.copyRead != nil {
+				e.copyRead(want[:n])
+			}
 			time.Sleep(chunkDelay)
 			full <- chunk{l, n, pos}
 			pos += int64(n)
@@ -237,13 +255,39 @@ func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int) err
 		readErr <- nil
 	}()
 
+	// The hasher works beside the writer, one chunk at a time, so after each
+	// chunk the hash covers exactly what was written.
+	var hashIn chan []byte
+	hashDone := make(chan struct{})
+	if hs != nil {
+		hashIn = make(chan []byte)
+		go func() {
+			for b := range hashIn {
+				hs.Write(b)
+				hashDone <- struct{}{}
+			}
+		}()
+		defer close(hashIn)
+	}
 	written, last := off, off
 	var werr error
 	for c := range full {
 		if werr == nil {
-			if err := diskio.WriteChunk(ctx, e.dst, out, c.lease.B[:c.n], c.off); err != nil {
+			var before []byte
+			if hs != nil {
+				before = hashState()
+				hashIn <- c.lease.B[:c.n]
+			}
+			err := diskio.WriteChunk(ctx, e.dst, out, c.lease.B[:c.n], c.off)
+			if hs != nil {
+				<-hashDone
+			}
+			if err != nil {
 				werr = err
 				stopReader()
+				if hs != nil {
+					hs.UnmarshalBinary(before) // the chunk was not written: take it out of the hash
+				}
 			} else {
 				written += int64(c.n)
 				j.dstBytes.Add(int64(c.n))
@@ -253,7 +297,7 @@ func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int) err
 		free <- c.lease
 		if werr == nil && written-last >= CheckpointEvery && written < size {
 			if err := diskio.Flush(ctx, e.dst, out); err == nil {
-				j.saveCheckpoint(Checkpoint{Index: idx, Stage: "copy", Offset: written, Size: size, Mtime: mtime})
+				j.saveCheckpoint(Checkpoint{Index: idx, Stage: "copy", Offset: written, State: hashState(), Size: size, Mtime: mtime})
 				last = written
 			}
 		}
@@ -270,7 +314,7 @@ func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int) err
 	// Keep what was written: flush it and record where to continue.
 	if werr != nil || rerr != nil || written < size {
 		if written > off && diskio.Flush(context.Background(), e.dst, out) == nil {
-			j.saveCheckpoint(Checkpoint{Index: idx, Stage: "copy", Offset: written, Size: size, Mtime: mtime})
+			j.saveCheckpoint(Checkpoint{Index: idx, Stage: "copy", Offset: written, State: hashState(), Size: size, Mtime: mtime})
 		}
 	}
 	switch {
@@ -292,6 +336,16 @@ func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int) err
 			return err
 		}
 		return perFile("could not flush the copy to the drive: %v", err)
+	}
+	if hs != nil {
+		if s2, m2, err := statSM(src); err != nil || s2 != size || m2 != mtime {
+			return perFile("changed while being read")
+		}
+		if size-off >= CheckpointEvery {
+			// A big file: record that the copy is complete, so a pause during the
+			// read-back does not copy it again.
+			j.saveCheckpoint(Checkpoint{Index: idx, Stage: "copy", Offset: size, State: hashState(), Size: size, Mtime: mtime})
+		}
 	}
 	if e.afterCopy != nil {
 		e.afterCopy(tmp)

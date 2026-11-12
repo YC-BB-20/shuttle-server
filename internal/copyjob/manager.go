@@ -30,6 +30,7 @@ type Manager struct {
 	Accepting func() bool
 	Log       *slog.Logger
 	AfterCopy func(tmp string) // test hook
+	CopyRead  func(b []byte)   // test hook: sees (and may damage) each chunk read for the copy
 
 	mu      sync.Mutex
 	jobs    []*Job
@@ -116,7 +117,10 @@ func (m *Manager) Add(s Spec) (*Job, error) {
 	if err != nil {
 		return nil, err
 	}
-	if s.S2 != "skip" {
+	if s.Hash != HashFirst {
+		s.Hash = HashDuringCopy // hashing while copying needs the second source read to be proof
+	}
+	if s.S2 != "skip" || s.Hash == HashDuringCopy {
 		s.S2 = "now"
 	}
 	s.Source, s.Dest = src, dst
@@ -133,7 +137,7 @@ func (m *Manager) Add(s Spec) (*Job, error) {
 	m.mu.Lock()
 	m.jobs = append(m.jobs, j)
 	m.mu.Unlock()
-	m.Log.Info("copy job added", "job", id, "source", src, "destination", dst, "s2", s.S2, "same_disk", j.st.SameVolume)
+	m.Log.Info("copy job added", "job", id, "source", src, "destination", dst, "hash", s.Hash, "s2", s.S2, "same_disk", j.st.SameVolume)
 	m.poke()
 	return j, nil
 }
@@ -249,7 +253,7 @@ func (m *Manager) runOne(ctx context.Context, j *Job) {
 	m.running, m.cancel = j, cancel
 	m.mu.Unlock()
 	j.setLive(func(l *live) { l.reason = "" })
-	err := j.run(jctx, env{budget: m.Budget, src: sd, dst: dd, afterCopy: m.AfterCopy}, m.Accepting)
+	err := j.run(jctx, env{budget: m.Budget, src: sd, dst: dd, afterCopy: m.AfterCopy, copyRead: m.CopyRead}, m.Accepting)
 	cancel(nil)
 	m.mu.Lock()
 	m.running = nil

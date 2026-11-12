@@ -15,8 +15,9 @@ import (
 // Rec is one journal line: the outcome of one step for one file.
 type Rec struct {
 	I   int    `json:"i"`
-	St  string `json:"st"` // verified, identical, failed, s2ok, s2changed, s2unstable
-	N   int64  `json:"n"`  // file size
+	St  string `json:"st"`          // verified, identical, strong, failed, s2ok, s2changed, s2unstable
+	N   int64  `json:"n"`           // file size
+	C   string `json:"c,omitempty"` // hash of the bytes read for the copy
 	S1  string `json:"s1,omitempty"`
 	D1  string `json:"d1,omitempty"`
 	S2  string `json:"s2,omitempty"`
