@@ -38,6 +38,7 @@ type Config struct {
 	MaxOpenPages     int     `json:"max_open_pages"`
 	PageDir          string  `json:"page_dir"`
 	HomebrewPrefix   string  `json:"homebrew_prefix"`
+	MenuBarIcon      bool    `json:"menu_bar_icon"`
 }
 
 // Defaults returns the starting config for this machine (DESIGN.md section 18).
@@ -58,6 +59,7 @@ func Defaults() Config {
 		PageUpdatesPerS:  4,
 		MaxOpenPages:     8,
 		HomebrewPrefix:   prefix,
+		MenuBarIcon:      runtime.GOOS == "darwin",
 	}
 }
 

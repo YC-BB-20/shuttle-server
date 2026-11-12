@@ -20,6 +20,7 @@ import (
 	"github.com/YC-BB-20/shuttle-server/internal/fsx"
 	"github.com/YC-BB-20/shuttle-server/internal/limits"
 	"github.com/YC-BB-20/shuttle-server/internal/logx"
+	"github.com/YC-BB-20/shuttle-server/internal/menubar"
 	"github.com/YC-BB-20/shuttle-server/internal/safemode"
 	"github.com/YC-BB-20/shuttle-server/internal/server"
 	"github.com/YC-BB-20/shuttle-server/internal/sysinfo"
@@ -33,6 +34,8 @@ const (
 	ExitPanic   = 2
 	ExitMemory  = 3
 )
+
+const idleHeadline = "Idle — this version does not move files yet"
 
 var errMemory = errors.New("memory stayed over the ceiling")
 
@@ -50,6 +53,7 @@ type Status struct {
 	Commit     string             `json:"commit"`
 	StartedAt  time.Time          `json:"started_at"`
 	Now        time.Time          `json:"now"`
+	Level      string             `json:"level"`
 	Headline   string             `json:"headline"`
 	SafeMode   bool               `json:"safe_mode"`
 	SafeReason string             `json:"safe_mode_reason,omitempty"`
@@ -185,7 +189,7 @@ func Run(opts Options) (code int) {
 	hub := events.NewHub(cfg.PageUpdatesPerS, cfg.MaxOpenPages)
 	go hub.Run(ctx)
 
-	status := func() any {
+	snapshot := func() Status {
 		st := Status{Version: version.Version, Commit: version.Commit, StartedAt: started, Now: time.Now(),
 			SafeMode: safe, SafeReason: reason, Notes: notes, DataDir: data, TempDir: tempDir,
 			Buffers: budget.Stats(), CPU: cpu, OpenFiles: OpenFiles{fileLimit, cfg.OpenFiles(fileLimit)},
@@ -208,10 +212,18 @@ func Run(opts Options) (code int) {
 		case st.Buffers.Waiting > 0:
 			st.Headline = "Waiting for memory buffers"
 		default:
-			st.Headline = "Idle — this version does not move files yet"
+			st.Headline = idleHeadline
+		}
+		st.Level = "warn"
+		switch {
+		case safe:
+			st.Level = "bad"
+		case st.Headline == idleHeadline:
+			st.Level = "ok"
 		}
 		return st
 	}
+	status := func() any { return snapshot() }
 	go func() {
 		t := time.NewTicker(time.Second)
 		defer t.Stop()
@@ -240,7 +252,21 @@ func Run(opts Options) (code int) {
 	go srv.Serve(ln)
 
 	_, port, _ := net.SplitHostPort(cfg.Listen)
-	log.Info("Shuttle Server running", "version", version.String(), "page", "http://localhost:"+port,
+	pageURL := "http://localhost:" + port
+	menuDone := make(chan struct{})
+	if cfg.MenuBarIcon && menubar.Supported() {
+		go func() {
+			defer close(menuDone)
+			menubar.Run(ctx, menubar.Options{Dir: filepath.Join(data, "temp.noindex"), URL: pageURL, Log: log,
+				Get: func() menubar.Line {
+					s := snapshot()
+					return menubar.Line{Level: s.Level, Headline: s.Headline, Version: s.Version}
+				}})
+		}()
+	} else {
+		close(menuDone)
+	}
+	log.Info("Shuttle Server running", "version", version.String(), "page", pageURL,
 		"data", data, "safe_mode", safe, "cores", cpu.Procs, "nice", cpu.Nice,
 		"buffer_budget_mb", budget.Stats().Total>>20, "memory_ceiling_mb", ceiling>>20)
 	if safe {
@@ -266,6 +292,8 @@ func Run(opts Options) (code int) {
 	shut, done := context.WithTimeout(context.Background(), 5*time.Second)
 	defer done()
 	srv.Shutdown(shut)
+	cancel(context.Cause(ctx)) // stops the menu bar icon; keeps the reason
+	<-menuDone
 	if errors.Is(context.Cause(ctx), errMemory) {
 		return ExitMemory
 	}

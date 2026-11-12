@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1 — 11 November 2026
+
+- An icon in the Mac's menu bar while Shuttle Server runs: arrows when all is well, a warning triangle when something is waiting, a stop sign in safe mode. Its menu shows the current status, opens the page, and quits Shuttle Server.
+- The icon is run by macOS's own scripting, so nothing is installed. It disappears when Shuttle Server stops, and quits by itself if Shuttle Server is gone. Turn it off with `"menu_bar_icon": false` in `config.json`.
+
 ## 0.1.0 — 11 November 2026
 
 - First release: the skeleton. Nothing moves files yet.

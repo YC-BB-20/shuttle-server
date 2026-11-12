@@ -27,6 +27,7 @@ The design lives in the claude.ai project (`GOALS.md`, `DESIGN.md`, `COMPATIBILI
 | `internal/server` | HTTP handlers, localhost Host check, timeouts |
 | `internal/fsx` | Atomic writes, free space |
 | `internal/sysinfo` | Total RAM, open-file limit |
+| `internal/menubar` | macOS menu bar icon: `menubar.js` run by `osascript`, fed by a status file in `temp.noindex`, own process group |
 | `internal/logx` | `logs/YYYY-MM/shuttle.log`, appended, never trimmed |
 | `internal/version` | `Version` constant; CI sets `Commit` |
 
