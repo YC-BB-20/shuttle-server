@@ -15,7 +15,9 @@ func TestShortSoakStaysFlat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s[len(s)-1].Proven < 1000 {
+	// The point is that memory, threads and files stay flat, not speed: slow
+	// CI runners prove a few hundred files in this time, a laptop thousands.
+	if s[len(s)-1].Proven < 200 {
 		t.Fatalf("too little work done: %+v", s[len(s)-1])
 	}
 	ok, why := Flat(s)

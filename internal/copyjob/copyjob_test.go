@@ -54,6 +54,15 @@ func makeTree(t *testing.T, dir string, big int) map[string][]byte {
 	return files
 }
 
+// startRun runs the manager until the test ends, and waits for it to stop
+// before the test's folders are removed (a job may still be saving).
+func startRun(t *testing.T, m *Manager) {
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { m.Run(ctx); close(done) }()
+	t.Cleanup(func() { cancel(); <-done })
+}
+
 func waitState(t *testing.T, m *Manager, id string, want ...string) View {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
@@ -383,11 +392,9 @@ func TestBadSourceReadDuringCopyIsCaught(t *testing.T) {
 				b[0] ^= 1 // what a faulty cable might do
 			}
 		}
-		ctx, cancel := context.WithCancel(context.Background())
-		go m.Run(ctx)
+		startRun(t, m)
 		j, _ := m.Add(Spec{Source: src, Dest: dst})
 		v := waitState(t, m, j.st.ID, "finished")
-		cancel()
 		got, errFinal := os.ReadFile(filepath.Join(dst, "a.mov"))
 		_, errKept := os.Stat(filepath.Join(dst, "a.mov.shuttle-failed-copy"))
 		if !always && (v.Strong != 1 || errFinal != nil || !bytes.Equal(got, want)) {
@@ -466,9 +473,7 @@ func TestChosenFilesOnlyAndFileListAndHistory(t *testing.T) {
 	os.WriteFile(filepath.Join(src, "card", "a.mov"), []byte("aaaa"), 0o644)
 	os.WriteFile(filepath.Join(src, "card", "b.mov"), []byte("bb"), 0o644)
 	m := newManager(t, filepath.Join(root, "state"))
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go m.Run(ctx)
+	startRun(t, m)
 	if _, err := m.Add(Spec{Source: filepath.Join(src, "card"), Dest: dst, Only: []string{"../x"}}); err == nil {
 		t.Fatal("a name with a path in it was accepted")
 	}
