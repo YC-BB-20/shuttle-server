@@ -553,7 +553,7 @@ func TestProgressCountsEveryPass(t *testing.T) {
 		t.Fatal(p)
 	}
 	// File 1 proven, file 2 (600) being read back half way: 400 + 300 + 150.
-	if p := progress(st, counts{BytesProven: 400}, live{stage: "Reading back the copy (D1) and the source again (S2)", size: 600, done: 300}); p != 0.85 {
+	if p := progress(st, counts{BytesProven: 400}, live{stage: "Reading back the destination and the source", size: 600, done: 300}); p != 0.85 {
 		t.Fatal(p)
 	}
 	old := state{Phase: "s2", Bytes: 1000, Files: 2, Spec: Spec{Hash: HashFirst, S2: "now"}}
@@ -622,7 +622,7 @@ func TestProgressCopyThenCheck(t *testing.T) {
 	}
 	// Both copied (half the work), file 1 being checked half way.
 	st.Phase = "check"
-	if p := progress(st, counts{BytesCopied: 1000}, live{stage: "Reading back the copy (D1) and the source again (S2)", size: 400, done: 200}); p != 0.6 {
+	if p := progress(st, counts{BytesCopied: 1000}, live{stage: "Reading back the destination and the source", size: 400, done: 200}); p != 0.6 {
 		t.Fatal(p)
 	}
 }

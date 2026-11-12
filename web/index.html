@@ -816,6 +816,13 @@ $("moreHist").onclick = () => {
 // own bar. Refreshed every 2 s while the copy runs and the page is visible.
 const fv = {};
 const fileLabel = { waiting: "Waiting", proven: "Verified", strong: "Verified · read twice", failed: "Error", warning: "Source warning", copied: "Copied · check to come", hashed: "Copied · not verified" };
+// A file being worked on: "Copying" (green) while it is written, "Verifying"
+// (orange) while the destination or the source is read back.
+function workChip(r) {
+  if (r.status !== "working") return el("span", "chip " + (fileChip[r.status] || ""), fileLabel[r.status] || r.status);
+  const checking = /^Reading back|^Checking/.test(r.stage || "");
+  return el("span", "chip " + (checking ? "waiting" : "running"), checking ? "Verifying" : /^Reading the source/.test(r.stage || "") ? "Reading" : "Copying");
+}
 const fileChip = { proven: "ok", strong: "ok", failed: "bad", warning: "waiting", working: "running", copied: "running", hashed: "waiting" };
 function toggleFiles(v, c) {
   if (fv[v.id]) { fv[v.id].box.remove(); delete fv[v.id]; return; }
@@ -848,7 +855,7 @@ function drawFiles(f, note) {
   f.box.querySelector(".frows").replaceChildren(...f.rows.map(r => {
     const row = el("div", "frow"), t = el("div", "t");
     row.tabIndex = 0; row.onclick = () => fileInfo(f.v.id, r.i); row.onkeydown = e => { if (e.key === "Enter") row.onclick(); };
-    t.append(el("span", "", r.path), el("span", "sz", size(r.size)), el("span", "chip " + (fileChip[r.status] || ""), r.status === "working" ? "Working" : fileLabel[r.status] || r.status));
+    t.append(el("span", "", r.path), el("span", "sz", size(r.size)), workChip(r));
     row.append(t);
     if (r.status === "working") {
       row.append(el("div", "mute", r.stage + (r.size ? " — " + size(r.done) + " of " + size(r.size) : "")));

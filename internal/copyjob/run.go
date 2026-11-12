@@ -223,7 +223,7 @@ func (j *Job) copyPhase(ctx context.Context, e env, jr *Journal, accepting func(
 		if pre != nil {
 			s1, err = pre.h, pre.err
 		} else {
-			j.setLive(func(l *live) { l.file, l.stage = cur.P, "Reading the source (S1)" })
+			j.setLive(func(l *live) { l.file, l.stage = cur.P, "Reading the source before copying" })
 			s1, err = j.hashFile(ctx, e, e.src, srcPath, cur.I, "s1", true)
 		}
 		pre = nil
@@ -325,7 +325,7 @@ func (j *Job) oneFile(ctx context.Context, e env, en *entry, srcPath, final stri
 			return rec, err
 		}
 		startNext()
-		j.setLive(func(l *live) { l.stage = "Reading back the copy (D1)" })
+		j.setLive(func(l *live) { l.stage = "Reading back the destination" })
 		d1, err := j.hashFile(ctx, e, e.dst, tmp, en.I, "d1", false)
 		if err != nil {
 			return rec, err
@@ -333,7 +333,7 @@ func (j *Job) oneFile(ctx context.Context, e env, en *entry, srcPath, final stri
 		if d1 != s1 {
 			// Read the destination once more before believing it.
 			j.dropCheckpoints(en.I)
-			j.setLive(func(l *live) { l.stage = "Reading back the copy again" })
+			j.setLive(func(l *live) { l.stage = "Reading back the destination again" })
 			d1, err = j.hashFile(ctx, e, e.dst, tmp, en.I, "d1", false)
 			if err != nil {
 				return rec, err
@@ -395,7 +395,7 @@ func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, fina
 	}
 	if _, err := os.Lstat(final); err == nil && copied == "" {
 		// Never overwrite: compare what is there instead. S2 follows in s2Phase.
-		j.setLive(func(l *live) { l.stage = "Reading the source (S1)" })
+		j.setLive(func(l *live) { l.stage = "Reading the source before copying" })
 		s1, err := j.hashFile(ctx, e, e.src, srcPath, en.I, "s1", true)
 		if err != nil {
 			return nil, err
@@ -442,16 +442,16 @@ func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, fina
 				h, err := j.hashFileQuiet(ctx, e, e.src, srcPath, en.I, "s2")
 				s2ch <- hashRes{h, err}
 			}()
-			j.setLive(func(l *live) { l.stage = "Reading back the copy (D1) and the source again (S2)" })
+			j.setLive(func(l *live) { l.stage = "Reading back the destination and the source" })
 		} else {
 			s2ch <- hashRes{}
-			j.setLive(func(l *live) { l.stage = "Reading back the copy (D1)" })
+			j.setLive(func(l *live) { l.stage = "Reading back the destination" })
 		}
 		d1, err := j.hashFile(ctx, e, e.dst, at, en.I, "d1", false)
 		if err == nil && d1.String() != c {
 			// Read the destination once more before believing it.
 			j.dropCheckpoint(en.I, "d1")
-			j.setLive(func(l *live) { l.stage = "Reading back the copy again" })
+			j.setLive(func(l *live) { l.stage = "Reading back the destination again" })
 			d1, err = j.hashFile(ctx, e, e.dst, at, en.I, "d1", false)
 		}
 		s2 := <-s2ch // always wait: the source read must not outlive this file
@@ -651,7 +651,7 @@ func (j *Job) s2Phase(ctx context.Context, e env, jr *Journal) error {
 			}
 		}
 		en := it.E
-		j.setLive(func(l *live) { l.file, l.stage = en.P, "Reading the source again (S2)" })
+		j.setLive(func(l *live) { l.file, l.stage = en.P, "Reading back the source" })
 		h, err := j.hashFile(ctx, e, e.src, src.Path(en.P), en.I, "s2", true)
 		out := Rec{I: en.I, N: en.S, S2: h.String(), D1: r.D1}
 		switch {

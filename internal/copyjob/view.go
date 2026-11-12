@@ -95,21 +95,21 @@ func progress(st state, c counts, l live) float64 {
 	}
 	if st.Spec.checkLater() {
 		// The copy pass is the first half of the work, the check pass the second.
-		if has("Copying") || has("Reading the source (S1)") || has("Reading back") || has("Checking") {
+		if has("Copying") || has("Reading the source before copying") || has("Reading back") || has("Checking") {
 			part = done / 2
 		}
 		return min(1, (float64(c.BytesCopied)+float64(c.BytesProven))/2/float64(st.Bytes)+part/float64(st.Bytes))
 	}
 	if st.Spec.hashDuringCopy() {
 		switch {
-		case has("Copying"), has("Reading the source (S1)"):
+		case has("Copying"), has("Reading the source before copying"):
 			part = done / 2
 		case has("Reading back"), has("Checking"):
 			part = size/2 + done/2
 		}
 	} else {
 		switch {
-		case has("Reading the source (S1)"):
+		case has("Reading the source before copying"):
 			part = done / 3
 		case has("Copying"):
 			part = size/3 + done/3

@@ -290,7 +290,7 @@ func (j *Job) verifyPhase(ctx context.Context, e env, jr *Journal, accepting fun
 			}
 		}
 		p := filepath.Join(j.st.Spec.Dest, filepath.FromSlash(en.P))
-		j.setLive(func(l *live) { l.file, l.stage, l.done, l.size = en.P, "Reading the copy in full", 0, en.S })
+		j.setLive(func(l *live) { l.file, l.stage, l.done, l.size = en.P, "Reading back the destination", 0, en.S })
 		start := time.Now()
 		rec := Rec{I: en.I, N: en.S, C: en.H, T: time.Now().Unix()}
 		var extra Rec // the source read again, when this job does that
@@ -312,7 +312,7 @@ func (j *Job) verifyPhase(ctx context.Context, e env, jr *Journal, accepting fun
 					h, err := j.hashFileQuiet(ctx, e, e.src, sp, en.I, "s2")
 					s2ch <- hashRes{h, err}
 				}()
-				j.setLive(func(l *live) { l.stage = "Reading the copy in full and the source again" })
+				j.setLive(func(l *live) { l.stage = "Reading back the destination and the source" })
 			}
 			h, err := j.hashFile(ctx, e, e.dst, p, en.I, "v1", false)
 			var s2 hashRes
@@ -327,7 +327,7 @@ func (j *Job) verifyPhase(ctx context.Context, e env, jr *Journal, accepting fun
 			}
 			if err == nil && h.String() != en.H {
 				j.dropCheckpoint(en.I, "v1")
-				j.setLive(func(l *live) { l.stage = "Reading the copy again to confirm a difference" })
+				j.setLive(func(l *live) { l.stage = "Reading back the destination again to confirm a difference" })
 				h, err = j.hashFile(ctx, e, e.dst, p, en.I, "v2", false)
 				if err != nil && !isFileErr(err) {
 					return err

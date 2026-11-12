@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.17 — 12 November 2026
+
+- **A file being checked shows an orange "Verifying" chip** instead of "Working"; while it is being copied the chip says "Copying" (green).
+- **Plain words for what is being read:** "Reading back the destination and the source", "Reading back the destination", "Reading back the source". The D1, S1 and S2 codes are gone from these lines.
+
 ## 0.2.16 — 12 November 2026
 
 - **Files get their real names as soon as they are copied.** A file is "clip.mov.shuttle-part" only while it is being written; the moment its copy is written and flushed it is "clip.mov", whichever check you chose, and the check follows. Shuttle's file list still says which files are verified. If a check fails, that copy loses the real name again, is copied once more, and if it still fails it is kept aside as "clip.mov.shuttle-failed-copy". Nothing is deleted, and Stop keeps copied files under their names (marked not verified).
