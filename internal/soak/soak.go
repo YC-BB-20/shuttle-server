@@ -88,7 +88,9 @@ func Run(o Options) ([]Sample, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), o.Duration)
 	defer cancel()
-	go m.Run(ctx)
+	stopped := make(chan struct{})
+	go func() { m.Run(ctx); close(stopped) }()
+	defer func() { cancel(); <-stopped }() // the copy saves its place before Run returns
 
 	csvf, err := os.Create(filepath.Join(o.Dir, "soak.csv"))
 	if err != nil {
