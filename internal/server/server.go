@@ -50,6 +50,7 @@ type Actions interface {
 	Files(id, filter string, from, limit int) (copyjob.FilePage, error)
 	History(skip, limit int) []copyjob.View
 	FileInfo(id string, i int) (copyjob.FileInfo, error)
+	AskRecheck(id string, i int, which string) error
 }
 
 // HTTP returns an http.Server with a timeout on every request.
@@ -63,6 +64,7 @@ func (s *Server) HTTP() *http.Server {
 	mux.HandleFunc("GET /api/jobs/{id}/problems", s.problems)
 	mux.HandleFunc("GET /api/jobs/{id}/files", s.files)
 	mux.HandleFunc("GET /api/jobs/{id}/files/{i}", s.fileInfo)
+	mux.HandleFunc("POST /api/jobs/{id}/files/{i}/recheck", s.command(s.recheck))
 	mux.HandleFunc("GET /api/history", s.jobHistory)
 	mux.HandleFunc("POST /api/jobs", s.command(s.addJob))
 	mux.HandleFunc("POST /api/restart", s.always(s.restart))

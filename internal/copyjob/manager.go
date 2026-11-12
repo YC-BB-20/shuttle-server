@@ -37,6 +37,8 @@ type Manager struct {
 	running *Job
 	cancel  context.CancelCauseFunc
 	wake    chan struct{}
+
+	rechecks []*recheckReq // files to read again, first is the one being read
 }
 
 // Load reads the jobs left from earlier runs. A job that was running when
@@ -250,6 +252,10 @@ func (m *Manager) pick() *Job {
 // Run works through the queue until ctx ends.
 func (m *Manager) Run(ctx context.Context) {
 	for {
+		m.runRechecks(ctx) // between copies, never beside one
+		if ctx.Err() != nil {
+			return
+		}
 		j := m.pick()
 		if j == nil {
 			select {

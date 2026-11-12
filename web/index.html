@@ -33,13 +33,14 @@
   .grid .card p { font-size:15px; }
   .grid .card .mute { font-size:13px; }
   /* On a phone the five cards stay on one line and the row scrolls by itself; the page never does. */
-  @media (max-width: 640px) { .grid { grid-template-columns: repeat(5, 150px); overflow-x:auto; padding-bottom:4px; } }
+  @media (max-width: 640px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   @media (max-width: 640px) { header { flex-wrap:wrap; } .tabs { order:3; width:100%; } .tabs button { flex:1; } }
   .tabs { display:flex; gap:4px; background:var(--line); border-radius:9px; padding:2px; }
   .tabs button { border:0; background:transparent; padding:4px 12px; border-radius:7px; }
   .tabs button[aria-selected=true] { background:var(--card); font-weight:600; }
   [hidden] { display:none !important; }
   .settings > section { margin-bottom:12px; }
+  .sechead { font-size:15px; margin:4px 0 8px; }
   .vers { border:1px solid var(--line); border-radius:8px; max-height:50vh; overflow:auto; margin-top:8px; }
   .vers .v { display:flex; gap:8px; align-items:center; padding:8px 10px; border-bottom:1px solid var(--line); }
   .vers .v:last-child { border-bottom:0; }
@@ -114,6 +115,7 @@
   .kv dt { color:var(--mute); }
   .kv dd { margin:0; overflow-wrap:anywhere; }
   .hrow { margin:0 0 10px; min-width:0; overflow-wrap:anywhere; } .hrow .mute { font-size:13px; }
+  .hrow button.again { margin-top:4px; font-size:13px; padding:4px 10px; }
   .hash { font-family: ui-monospace, Menlo, monospace; font-size:13px; }
   .match { color:var(--ok); } .nomatch { color:var(--bad); }
   .story { list-style:none; padding:0; margin:0 0 12px; font-size:14px; }
@@ -209,16 +211,17 @@
   <p class="mute" id="noDone">Finished and stopped copies appear here.</p>
   <div class="hist" id="done"></div>
   <p><button type="button" id="moreHist" hidden>Show older copies</button></p>
-  <div class="grid resources">
+  </div>
+  <div id="tabSettings" class="settings" hidden>
+  <section class="card"><h2>Data folder</h2><p class="path" id="data"></p><p class="mute">Temp: <span class="path" id="temp"></span></p></section>
+  <h2 class="sechead">How Shuttle is using this computer</h2>
+  <div class="grid resources" style="margin-bottom:12px">
     <section class="card"><h2>Memory</h2><p id="mem"></p><div class="bar"><i id="memBar"></i></div><p class="mute" id="memNote"></p></section>
     <section class="card"><h2>Buffer budget</h2><p id="buf"></p><div class="bar"><i id="bufBar"></i></div><p class="mute" id="bufNote"></p></section>
     <section class="card"><h2>Free space</h2><p id="disk"></p><p class="mute" id="diskNote"></p></section>
     <section class="card"><h2>Processor</h2><p id="cpu"></p><p class="mute" id="cpuNote"></p></section>
     <section class="card"><h2>Open files</h2><p id="files"></p><p class="mute">Pages open: <span id="pages"></span></p></section>
   </div>
-  </div>
-  <div id="tabSettings" class="settings" hidden>
-  <section class="card"><h2>Data folder</h2><p class="path" id="data"></p><p class="mute">Temp: <span class="path" id="temp"></span></p></section>
   <section class="card" id="updates">
     <h2>Updates</h2>
     <p id="updLine">…</p>
@@ -817,7 +820,26 @@ function kv(pairs) {
   pairs.filter(p => p[1] !== "" && p[1] != null).forEach(([k, v]) => { dl.append(el("dt", "", k)); const d = el("dd"); if (v instanceof Node) d.append(v); else d.textContent = v; dl.append(d); });
   return dl;
 }
-let infoAt = null;
+let infoAt = null, infoBusy = false;
+// "Read again": reads the source or the copy in full once more and adds its
+// fingerprint below. It waits for a running copy, and changes nothing.
+function againButton(fi, side) {
+  const now = (fi.recheck_now || []).find(r => r.which === side);
+  const b = el("button", "again", side === "dest" ? "Read the copy again" : "Read the source again");
+  b.type = "button";
+  if (now) {
+    b.disabled = true;
+    b.textContent = now.state === "reading" ? "Reading… " + size(now.done) + " of " + size(now.size) :
+      fi.busy ? "Waiting for the running copy to finish…" : "Waiting its turn…";
+  } else if (side === "dest" && !fi.dest_exists) b.disabled = true;
+  const at = infoAt;
+  b.onclick = () => {
+    b.disabled = true; b.textContent = "Asking…";
+    post("/api/jobs/" + at.id + "/files/" + at.i + "/recheck", { which: side }).then(loadInfo)
+      .catch(e => { b.disabled = false; b.textContent = side === "dest" ? "Read the copy again" : "Read the source again"; const m = $("infoBody").querySelector(".againmsg"); if (m) m.textContent = e.message; });
+  };
+  const w = el("div"); w.append(b); return w;
+}
 function fileInfo(id, i) {
   infoAt = { id, i };
   $("infoTitle").textContent = "File"; $("infoBody").textContent = "Loading…";
@@ -828,6 +850,7 @@ function loadInfo() {
   const at = infoAt;
   fetch("/api/jobs/" + at.id + "/files/" + at.i).then(r => r.json().then(j => { if (!r.ok) throw new Error(j.error); return j; })).then(fi => {
     if (infoAt !== at) return;
+    infoBusy = (fi.recheck_now || []).length > 0;
     const name = fi.path.split("/").pop();
     $("infoTitle").textContent = name;
     const body = [];
@@ -846,8 +869,19 @@ function loadInfo() {
         ...hs.map(([k, label]) => {
           const d = el("div", "hrow"); d.append(el("div", "mute", label)); const v = el("div"); v.append(el("span", "hash", fi.hash[k]));
           if (ref && k !== "c" && !(k === "s1" && !fi.hash.c)) v.append(el("span", fi.hash[k] === ref ? "match" : "nomatch", fi.hash[k] === ref ? "  ✓ same as the first" : "  ✗ differs"));
+          d.append(v);
+          const side = k === "d1" ? "dest" : fi.kind === "verify" ? "" : "source";
+          if (side) d.append(againButton(fi, side));
+          return d;
+        }),
+        ...(fi.rechecks || []).map(r => {
+          const d = el("div", "hrow"); d.append(el("div", "mute", (r.which === "dest" ? "Destination" : "Source") + " — read again " + new Date(r.time).toLocaleString()));
+          const v = el("div");
+          if (r.error) v.append(el("span", "bad", r.error));
+          else { v.append(el("span", "hash", r.hash)); if (ref) v.append(el("span", r.hash === ref ? "match" : "nomatch", r.hash === ref ? "  ✓ same as the first" : "  ✗ differs")); }
+          if (r.changed) v.append(el("div", "warn", "The source's size or modified time has changed since it was copied."));
           d.append(v); return d;
-        }));
+        }), el("p", "bad againmsg", ""));
     } else body.push(el("h3", "", "Fingerprints (XXH128 hashes)"), el("p", "mute", "None yet: hashes are made as the file is copied and read back."));
     const story = el("ol", "story");
     (fi.events || []).forEach(e => {
@@ -860,10 +894,10 @@ function loadInfo() {
     $("infoBody").replaceChildren(...body);
   }).catch(e => { if (infoAt === at) $("infoBody").textContent = e.message || "Could not load this file."; });
 }
-$("infoDlg").addEventListener("close", () => { infoAt = null; });
+$("infoDlg").addEventListener("close", () => { infoAt = null; infoBusy = false; });
 setInterval(() => {
   if (document.hidden) return;
-  if (infoAt && $("infoDlg").open && fv[infoAt.id] && ["running", "waiting"].includes(fv[infoAt.id].v.state)) loadInfo();
+  if (infoAt && $("infoDlg").open && (infoBusy || fv[infoAt.id] && ["running", "waiting"].includes(fv[infoAt.id].v.state))) loadInfo();
   Object.values(fv).forEach(f => { if (["running", "waiting"].includes(f.v.state) && f.box.isConnected) loadFiles(f, false, true); });
 }, 2000);
 </script>

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.14 — 12 November 2026
+
+- **Read any fingerprint again.** In a file's info, each fingerprint line has a button: "Read the source again" or "Read the copy again". Shuttle reads that file in full once more and adds the new fingerprint below with its date, marked "same as the first" or "differs" (and says so if the source has changed since it was copied). It shows its progress, waits for a running copy to finish so a disk is never asked for two things at once, and only reads: nothing is changed.
+- **Memory, buffer budget, free space, processor and open files moved to Settings,** under "How Shuttle is using this computer". The Status page now shows only the copies. On an iPhone the tiles sit two to a row.
+
 ## 0.2.13 — 12 November 2026
 
 - **You can see a copy arrive.** A file being copied used to be hidden (its name started with a dot) until it was proven, so the destination folders looked empty in Finder while a copy ran. It is now visible as "clip.mov.shuttle-part" while it is written and checked, and gets its real name, "clip.mov", the moment it passes. An unproven file still never has its real name. A copy paused under an earlier version picks up its hidden part file and carries on.

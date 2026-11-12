@@ -750,3 +750,47 @@ func TestPartialCopyIsVisibleAndOldNameIsPickedUp(t *testing.T) {
 		t.Fatal("old hidden partial left behind")
 	}
 }
+
+// "Read again" in file info reads the source or the copy in full, after the
+// copy and never beside one, and records a fingerprint equal to the first.
+func TestRecheckReadsAgainAndRecords(t *testing.T) {
+	root := t.TempDir()
+	src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
+	makeTree(t, src, 1<<20+5)
+	m := newManager(t, filepath.Join(root, "state"))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go m.Run(ctx)
+	j, err := m.Add(Spec{Source: src, Dest: dst, S2: "now"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitState(t, m, j.st.ID, "finished")
+	for _, w := range []string{"source", "dest"} {
+		if err := m.AskRecheck(j.st.ID, 0, w); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if m.AskRecheck(j.st.ID, 0, "elsewhere") == nil {
+		t.Fatal("unknown side accepted")
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		fi, err := m.FileInfo(j.st.ID, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(fi.Rechecks) == 2 && len(fi.RecheckNow) == 0 {
+			for _, r := range fi.Rechecks {
+				if r.Hash != fi.Hash.C || r.Error != "" || r.Changed {
+					t.Fatalf("recheck %+v, first %s", r, fi.Hash.C)
+				}
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("rechecks not done: %+v %+v", fi.Rechecks, fi.RecheckNow)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}

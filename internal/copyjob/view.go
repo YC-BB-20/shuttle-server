@@ -406,16 +406,19 @@ type Hashes struct {
 // FileInfo is everything known about one file of a job.
 type FileInfo struct {
 	FileRow
-	Mtime      time.Time `json:"mtime"`
-	Source     string    `json:"source"`
-	Dest       string    `json:"dest"`
-	DestExists bool      `json:"dest_exists"`
-	DestSize   int64     `json:"dest_size,omitempty"`
-	Proof      string    `json:"proof"`
-	Kind       string    `json:"kind,omitempty"`    // "verify" when the file belongs to a Verify job
-	Already    bool      `json:"already,omitempty"` // it was already at the destination: compared, not copied
-	Hash       Hashes    `json:"hash"`
-	Events     []Event   `json:"events"`
+	Mtime      time.Time    `json:"mtime"`
+	Source     string       `json:"source"`
+	Dest       string       `json:"dest"`
+	DestExists bool         `json:"dest_exists"`
+	DestSize   int64        `json:"dest_size,omitempty"`
+	Proof      string       `json:"proof"`
+	Kind       string       `json:"kind,omitempty"`    // "verify" when the file belongs to a Verify job
+	Already    bool         `json:"already,omitempty"` // it was already at the destination: compared, not copied
+	Hash       Hashes       `json:"hash"`
+	Events     []Event      `json:"events"`
+	Rechecks   []Recheck    `json:"rechecks"`       // "Read again" results, oldest first
+	RecheckNow []RecheckNow `json:"recheck_now"`    // waiting or being read
+	Busy       bool         `json:"busy,omitempty"` // a copy is running, so a recheck waits for it
 }
 
 // maxEvents bounds a file's story; a file has a handful of records at most.
@@ -508,6 +511,14 @@ func (m *Manager) FileInfo(id string, i int) (FileInfo, error) {
 		return true
 	})
 	fi.Kind = spec.Kind
+	fi.Rechecks = j.rechecksOf(i)
+	if fi.Rechecks == nil {
+		fi.Rechecks = []Recheck{}
+	}
+	fi.RecheckNow = m.recheckFor(id, i)
+	m.mu.Lock()
+	fi.Busy = m.running != nil
+	m.mu.Unlock()
 	if spec.isVerify() {
 		switch fi.Status {
 		case "proven":

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -141,6 +142,21 @@ func (s *Server) fileInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, fi)
+}
+
+// recheck asks for one file to be read again in full: {"which":"source"}
+// or {"which":"dest"}. It only reads.
+func (s *Server) recheck(w http.ResponseWriter, r *http.Request) (any, error) {
+	i, err := strconv.Atoi(r.PathValue("i"))
+	if err != nil {
+		return nil, errors.New("no such file")
+	}
+	var body struct {
+		Which string `json:"which"`
+	}
+	json.NewDecoder(io.LimitReader(r.Body, 1024)).Decode(&body)
+	err = s.Jobs.AskRecheck(r.PathValue("id"), i, body.Which)
+	return map[string]bool{"ok": err == nil}, err
 }
 
 // jobHistory lists finished and stopped copies, 20 at a time.

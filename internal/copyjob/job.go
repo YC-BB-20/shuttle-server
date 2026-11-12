@@ -112,6 +112,7 @@ type Job struct {
 	live   live
 
 	srcBytes, dstBytes atomic.Int64 // for speed
+	recheckMu          sync.Mutex   // rechecks.json
 	// Copy speed: bytes written by the copy pass and the time spent in it, so
 	// the copy's own speed is not mixed with the read-back and re-read.
 	copyBytes, copyNs, copySince atomic.Int64 // copySince: unix ns the current copy pass began, 0 if none
