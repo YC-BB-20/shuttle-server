@@ -385,13 +385,37 @@ func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int, hs 
 }
 
 // tempName is the hidden name a copy has until it is proven.
+//
+// Visible, not hidden (since v0.2.13): a file being copied shows in Finder
+// as "clip.mov.shuttle-part" while it is written and checked, and gets its
+// real name only once it is proven, so it can never be mistaken for done.
 func tempName(final string) string {
 	dir, base := filepath.Split(final)
-	name := "." + base + ".shuttle-part"
+	name := base + ".shuttle-part"
 	if len(name) > 250 {
-		name = fmt.Sprintf(".%x.shuttle-part", xxh3.Sum128([]byte(base)).Lo)
+		name = fmt.Sprintf("%x.shuttle-part", xxh3.Sum128([]byte(base)).Lo)
 	}
 	return filepath.Join(dir, name)
+}
+
+// oldTempName is the hidden name used before v0.2.13.
+func oldTempName(final string) string {
+	t := tempName(final)
+	dir, name := filepath.Split(t)
+	return filepath.Join(dir, "."+name)
+}
+
+// tempFor returns the temporary name for final, first moving a partial copy
+// left under the hidden pre-v0.2.13 name, so a paused copy resumes after an
+// update instead of starting the file again.
+func tempFor(final string) string {
+	t := tempName(final)
+	if _, err := os.Lstat(t); os.IsNotExist(err) {
+		if _, err := os.Lstat(oldTempName(final)); err == nil {
+			os.Rename(oldTempName(final), t)
+		}
+	}
+	return t
 }
 
 var errExists = errors.New("exists")

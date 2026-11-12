@@ -732,3 +732,21 @@ func TestSourcePulledMidCopyWaitsNotFails(t *testing.T) {
 		})
 	}
 }
+
+// A file being copied is visible under a name that is clearly not done, and a
+// partial copy under the old hidden name is picked up after an update.
+func TestPartialCopyIsVisibleAndOldNameIsPickedUp(t *testing.T) {
+	dir := t.TempDir()
+	final := filepath.Join(dir, "clip.mov")
+	if got := filepath.Base(tempName(final)); got != "clip.mov.shuttle-part" {
+		t.Fatalf("temp name %q", got)
+	}
+	os.WriteFile(oldTempName(final), []byte("partial"), 0o600)
+	tmp := tempFor(final)
+	if b, err := os.ReadFile(tmp); err != nil || string(b) != "partial" {
+		t.Fatalf("old partial not moved: %q %v", b, err)
+	}
+	if _, err := os.Lstat(oldTempName(final)); err == nil {
+		t.Fatal("old hidden partial left behind")
+	}
+}

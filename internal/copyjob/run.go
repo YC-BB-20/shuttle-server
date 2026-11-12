@@ -309,7 +309,7 @@ func (j *Job) oneFile(ctx context.Context, e env, en *entry, srcPath, final stri
 		rec.St, rec.D1 = "identical", d1.String()
 		return rec, nil
 	}
-	tmp := tempName(final)
+	tmp := tempFor(final)
 	for attempt := 0; attempt < 2; attempt++ {
 		if attempt > 0 {
 			j.dropCheckpoints(en.I)
@@ -366,7 +366,7 @@ func (j *Job) oneFile(ctx context.Context, e env, en *entry, srcPath, final stri
 // copy-then-check scheme; then the first attempt only checks it.
 func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, final, copied string) ([]Rec, error) {
 	rec := Rec{I: en.I, N: en.S}
-	tmp := tempName(final)
+	tmp := tempFor(final)
 	if copied != "" {
 		if fi, err := os.Stat(tmp); err != nil || fi.Size() != en.S {
 			copied = "" // the copy is not there as it was left: copy it again
@@ -470,7 +470,7 @@ func (j *Job) copyOnly(ctx context.Context, e env, en *entry, srcPath, final str
 	if _, err := os.Lstat(final); err == nil {
 		return j.oneFileHashed(ctx, e, en, srcPath, final, "")
 	}
-	tmp := tempName(final)
+	tmp := tempFor(final)
 	hs := xxh3.New()
 	j.setLive(func(l *live) { l.stage = "Copying (the source is hashed as it is read)" })
 	if err := j.copyFile(ctx, e, srcPath, tmp, en.I, hs); err != nil {

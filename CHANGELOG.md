@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.13 — 12 November 2026
+
+- **You can see a copy arrive.** A file being copied used to be hidden (its name started with a dot) until it was proven, so the destination folders looked empty in Finder while a copy ran. It is now visible as "clip.mov.shuttle-part" while it is written and checked, and gets its real name, "clip.mov", the moment it passes. An unproven file still never has its real name. A copy paused under an earlier version picks up its hidden part file and carries on.
+
 ## 0.2.12 — 12 November 2026
 
 - **Copy speed, in big type.** The progress panel and a running copy's details now show the speed of the copy itself ("Copy speed 379 MB/s"), counting only the time spent copying, instead of an average over copying and checking. The source and destination disk readings are unchanged.

@@ -393,11 +393,13 @@ func (m *Manager) finishStopped(j *Job) {
 	if len(idx) > 0 || left != nil { // after a restart the partial copy is known only from its checkpoint
 		if it, err := openManifest(j.path("manifest.jsonl")); err == nil {
 			for it.Next() {
-				t := tempName(filepath.Join(dst, filepath.FromSlash(it.E.P)))
-				if idx[it.E.I] {
-					temps[t] = true
-				} else if it.E.I < len(left) && left[it.E.I] == 1 && strings.HasSuffix(t, ".shuttle-part") {
-					os.Remove(t) // our own copy that was never checked
+				final := filepath.Join(dst, filepath.FromSlash(it.E.P))
+				for _, t := range []string{tempName(final), oldTempName(final)} {
+					if idx[it.E.I] {
+						temps[t] = true
+					} else if it.E.I < len(left) && left[it.E.I] == 1 && strings.HasSuffix(t, ".shuttle-part") {
+						os.Remove(t) // our own copy that was never checked
+					}
 				}
 			}
 			it.Close()
