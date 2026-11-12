@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.8 — 12 November 2026
+
+- **A missing disk is an error you can see.** If the source or destination disk is unplugged (or its folder disappears) during a copy, the top of the page turns red and names it: "Source disk not connected: CARD_A001". The copy waits, no file is marked failed, and it carries on by itself once the disk is back. The menu bar icon turns red too. Shuttle now notices within about two seconds, even between files.
+- **One progress panel on top.** A big bar for the whole queue, with how much is done and the time left for all of it, plus lines for the copy running now and the file in it, each with its own bar and time left.
+- **Queue and History look alike, like the Files app.** Each copy is one thin row: an icon for its state, source → destination (both names the same size), a thin bar and one status line, with pause and stop as small round buttons. Tap a row for its details and files. History rows show when, how long, the size and the average speed.
+- **File filters with counts:** All, In progress, Verified and Error, each with how many files it holds, for example "In progress (32)".
+- **New copy remembers the last one.** It opens with the last source, destination and proof choice, so Choose… starts where you were.
+- **Macintosh HD shows your home folder,** not the system's folders above it. The separate Home button is gone.
+- **New proof choice: copy everything first, then check.** Every file is copied, hashed as it is read, and keeps a temporary name; then a second pass reads each copy back and the source again, and names each copy once all three agree. A copy that does not match is copied again once. Stopping removes the copies that were never checked.
+- **"Proven" is now "Verified"** everywhere you read it.
+- **Menu bar:** Open Shuttle, Restart Shuttle, Stop Shuttle. The page has an icon in the browser tab.
+
 ## 0.2.7 — 12 November 2026
 
 - **Progress, speed and time left.** Every copy shows how far it is as a percentage with a large bar, the time left, and its speed: overall, and what the source and destination disks are doing right now. The percentage counts all the work, the copy and the reading back, so it moves steadily rather than jumping when a big file is proven. Finished copies show their size and average speed.

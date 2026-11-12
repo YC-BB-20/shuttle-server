@@ -272,7 +272,7 @@ func TestKilledMidCopyResumesCorrectly(t *testing.T) {
 	if os.Getenv("SHUTTLE_CRASH_CHILD") != "" {
 		return
 	}
-	for _, mode := range []string{HashDuringCopy, HashFirst} {
+	for _, mode := range []string{HashDuringCopy, HashFirst, HashCheckLater} {
 		t.Run(mode, func(t *testing.T) { killedMidCopy(t, mode) })
 	}
 }
@@ -546,5 +546,176 @@ func TestProgressCountsEveryPass(t *testing.T) {
 	old := state{Phase: "s2", Bytes: 1000, Files: 2, Spec: Spec{Hash: HashFirst, S2: "now"}}
 	if p := progress(old, counts{BytesProven: 1000, Verified: 2, Strong: 1}, live{}); p != 0.875 {
 		t.Fatal(p)
+	}
+}
+
+// Copy everything first, then check: every file is copied (hashed as it is
+// read) before any read-back; a copy keeps its temporary name until its
+// check passes; a bad copy is copied again in the check pass.
+func TestCopyThenCheck(t *testing.T) {
+	root := t.TempDir()
+	src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
+	files := makeTree(t, src, 2<<20)
+	m := newManager(t, filepath.Join(root, "state"))
+	var copies, named int
+	damaged := false
+	m.AfterCopy = func(tmp string) {
+		copies++
+		if copies > len(files) {
+			return // the redone copy in the check pass
+		}
+		// While the copy pass runs, nothing has its real name yet.
+		filepath.Walk(dst, func(p string, fi os.FileInfo, err error) error {
+			if err == nil && !fi.IsDir() && !strings.Contains(p, ".shuttle-") {
+				named++
+			}
+			return nil
+		})
+		if !damaged && strings.Contains(tmp, "frame 6") {
+			damaged = true
+			f, _ := os.OpenFile(tmp, os.O_RDWR, 0)
+			f.WriteAt([]byte("y"), 10)
+			f.Close()
+		}
+	}
+	startRun(t, m)
+	j, err := m.Add(Spec{Source: src, Dest: dst, Hash: HashCheckLater})
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := waitState(t, m, j.st.ID, "finished")
+	if v.Strong != len(files) || v.Failed != 0 || v.Copied != 0 || v.Progress != 1 {
+		t.Fatalf("%+v", v)
+	}
+	if named != 0 {
+		t.Fatalf("%d files had their real name before the check pass", named)
+	}
+	if copies != len(files)+1 {
+		t.Fatalf("want %d copies (one redone), got %d", len(files)+1, copies)
+	}
+	checkDest(t, dst, files)
+	p, _ := m.Files(j.st.ID, "done", 0, 200)
+	if p.Counts["all"] != len(files) || p.Counts["done"] != len(files) || p.Counts["todo"] != 0 || p.Counts["problems"] != 0 {
+		t.Fatalf("counts %+v", p.Counts)
+	}
+}
+
+func TestProgressCopyThenCheck(t *testing.T) {
+	st := state{Phase: "copy", Bytes: 1000, Files: 2, Spec: Spec{Hash: HashCheckLater, S2: "now"}}
+	if p := progress(st, counts{}, live{stage: "Copying (the source is hashed as it is read)", size: 400, done: 200}); p != 0.1 {
+		t.Fatal(p)
+	}
+	// Both copied (half the work), file 1 being checked half way.
+	st.Phase = "check"
+	if p := progress(st, counts{BytesCopied: 1000}, live{stage: "Reading back the copy (D1) and the source again (S2)", size: 400, done: 200}); p != 0.6 {
+		t.Fatal(p)
+	}
+}
+
+func TestStopCopyThenCheckRemovesUncheckedCopies(t *testing.T) {
+	root := t.TempDir()
+	src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
+	makeTree(t, src, 1<<20)
+	m := newManager(t, filepath.Join(root, "state"))
+	j, err := m.Add(Spec{Source: src, Dest: dst, Hash: HashCheckLater})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Run only the scan and the copy pass, as if stopped before the check.
+	sd, _ := m.Disks.For(src)
+	dd, _ := m.Disks.For(dst)
+	if err := j.scan(context.Background(), j.source()); err != nil {
+		t.Fatal(err)
+	}
+	jr, _, _ := OpenJournal(j.path("journal.log"), func(Rec) {})
+	if err := j.copyPhase(context.Background(), env{budget: m.Budget, src: sd, dst: dd}, jr, func() bool { return true }); err != nil {
+		t.Fatal(err)
+	}
+	jr.Close()
+	parts := 0
+	filepath.Walk(dst, func(p string, fi os.FileInfo, err error) error {
+		if err == nil && strings.HasSuffix(p, ".shuttle-part") {
+			parts++
+		}
+		return nil
+	})
+	if parts == 0 || j.c.Copied != parts {
+		t.Fatalf("copy pass left %d temporary copies, counted %d", parts, j.c.Copied)
+	}
+	m.finishStopped(j)
+	filepath.Walk(dst, func(p string, fi os.FileInfo, err error) error {
+		if err == nil && strings.Contains(p, ".shuttle-") {
+			t.Errorf("unchecked copy left after Stop: %s", p)
+		}
+		return nil
+	})
+}
+
+func TestMissingDiskIsNamed(t *testing.T) {
+	root := t.TempDir()
+	src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
+	makeTree(t, src, 1)
+	m := newManager(t, filepath.Join(root, "state"))
+	j, err := m.Add(Spec{Source: src, Dest: dst})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := m.missing(j); w != "" {
+		t.Fatalf("both disks are here, got %q", w)
+	}
+	os.Rename(src, src+"-gone") // as if the card was pulled
+	if w := m.missing(j); w != "source" {
+		t.Fatalf("want source, got %q", w)
+	}
+	startRun(t, m)
+	v := waitState(t, m, j.st.ID, "waiting")
+	if v.Missing != "source" || !strings.HasPrefix(v.Reason, "Source folder not found: "+src) ||
+		MissingReason("source", "/Volumes/CARD_A001/DCIM", "/x") != "Source disk not connected: CARD_A001. Once it is back, the copy continues by itself; nothing verified is lost." {
+		t.Fatalf("%+v", v)
+	}
+	os.Rename(src+"-gone", src)
+	if v := waitState(t, m, j.st.ID, "finished"); v.Failed != 0 {
+		t.Fatalf("%+v", v)
+	}
+	if n := diskName("/Volumes/CARD_A001/DCIM"); n != "CARD_A001" {
+		t.Fatal(n)
+	}
+	if n := diskName("/media/bb/BACKUP/x"); n != "BACKUP" {
+		t.Fatal(n)
+	}
+}
+
+// A source pulled in the middle of a copy makes the copy wait with a clear
+// message; no file is marked failed, and it finishes once it is back.
+func TestSourcePulledMidCopyWaitsNotFails(t *testing.T) {
+	for _, mode := range []string{HashDuringCopy, HashCheckLater, HashFirst} {
+		t.Run(mode, func(t *testing.T) {
+			root := t.TempDir()
+			src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
+			files := makeTree(t, src, 2<<20)
+			m := newManager(t, filepath.Join(root, "state"))
+			pulled := false
+			m.CopyRead = func([]byte) {
+				if !pulled {
+					pulled = true
+					os.Rename(src, src+"-pulled")
+				}
+			}
+			startRun(t, m)
+			j, err := m.Add(Spec{Source: src, Dest: dst, Hash: mode, S2: "now"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			v := waitState(t, m, j.st.ID, "waiting", "finished")
+			if v.State != "waiting" || v.Missing != "source" || v.Failed != 0 {
+				p, _ := m.Files(j.st.ID, "problems", 0, 10)
+				t.Fatalf("%+v %+v", v, p.Rows)
+			}
+			os.Rename(src+"-pulled", src)
+			if v := waitState(t, m, j.st.ID, "finished"); v.Failed != 0 || v.Verified+v.Identical != len(files) {
+				t.Fatalf("%+v", v)
+			}
+			checkDest(t, dst, files)
+		})
 	}
 }

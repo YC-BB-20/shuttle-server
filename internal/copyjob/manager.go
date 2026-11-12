@@ -138,10 +138,10 @@ func (m *Manager) Add(s Spec) (*Job, error) {
 	if sv.Network || dv.Network {
 		return nil, errors.New("copies to or from a network server are not supported yet; connect the disk by cable")
 	}
-	if s.Hash != HashFirst {
+	if s.Hash != HashFirst && s.Hash != HashCheckLater {
 		s.Hash = HashDuringCopy // hashing while copying needs the second source read to be proof
 	}
-	if s.S2 != "skip" || s.Hash == HashDuringCopy {
+	if s.S2 != "skip" || s.Hash != HashFirst {
 		s.S2 = "now"
 	}
 	s.Source, s.Dest = src, dst
@@ -266,8 +266,12 @@ func (m *Manager) Run(ctx context.Context) {
 func (m *Manager) runOne(ctx context.Context, j *Job) {
 	sd, err1 := m.Disks.For(j.st.Spec.Source)
 	dd, err2 := m.Disks.For(j.st.Spec.Dest)
-	if err1 != nil || err2 != nil || sd.ID != j.st.SourceVol || dd.ID != j.st.DestVol {
-		m.wait(ctx, j, "Waiting for a disk: connect the source and destination disks")
+	if which := m.missing(j); which != "" {
+		m.waitMissing(ctx, j, which)
+		return
+	}
+	if err1 != nil || err2 != nil {
+		m.waitMissing(ctx, j, "both")
 		return
 	}
 	if sd.Stalled() || dd.Stalled() {
@@ -286,7 +290,24 @@ func (m *Manager) runOne(ctx context.Context, j *Job) {
 		cancel(errOwnerPause)
 	}
 	j.mu.Unlock()
-	j.setLive(func(l *live) { l.reason = "" })
+	j.setLive(func(l *live) { l.reason, l.missing = "", "" })
+	// Notice an unplugged disk within seconds, even when no read or write
+	// is failing at that moment (a hash pass between files, a flush).
+	go func() {
+		t := time.NewTicker(2 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-jctx.Done():
+				return
+			case <-t.C:
+				if !diskio.Present(sd) || !diskio.Present(dd) {
+					cancel(diskio.ErrGone)
+					return
+				}
+			}
+		}
+	}()
 	err := j.run(jctx, env{budget: m.Budget, src: sd, dst: dd, afterCopy: m.AfterCopy, copyRead: m.CopyRead}, m.Accepting)
 	cancel(nil)
 	m.mu.Lock()
@@ -307,9 +328,14 @@ func (m *Manager) runOne(ctx context.Context, j *Job) {
 		m.Log.Info("copy job finished", "job", j.st.ID, "verified", c.Verified, "already_there", c.Identical,
 			"failed", c.Failed, "s2_ok", c.Strong, "s2_warnings", c.S2Warn)
 	case errors.Is(cause, errOwnerPause), ctx.Err() != nil:
-		j.setLive(func(l *live) { l.reason = "" })
-	case errors.Is(err, diskio.ErrGone):
-		m.wait(ctx, j, "Waiting for a disk: one of the disks was disconnected")
+		j.setLive(func(l *live) { l.reason, l.missing = "", "" })
+	case errors.Is(err, diskio.ErrGone), errors.Is(cause, diskio.ErrGone):
+		which := m.missing(j)
+		if which == "" {
+			which = "both" // back already, or the check could not tell
+		}
+		m.Log.Warn("a disk was disconnected during a copy", "job", j.st.ID, "missing", which)
+		m.waitMissing(ctx, j, which)
 	case errors.Is(err, diskio.ErrStalled):
 		m.wait(ctx, j, "A disk is not responding; waiting for it")
 	default:
@@ -341,15 +367,33 @@ func (m *Manager) finishStopped(j *Job) {
 			idx[c.Index] = true
 		}
 	}
-	dst := j.st.Spec.Dest
+	dst, files, later := j.st.Spec.Dest, j.st.Files, j.st.Spec.checkLater()
 	j.st.Phase, j.st.Finished, j.st.Checkpoints = "done", time.Now(), nil
 	j.live = live{}
 	j.mu.Unlock()
-	if len(idx) > 0 { // after a restart the partial copy is known only from its checkpoint
+	var left []byte
+	if later && files > 0 {
+		// Copy-then-check: copies that never reached their check are our own
+		// unproven temporary files. A byte per file, like the status table.
+		left = make([]byte, files)
+		ReadJournal(j.path("journal.log"), 0, func(r Rec) bool {
+			if r.I >= 0 && r.I < files {
+				left[r.I] = 0
+				if r.St == "copied" {
+					left[r.I] = 1
+				}
+			}
+			return true
+		})
+	}
+	if len(idx) > 0 || left != nil { // after a restart the partial copy is known only from its checkpoint
 		if it, err := openManifest(j.path("manifest.jsonl")); err == nil {
 			for it.Next() {
+				t := tempName(filepath.Join(dst, filepath.FromSlash(it.E.P)))
 				if idx[it.E.I] {
-					temps[tempName(filepath.Join(dst, filepath.FromSlash(it.E.P)))] = true
+					temps[t] = true
+				} else if it.E.I < len(left) && left[it.E.I] == 1 && strings.HasSuffix(t, ".shuttle-part") {
+					os.Remove(t) // our own copy that was never checked
 				}
 			}
 			it.Close()
@@ -363,10 +407,74 @@ func (m *Manager) finishStopped(j *Job) {
 	j.save()
 }
 
+// missing says which of a job's disks is not connected as the same volume:
+// "source", "destination", "both" or "".
+func (m *Manager) missing(j *Job) string {
+	ok := func(path, id string) bool {
+		if !diskio.VolumeMounted(path) {
+			return false
+		}
+		if _, err := os.Stat(path); err != nil {
+			return false // the folder is gone with its disk
+		}
+		d, err := m.Disks.For(path)
+		return err == nil && d.ID == id && diskio.Present(d)
+	}
+	s, d := ok(j.st.Spec.Source, j.st.SourceVol), ok(j.st.Spec.Dest, j.st.DestVol)
+	switch {
+	case !s && !d:
+		return "both"
+	case !s:
+		return "source"
+	case !d:
+		return "destination"
+	}
+	return ""
+}
+
+// diskName is the disk's name as the owner knows it, from the path.
+func diskName(path string) string {
+	clean := filepath.Clean(path)
+	for _, base := range []string{"/Volumes/", "/media/"} {
+		if rest, ok := strings.CutPrefix(clean, base); ok {
+			parts := strings.Split(rest, "/")
+			if base == "/media/" && len(parts) > 1 {
+				return parts[1]
+			}
+			return parts[0]
+		}
+	}
+	return ""
+}
+
+// MissingReason is the message for a job whose disk is not connected.
+func MissingReason(which, src, dst string) string {
+	one := func(kind, path string) string {
+		if n := diskName(path); n != "" {
+			return kind + " disk not connected: " + n
+		}
+		return kind + " folder not found: " + path // on the computer's own disk
+	}
+	const tail = ". Once it is back, the copy continues by itself; nothing verified is lost."
+	switch which {
+	case "source":
+		return one("Source", src) + tail
+	case "destination":
+		return one("Destination", dst) + tail
+	}
+	return one("Source", src) + "; " + strings.ToLower(one("Destination", dst)[:1]) + one("Destination", dst)[1:] + ". Once they are back, the copy continues by itself."
+}
+
+func (m *Manager) waitMissing(ctx context.Context, j *Job, which string) {
+	m.rest(ctx, j, MissingReason(which, j.st.Spec.Source, j.st.Spec.Dest), which)
+}
+
 // wait shows why a job is resting, then lets the queue try again. Waiting
 // costs no retries.
-func (m *Manager) wait(ctx context.Context, j *Job, reason string) {
-	j.setLive(func(l *live) { l.reason = reason })
+func (m *Manager) wait(ctx context.Context, j *Job, reason string) { m.rest(ctx, j, reason, "") }
+
+func (m *Manager) rest(ctx context.Context, j *Job, reason, missing string) {
+	j.setLive(func(l *live) { l.reason, l.missing = reason, missing })
 	select {
 	case <-ctx.Done():
 	case <-m.wake:

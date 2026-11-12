@@ -30,6 +30,7 @@ const (
 	stFailed   byte = 2
 	stStrong   byte = 3 // and S2 equals D1
 	stS2Warn   byte = 4 // S2 differed: source changed or unstable
+	stCopied   byte = 5 // copied and hashed (C), still under its temporary name, check pass to come
 )
 
 // Spec is what the owner asked for.
@@ -37,7 +38,7 @@ type Spec struct {
 	Source string `json:"source"`
 	Dest   string `json:"dest"`
 	S2     string `json:"s2"`             // "now" or "skip"; always "now" with Hash "copy"
-	Hash   string `json:"hash,omitempty"` // "copy" (hash while copying) or "first" (own read before); empty in jobs from before 0.2.3 means "first"
+	Hash   string `json:"hash,omitempty"` // "copy" (hash while copying), "later" (hash while copying, check everything in a second pass) or "first" (own read before); empty in jobs from before 0.2.3 means "first"
 	// Only lists the chosen files and folders inside Source, by name; empty
 	// means the whole folder.
 	Only []string `json:"only,omitempty"`
@@ -53,10 +54,16 @@ func (j *Job) source() location.Folder {
 // Hash schemes.
 const (
 	HashDuringCopy = "copy"
+	HashCheckLater = "later" // added in 0.2.8
 	HashFirst      = "first"
 )
 
-func (s Spec) hashDuringCopy() bool { return s.Hash == HashDuringCopy }
+// hashDuringCopy: the bytes read for the copy are hashed (C), in both the
+// per-file scheme and the copy-then-check scheme.
+func (s Spec) hashDuringCopy() bool { return s.Hash == HashDuringCopy || s.Hash == HashCheckLater }
+
+// checkLater: every file is copied first; D1 and S2 run in a second pass.
+func (s Spec) checkLater() bool { return s.Hash == HashCheckLater }
 
 // Checkpoint is where a paused or interrupted step stopped.
 type Checkpoint struct {
@@ -75,7 +82,7 @@ type state struct {
 	Spec          Spec                  `json:"spec"`
 	Created       time.Time             `json:"created"`
 	Choice        string                `json:"choice"` // run, paused, stopped: the owner's choice
-	Phase         string                `json:"phase"`  // scan, copy, s2, done
+	Phase         string                `json:"phase"`  // scan, copy, check (copy-then-check only), s2, done
 	Files         int                   `json:"files"`
 	Bytes         int64                 `json:"bytes"`
 	Skipped       int                   `json:"skipped"`
@@ -83,6 +90,7 @@ type state struct {
 	DestVol       string                `json:"dest_volume"`
 	SameVolume    bool                  `json:"same_volume"`
 	S2JournalEnd  int64                 `json:"s2_journal_end,omitempty"`
+	CheckEnd      int64                 `json:"check_journal_end,omitempty"` // journal size when the check pass began
 	Checkpoints   map[string]Checkpoint `json:"checkpoints,omitempty"`
 	Finished      time.Time             `json:"finished,omitzero"`
 }
@@ -103,10 +111,13 @@ type Job struct {
 type counts struct {
 	Verified, Identical, Failed, Strong, S2Warn int
 	BytesProven                                 int64
+	Copied                                      int   // copy-then-check: copied, waiting for the check pass
+	BytesCopied                                 int64 // copy-then-check: bytes through the copy pass
 }
 
 type live struct {
 	reason       string // why it is waiting, or empty
+	missing      string // "source", "destination" or "both" when a disk is not connected
 	file         string
 	stage        string
 	done         int64
@@ -148,10 +159,23 @@ func (j *Job) apply(r Rec) {
 	if r.I < 0 || r.I >= len(j.status) {
 		return
 	}
+	unproven := j.status[r.I] == stPending || j.status[r.I] == stFailed || j.status[r.I] == stCopied
+	if j.status[r.I] == stCopied && r.St != "copied" {
+		j.c.Copied-- // its check is done, one way or the other
+	}
 	switch r.St {
-	case "verified", "identical":
+	case "copied": // copy-then-check: copied and hashed, not yet proven
 		if j.status[r.I] == stPending || j.status[r.I] == stFailed {
+			j.c.BytesCopied += r.N
+		}
+		j.status[r.I] = stCopied
+		j.c.Copied++
+	case "verified", "identical":
+		if unproven {
 			j.c.BytesProven += r.N
+			if j.st.Spec.checkLater() && j.status[r.I] != stCopied {
+				j.c.BytesCopied += r.N
+			}
 		}
 		j.status[r.I] = stVerified
 		if r.St == "identical" {
@@ -160,8 +184,11 @@ func (j *Job) apply(r Rec) {
 			j.c.Verified++
 		}
 	case "strong": // hashed while copying: C, D1 and S2 agree, in one record
-		if j.status[r.I] == stPending || j.status[r.I] == stFailed {
+		if unproven {
 			j.c.BytesProven += r.N
+			if j.st.Spec.checkLater() && j.status[r.I] != stCopied {
+				j.c.BytesCopied += r.N
+			}
 		}
 		j.status[r.I] = stStrong
 		j.c.Verified++

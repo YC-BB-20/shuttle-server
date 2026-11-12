@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Shuttle Server</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a64d8'/%3E%3Cpath d='M22 46V18m0 0l-8 8m8-8l8 8M42 18v28m0 0l-8-8m8 8l8-8' stroke='%23fff' stroke-width='5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
   :root { color-scheme: light dark; --bg:#f5f5f7; --card:#fff; --fg:#1d1d1f; --mute:#6e6e73; --line:#d2d2d7;
           --ok:#1f8a3b; --warn:#b25e00; --bad:#c62828; --accent:#0a64d8; }
@@ -138,6 +139,43 @@
   .chip.ok { color:var(--ok); border-color:var(--ok); }
   .foot { display:flex; gap:8px; justify-content:flex-end; padding:12px 16px; border-top:1px solid var(--line); }
   pre { white-space:pre-wrap; overflow-wrap:anywhere; font: 14px/1.45 ui-monospace, Menlo, monospace; margin:0; }
+  /* Overall progress, on top: the whole queue, the copy running now, the file in it. */
+  .status.monitor .pcrow { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-top:10px; }
+  .status.monitor .pcrow b { font-size:30px; font-variant-numeric:tabular-nums; }
+  .status.monitor .pcrow span { color:var(--mute); font-weight:400; font-size:15px; }
+  .status.monitor .bar.main { height:12px; border-radius:6px; margin:8px 0 10px; }
+  .mlines { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:4px 12px; font-weight:400; font-size:14px; }
+  .mlines dt { color:var(--mute); } .mlines dd { margin:0; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+  .mlines .bar { height:4px; margin:3px 0 0; }
+  .status.alarm { border-color:var(--bad); }
+  .status.alarm > span:first-child { color:var(--bad); }
+  /* Queue and History: one list each, the same rows, like the Files app. */
+  .jobs, .hist { background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .jobs:not(:has(.job)), .hist:not(:has(.job)) { background:transparent; border:0; }
+  .job { background:transparent; border:0; border-radius:0; border-bottom:1px solid var(--line); padding:8px 12px; margin:0; cursor:pointer; }
+  .job:last-child { border-bottom:0; }
+  .job .r { display:flex; align-items:center; gap:10px; }
+  .job .r > .m { flex:1; min-width:0; }
+  .job .ico { flex:none; width:30px; height:30px; border-radius:8px; display:grid; place-items:center; font-size:15px; color:#fff; background:var(--accent); }
+  .job .ico.ok { background:var(--ok); } .job .ico.warn { background:var(--warn); } .job .ico.bad { background:var(--bad); } .job .ico.idle { background:var(--mute); }
+  .route { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); gap:6px; max-width:560px; align-items:baseline; font-size:15px; font-weight:600; }
+  .route > span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  .route > .arr { color:var(--mute); font-weight:400; }
+  .job .bar { height:4px; margin:4px 0 2px; }
+  .job .sub { font-size:13px; color:var(--mute); overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+  .job .sub.bad { color:var(--bad); } .job .sub.warn { color:var(--warn); }
+  .job .acts { display:flex; gap:6px; flex:none; }
+  .job .acts button { width:30px; height:30px; padding:0; border-radius:15px; font-size:13px; line-height:1; }
+  .job .r::after { content:"›"; color:var(--mute); font-size:20px; line-height:1; transition:transform .15s; }
+  .job.open .r::after { transform:rotate(90deg); }
+  .job .detail { margin:8px 0 2px 40px; cursor:auto; font-size:14px; }
+  .job:not(.open) .detail { display:none; }
+  .job .detail p { margin:2px 0; }
+  .job .detail .btns { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .job .files { border-top:0; margin-top:8px; padding-top:0; }
+  .job.old { padding:8px 12px; }
+  .filters button .n { opacity:.75; font-variant-numeric:tabular-nums; }
+  .resources { margin-top:18px; }
 </style>
 </head>
 <body>
@@ -151,21 +189,28 @@
   <div class="banner" id="safe" hidden><b>Safe mode.</b> <span id="safeReason"></span>
     <p class="mute">Nothing runs. Fix the problem, then quit Shuttle Server and start it again with <span class="path">-clear-safe-mode</span>.</p></div>
   <div id="tabStatus">
-  <div class="status" id="headline">Loading…<small id="sub"></small></div>
+  <div class="status monitor" id="headline"><span>Loading…</span><small id="sub"></small>
+    <div id="mon" hidden>
+      <div class="pcrow"><b id="monPc"></b><span id="monOf"></span></div>
+      <div class="bar main"><i id="monBar"></i></div>
+      <dl class="mlines" id="monLines"></dl>
+    </div>
+  </div>
   <p class="hint" id="updHint" hidden><span id="updHintText"></span><button type="button" id="updHintBtn">Open Settings</button></p>
-  <div class="grid">
+  <div class="jobs-head"><h2>Queue</h2><button class="primary" type="button" id="newBtn">New copy</button></div>
+  <p class="mute" id="noJobs">Nothing in the queue. Press New copy to copy a card, a folder or some files to another disk, with every file verified.</p>
+  <div class="jobs" id="jobs"></div>
+  <div class="jobs-head"><h2>History</h2></div>
+  <p class="mute" id="noDone">Finished and stopped copies appear here.</p>
+  <div class="hist" id="done"></div>
+  <p><button type="button" id="moreHist" hidden>Show older copies</button></p>
+  <div class="grid resources">
     <section class="card"><h2>Memory</h2><p id="mem"></p><div class="bar"><i id="memBar"></i></div><p class="mute" id="memNote"></p></section>
     <section class="card"><h2>Buffer budget</h2><p id="buf"></p><div class="bar"><i id="bufBar"></i></div><p class="mute" id="bufNote"></p></section>
     <section class="card"><h2>Free space</h2><p id="disk"></p><p class="mute" id="diskNote"></p></section>
     <section class="card"><h2>Processor</h2><p id="cpu"></p><p class="mute" id="cpuNote"></p></section>
     <section class="card"><h2>Open files</h2><p id="files"></p><p class="mute">Pages open: <span id="pages"></span></p></section>
   </div>
-  <div class="jobs-head"><h2>Queue</h2><button class="primary" type="button" id="newBtn">New copy</button></div>
-  <div id="jobs"><p class="mute" id="noJobs">Nothing in the queue. Press New copy to copy a card, a folder or some files to another disk, with every file proven.</p></div>
-  <div class="jobs-head"><h2>History</h2></div>
-  <div id="done"><p class="mute" id="noDone">Finished and stopped copies appear here.</p></div>
-  <div id="older"></div>
-  <p><button type="button" id="moreHist" hidden>Show older copies</button></p>
   </div>
   <div id="tabSettings" class="settings" hidden>
   <section class="card"><h2>Data folder</h2><p class="path" id="data"></p><p class="mute">Temp: <span class="path" id="temp"></span></p></section>
@@ -184,7 +229,7 @@
   </section>
   <section class="card" id="history">
     <h2>Version history</h2>
-    <p class="mute">Any recent green build, or any version kept on this Mac, can be installed. It is checked the same way as an update, and the version it replaces is kept. Copies pause and continue after the restart; an older version carries on with them in its own way, and nothing already proven is lost.</p>
+    <p class="mute">Any recent green build, or any version kept on this Mac, can be installed. It is checked the same way as an update, and the version it replaces is kept. Copies pause and continue after the restart; an older version carries on with them in its own way, and nothing already verified is lost.</p>
     <div class="btns" style="display:flex;gap:8px;margin-top:8px"><button type="button" id="histLoad">Refresh list</button></div>
     <p class="mute" id="histNote"></p>
     <div class="vers" id="histList"></div>
@@ -201,6 +246,7 @@
     <div class="row"><input type="text" id="dst" placeholder="/Volumes/BACKUP_1/Day 01/A001"><button type="button" data-pick="dst">Choose…</button></div>
     <label>Proof</label>
     <div class="opt"><input type="radio" name="proof" id="pfCopy" value="copy" checked><span>Hash while copying, then read the source a second time (strongest, and best for camera cards; the source is read twice)</span></div>
+    <div class="opt"><input type="radio" name="proof" id="pfLater" value="later"><span>Copy everything first, hashed as it is read, then check every copy in a second pass (the copy read back and the source read again). Each copy keeps a temporary name until it is checked</span></div>
     <div class="opt"><input type="radio" name="proof" id="pfFirst" value="first"><span>Read the source on its own first, then copy, then read it again (equally strong, slower; the source is read three times)</span></div>
     <div class="opt"><input type="radio" name="proof" id="pfQuick" value="quick"><span>Read the source first and skip the second read (faster, weaker; not for cards you will erase)</span></div>
     <p class="mute">The source is only read, never changed. Files already at the destination are compared, never replaced.</p>
@@ -249,6 +295,7 @@ function render() {
   const s = latest; if (!s) return;
   $("ver").textContent = "v" + s.version;
   $("headline").firstChild.textContent = s.headline;
+  $("headline").classList.toggle("alarm", s.level === "bad");
   $("sub").textContent = "Running for " + ago(s.started_at) + (s.notes ? " · " + s.notes.join(" · ") : "");
   $("safe").hidden = !s.safe_mode; $("safeReason").textContent = s.safe_mode_reason || "";
   $("mem").textContent = size(s.memory.used) + " of " + size(s.memory.ceiling);
@@ -267,6 +314,7 @@ function render() {
   $("pages").textContent = s.pages.open + " of " + s.pages.max;
   $("data").textContent = s.data_dir; $("temp").textContent = s.temp_dir;
   renderJobs(s.jobs || []);
+  renderMonitor(s.jobs || []);
   if (s.update) renderUpdate(s.update, s);
 }
 function showTab(name) {
@@ -344,10 +392,21 @@ function post(url, body) {
 const rate = n => n > 0 ? size(Math.round(n)) + "/s" : "";
 
 // New copy
-$("newBtn").onclick = () => { $("newErr").textContent = ""; $("newDlg").showModal(); };
+// It opens with the source, destination and proof of the last copy, so the
+// pickers start where you were.
+$("newBtn").onclick = () => {
+  $("newErr").textContent = "";
+  const last = ((latest && latest.jobs) || []).concat(olderViews).reduce((a, v) => !a || v.created > a.created ? v : a, null);
+  if (last && !$("src").value && !$("dst").value) {
+    $("src").value = last.source; $("dst").value = last.dest;
+    $(last.hash === "later" ? "pfLater" : last.hash === "first" ? (last.s2 === "skip" ? "pfQuick" : "pfFirst") : "pfCopy").checked = true;
+  }
+  $("newDlg").showModal();
+};
 $("startBtn").onclick = () => {
   $("newErr").textContent = "";
-  post("/api/jobs", { source: $("src").value, dest: $("dst").value, only: srcOnly, hash: $("pfCopy").checked ? "copy" : "first", s2: $("pfQuick").checked ? "skip" : "now" })
+  const hash = $("pfCopy").checked ? "copy" : $("pfLater").checked ? "later" : "first";
+  post("/api/jobs", { source: $("src").value, dest: $("dst").value, only: srcOnly, hash, s2: $("pfQuick").checked ? "skip" : "now" })
     .then(() => { $("newDlg").close(); $("src").value = ""; $("dst").value = ""; setOnly([]); })
     .catch(e => $("newErr").textContent = e.message);
 };
@@ -408,7 +467,7 @@ function browse(path, keep) {
       return row;
     }));
     if (!d.folders.length && !d.error) $("pickList").replaceChildren(el("p", "mute", pickFor === "src" ? "  This folder is empty." : "  No folders inside."));
-    $("pickUp").onclick = () => browse(d.parent);
+    $("pickUp").onclick = () => browse(d.parent); $("pickUp").disabled = !!d.top;
     useLabel();
   }).catch(() => { $("pickErr").textContent = "Could not reach Shuttle Server."; });
 }
@@ -433,8 +492,9 @@ function confirmBox(title, text, yes) {
 }
 async function stopJob(v) {
   const proven = v.verified + v.identical;
-  if (!await confirmBox("Stop this copy?", proven + " files (" + size(v.bytes_proven) + ") are copied and proven and will stay. " +
-      (v.files - proven - v.failed) + " files have not been copied yet. The file being copied now is discarded.", "Stop")) return;
+  if (!await confirmBox("Stop this copy?", proven + " files (" + size(v.bytes_proven) + ") are copied and verified and will stay. " +
+      (v.copied ? v.copied + " copied files not yet checked are discarded. " : "") +
+      Math.max(0, v.files - proven - v.failed - (v.copied || 0)) + " files have not been copied yet. The file being copied now is discarded.", "Stop")) return;
   if (!await confirmBox("Really stop?", "A stopped copy cannot be resumed; you can start a new one, which skips files already there after comparing them.", "Yes, stop")) return;
   post("/api/jobs/" + v.id + "/stop").catch(e => alert(e.message));
 }
@@ -447,68 +507,129 @@ function showProblems(id) {
   });
 }
 
-// Job cards, updated in place
+// Queue and History rows, updated in place. One row per copy, like the
+// Files app: icon, source → destination, a thin bar, one status line, and
+// pause/stop. Tapping a row opens its details and its files.
 const cards = {};
 const stateText = { running: "Running", waiting: "Waiting", paused: "Paused", queued: "Queued", finished: "Finished", stopped: "Stopped" };
+const base = p => { const parts = (p || "").split("/").filter(Boolean); return parts.length ? parts[parts.length - 1] : p; };
+const passRate = v => Math.max(v.source_rate || 0, v.dest_rate || 0);
 function card(v) {
   let c = cards[v.id];
   if (!c) {
     c = document.createElement("section"); c.className = "job";
-    c.innerHTML = '<div class="top"><div><div class="route"></div><div class="mute path dest"></div></div><span class="chip"></span></div>' +
-      '<p class="when"></p><div class="big"><b class="pc"></b><span class="of"></span></div><div class="bar main"><i></i></div><p class="speed"></p>' +
-      '<p class="line"></p><div class="bar file"><i></i></div><p class="counts"></p><p class="warn same" hidden>Source and destination are on the same disk: this copy does not protect against that disk failing.</p><div class="btns"></div>';
+    c.innerHTML = '<div class="r"><span class="ico"></span><div class="m"><div class="route"><span class="s"></span><span class="arr">→</span><span class="d"></span></div>' +
+      '<div class="bar"><i></i></div><div class="sub"></div></div><div class="acts"></div></div>' +
+      '<div class="detail"><p class="path from"></p><p class="path to"></p><p class="line"></p><div class="bar file"><i></i></div><p class="speed mute"></p>' +
+      '<p class="counts mute"></p><p class="warn same" hidden>Source and destination are on the same disk: this copy does not protect against that disk failing.</p><div class="btns"></div></div>';
     cards[v.id] = c;
-    // Tapping a copy opens its files; tapping it again closes them.
+    // Tapping a copy opens its details and files; tapping it again closes them.
     c.onclick = e => {
-      if (e.target.closest("button, input, a, .files") || getSelection().toString()) return;
-      if (c._v.phase !== "scan" || c._v.state === "finished" || c._v.state === "stopped") toggleFiles(c._v, c);
+      if (e.target.closest("button, input, a, .detail") || getSelection().toString()) return;
+      const open = !c.classList.contains("open");
+      c.classList.toggle("open", open);
+      if (open !== !!fv[v.id] && (c._v.phase !== "scan" || !open)) toggleFiles(c._v, c);
     };
   }
   c._v = v;
-  c.classList.toggle("open", !!fv[v.id]);
   const q = sel => c.querySelector(sel);
-  q(".route").textContent = v.source + (v.only ? " (" + v.only + " chosen)" : ""); q(".dest").textContent = "→ " + v.dest;
   const old = v.state === "finished" || v.state === "stopped";
+  const problems = v.failed || v.s2_warnings;
   c.classList.toggle("old", old);
-  q(".when").textContent = old && v.finished ? when(v.finished) + " · took " + took(v.created, v.finished) +
-    (v.bytes ? " · " + size(v.bytes) + (secs(v.created, v.finished) >= 1 ? " at " + rate(v.bytes / secs(v.created, v.finished)) + " on average" : "") : "") : "Added " + when(v.created);
-  const chip = q(".chip"); chip.textContent = stateText[v.state] || v.state;
-  chip.className = "chip " + ((v.state === "finished" && (v.failed || v.s2_warnings)) ? "bad" : v.state);
-  let line = "";
-  if (v.state === "running" && v.phase === "scan") line = "Scanning the source — " + v.scanned + " files, " + size(v.scanned_bytes) + " so far";
-  else if (v.state === "running") line = "Now: " + v.file + " — " + v.stage + (v.file_size ? ", " + size(v.file_done) + " of " + size(v.file_size) : "");
-  else if (v.state === "waiting") line = v.reason;
-  else if (v.state === "paused") line = "Paused by you. Resume continues exactly where it stopped.";
-  else if (v.state === "queued") line = "Waiting for the copy before it to finish.";
-  else if (v.state === "finished") line = (v.failed || v.s2_warnings) ? "Finished with problems — see below." : "Finished. Every file is proven" + (v.s2 === "now" ? " twice (source read again)." : ".");
-  else line = "Stopped by you. Files already proven were kept.";
-  q(".line").textContent = line;
+  q(".s").textContent = base(v.source) + (v.only ? " (" + v.only + " chosen)" : ""); q(".s").title = v.source;
+  q(".d").textContent = base(v.dest); q(".d").title = v.dest;
+  q(".from").textContent = "From " + v.source; q(".to").textContent = "To " + v.dest;
+  // Icon: what state it is in, at a glance.
+  const ico = q(".ico");
+  const [sym, tone] = v.missing ? ["!", "bad"] : v.state === "running" ? ["⇅", ""] : v.state === "waiting" ? ["…", "warn"] :
+    v.state === "paused" ? ["❚❚", "idle"] : v.state === "queued" ? ["•", "idle"] : v.state === "stopped" ? ["■", "idle"] : problems ? ["!", "warn"] : ["✓", "ok"];
+  ico.textContent = sym; ico.className = "ico " + tone; ico.title = stateText[v.state] || v.state;
   const p = Math.round((v.progress || 0) * 1000) / 10, scanning = v.phase === "scan";
-  q(".pc").textContent = scanning ? "Scanning" : (p >= 100 || p === Math.floor(p) ? Math.floor(p) : p.toFixed(1)) + "%";
-  q(".of").textContent = scanning ? v.scanned + " files, " + size(v.scanned_bytes) + " so far" :
-    v.state !== "running" ? "" : v.eta_seconds ? left(v.eta_seconds) : "working out the time left";
-  const mb = q(".bar.main > i"); mb.style.width = (scanning ? 0 : p) + "%";
-  mb.style.background = v.state === "finished" ? (v.failed || v.s2_warnings ? "var(--warn)" : "var(--ok)") : "var(--accent)";
-  q(".speed").textContent = v.state !== "running" || scanning ? "" :
-    [rate(v.rate) && "Speed " + rate(v.rate), rate(v.source_rate) && "source disk reading " + rate(v.source_rate), rate(v.dest_rate) && "destination disk " + rate(v.dest_rate)].filter(Boolean).join(" · ") || "Measuring speed…";
+  const pc = (p >= 100 || p === Math.floor(p) ? Math.floor(p) : p.toFixed(1)) + "%";
+  const mb = q(".r .bar > i"); mb.style.width = (scanning ? 0 : p) + "%";
+  mb.style.background = v.missing ? "var(--bad)" : v.state === "running" ? "var(--accent)" :
+    v.state === "finished" ? (problems ? "var(--warn)" : "var(--ok)") : "var(--mute)";
+  // One status line.
+  const proven = v.verified + v.identical;
+  let sub = "", subCls = "sub";
+  if (v.state === "waiting") { sub = v.reason; subCls += v.missing ? " bad" : " warn"; }
+  else if (v.state === "running" && scanning) sub = "Scanning the source — " + v.scanned + " files, " + size(v.scanned_bytes) + " so far";
+  else if (v.state === "running") sub = [pc, size((v.progress || 0) * v.bytes) + " of " + size(v.bytes), v.eta_seconds ? left(v.eta_seconds) : "working out the time left", rate(v.rate)].filter(Boolean).join(" · ");
+  else if (v.state === "paused") sub = pc + " · Paused by you";
+  else if (v.state === "queued") sub = "Waiting for the copy before it to finish";
+  else if (v.state === "finished") { sub = (v.finished ? when(v.finished) + " · " : "") + took(v.created, v.finished) + " · " + size(v.bytes) +
+      (secs(v.created, v.finished) >= 1 && v.bytes ? " · " + rate(v.bytes / secs(v.created, v.finished)) + " average" : "") +
+      (problems ? " · " + (v.failed ? v.failed + " failed" : "") + (v.failed && v.s2_warnings ? ", " : "") + (v.s2_warnings ? v.s2_warnings + " source warnings" : "") : " · " + proven + " files verified");
+    if (problems) subCls += " warn"; }
+  else sub = (v.finished ? when(v.finished) + " · " : "") + "Stopped by you · " + proven + " files verified and kept";
+  q(".sub").textContent = sub; q(".sub").className = subCls;
+  // Details, shown when the row is open.
+  let line = "";
+  if (v.state === "running" && !scanning) line = "Now: " + v.file + " — " + v.stage + (v.file_size ? ", " + size(v.file_done) + " of " + size(v.file_size) : "");
+  else if (v.state === "finished") line = problems ? "Finished with problems — see the files marked Error." : "Finished. Every file is verified" + (v.s2 === "now" ? " twice (source read again)." : ".");
+  else if (v.state === "paused") line = "Paused by you. Resume continues exactly where it stopped.";
+  else if (!old && v.state !== "running") line = "Added " + when(v.created);
+  q(".line").textContent = line;
   q(".bar.file").hidden = v.state !== "running" || scanning;
   q(".bar.file > i").style.width = v.state === "running" ? pct(v.file_done, v.file_size) + "%" : "0%";
-  const proven = v.verified + v.identical;
-  q(".counts").textContent = "Proven " + proven + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
+  q(".speed").textContent = v.state !== "running" || scanning ? "" :
+    [rate(v.rate) && "Speed " + rate(v.rate), rate(v.source_rate) && "source disk reading " + rate(v.source_rate), rate(v.dest_rate) && "destination disk " + rate(v.dest_rate)].filter(Boolean).join(" · ") || "Measuring speed…";
+  q(".counts").textContent = "Verified " + proven + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
+    (v.copied ? " · copied, check to come: " + v.copied : "") +
     (v.identical ? " · " + v.identical + " were already there" : "") + (v.s2 === "now" ? " · read twice: " + v.strong : "") +
     (v.failed ? " · failed: " + v.failed : "") + (v.s2_warnings ? " · source warnings: " + v.s2_warnings : "") + (v.skipped ? " · not copied (links etc.): " + v.skipped : "");
   q(".same").hidden = !v.same_volume;
-  const btns = [];
-  const btn = (t, f, cls) => { const b = document.createElement("button"); b.type = "button"; b.textContent = t; b.onclick = f; if (cls) b.className = cls; btns.push(b); };
-  if (v.state === "running" || v.state === "waiting" || v.state === "queued") btn("Pause", () => post("/api/jobs/" + v.id + "/pause").catch(e => alert(e.message)));
-  if (v.state === "paused") btn("Resume", () => post("/api/jobs/" + v.id + "/resume").catch(e => alert(e.message)), "primary");
-  if (!["finished", "stopped"].includes(v.state)) btn("Stop…", () => stopJob(v));
-  if (v.failed || v.s2_warnings) btn("Show problems", () => showProblems(v.id));
-  const key = btns.map(b => b.textContent).join("|");
+  // Pause / resume / stop as small round buttons on the row; the rest in the details.
+  const acts = [], btns = [];
+  const btn = (list, t, f, cls, label) => { const b = document.createElement("button"); b.type = "button"; b.textContent = t; b.onclick = f; if (cls) b.className = cls; if (label) { b.title = label; b.setAttribute("aria-label", label); } list.push(b); };
+  if (v.state === "running" || v.state === "waiting" || v.state === "queued") btn(acts, "❚❚", () => post("/api/jobs/" + v.id + "/pause").catch(e => alert(e.message)), "", "Pause");
+  if (v.state === "paused") btn(acts, "▶", () => post("/api/jobs/" + v.id + "/resume").catch(e => alert(e.message)), "primary", "Resume");
+  if (!old) btn(acts, "✕", () => stopJob(v), "", "Stop…");
+  if (problems) btn(btns, "Show problems", () => showProblems(v.id));
+  const key = acts.map(b => b.title).join("|") + "/" + btns.map(b => b.textContent).join("|");
   if (fv[v.id]) { const was = fv[v.id].v.state; fv[v.id].v = v; if (was !== v.state) loadFiles(fv[v.id], false, true); }
-  if (c.dataset.btns !== key) { c.dataset.btns = key; q(".btns").replaceChildren(...btns); }
-  else { q(".btns").querySelectorAll("button").forEach((b, i) => b.onclick = btns[i].onclick); }
+  if (c.dataset.btns !== key) { c.dataset.btns = key; q(".acts").replaceChildren(...acts); q(".detail .btns").replaceChildren(...btns); }
+  else {
+    q(".acts").querySelectorAll("button").forEach((b, i) => b.onclick = acts[i].onclick);
+    q(".detail .btns").querySelectorAll("button").forEach((b, i) => b.onclick = btns[i].onclick);
+  }
   return c;
+}
+// The panel on top: the whole queue, the copy running now and its file,
+// each with the time left.
+function renderMonitor(list) {
+  const active = list.filter(v => !["finished", "stopped"].includes(v.state));
+  $("mon").hidden = !active.length;
+  if (!active.length) return;
+  const run = active.find(v => v.state === "running") || active.find(v => v.state === "waiting");
+  let total = 0, done = 0, unknown = 0;
+  active.forEach(v => { if (v.phase === "scan" || !v.bytes) unknown++; else { total += v.bytes; done += (v.progress || 0) * v.bytes; } });
+  const p = total ? done / total * 100 : 0;
+  $("monPc").textContent = (unknown && !total) ? "Scanning" : (p >= 100 ? 100 : p.toFixed(p < 10 ? 1 : 0)) + "%";
+  const r = run && run.state === "running" ? run.rate : 0;
+  const qleft = r > 0 ? (total - done) / r : 0;
+  $("monOf").textContent = [size(done) + " of " + size(total) + (unknown ? " (+" + unknown + " not measured yet)" : ""),
+    qleft ? left(qleft) + " for the whole queue" : run && run.state === "running" ? "working out the time left" : ""].filter(Boolean).join(" · ");
+  $("monBar").style.width = p + "%";
+  $("monBar").style.background = run && run.missing ? "var(--bad)" : run && run.state === "running" ? "var(--accent)" : "var(--mute)";
+  const rows = [["Queue", active.length + (active.length === 1 ? " copy" : " copies") + (run && run.state === "running" && rate(run.rate) ? " · " + rate(run.rate) : "")]];
+  if (run) {
+    const rp = Math.round((run.progress || 0) * 100);
+    rows.push(["This copy", base(run.source) + " → " + base(run.dest) + " · " + (run.phase === "scan" ? "scanning, " + run.scanned + " files so far" :
+      rp + "% · " + (run.state === "waiting" ? (run.missing ? "waiting for the disk" : "waiting") : run.eta_seconds ? left(run.eta_seconds) : "working out the time left")), run.phase === "scan" ? null : rp]);
+    if (run.state === "running" && run.file && run.phase !== "scan") {
+      const pr = passRate(run), fl = pr > 0 ? (run.file_size - run.file_done) / pr : 0;
+      rows.push(["This file", base(run.file) + " · " + run.stage.replace(/ \(.*\)$/, "") + " · " + size(run.file_done) + " of " + size(run.file_size) +
+        (fl >= 1 ? " · " + left(fl) : run.file_size ? " · almost done" : ""), pct(run.file_done, run.file_size)]);
+    }
+  }
+  const dl = $("monLines"); dl.replaceChildren();
+  rows.forEach(([k, t, bar]) => {
+    dl.append(el("dt", "", k));
+    const d = el("dd", "", t);
+    if (bar != null) { const b = el("div", "bar"), i = el("i"); i.style.width = bar + "%"; i.style.background = $("monBar").style.background; b.append(i); d.append(b); }
+    dl.append(d);
+  });
 }
 let updKey = "";
 function renderUpdate(u, s) {
@@ -544,9 +665,9 @@ function renderUpdate(u, s) {
   btn("Restart Shuttle", async () => {
     if (!running || await confirmBox("Restart now?", "The running copy pauses where it is and continues after the restart.", "Restart")) post("/api/restart").catch(e => alert(e.message));
   });
-  btn("Quit Shuttle", async () => {
-    if (await confirmBox("Quit Shuttle Server?", (running ? "The running copy pauses where it is and continues next time. " : "") +
-        "This page stops working until you start Shuttle again (Cmd-Space, then Shuttle Server).", "Quit")) post("/api/quit").catch(e => alert(e.message));
+  btn("Stop Shuttle", async () => {
+    if (await confirmBox("Stop Shuttle Server?", (running ? "The running copy pauses where it is and continues next time. " : "") +
+        "This page stops working until you start Shuttle again (Cmd-Space, then Shuttle Server).", "Stop")) post("/api/quit").catch(e => alert(e.message));
   });
   const key = btns.map(b => b.textContent).join("|") + running;
   if (updKey !== key) { updKey = key; $("updBtns").replaceChildren(...btns); }
@@ -564,52 +685,57 @@ function place(box, want, keep) {
   want.forEach((c, i) => { if (box.children[i + keep] !== c) box.insertBefore(c, box.children[i + keep] || null); });
   while (box.children.length > want.length + keep) box.lastChild.remove();
 }
-let shownDone = 0;
+let olderViews = [];
 function renderJobs(list) {
-  const active = list.filter(v => v.state !== "finished" && v.state !== "stopped");
-  const done = list.filter(v => v.state === "finished" || v.state === "stopped");
-  $("noJobs").hidden = active.length > 0; $("noDone").hidden = done.length > 0 || $("older").childElementCount > 0;
-  place($("jobs"), active.map(card), 1);
-  place($("done"), done.map(card), 1);
-  shownDone = done.length;
+  // The queue in the order it runs (oldest first); history newest first.
+  const active = list.filter(v => v.state !== "finished" && v.state !== "stopped").sort((a, b) => a.created < b.created ? -1 : 1);
+  const ids = new Set(list.map(v => v.id));
+  const done = list.filter(v => v.state === "finished" || v.state === "stopped").concat(olderViews.filter(v => !ids.has(v.id)));
+  $("noJobs").hidden = active.length > 0; $("noDone").hidden = done.length > 0;
+  place($("jobs"), active.map(card), 0);
+  place($("done"), done.map(card), 0);
   $("moreHist").hidden = done.length < 20 || $("moreHist").dataset.end === "1";
 }
 $("moreHist").onclick = () => {
-  const skip = shownDone + $("older").childElementCount;
+  const skip = ((latest && latest.jobs) || []).filter(v => v.state === "finished" || v.state === "stopped").length + olderViews.length;
   fetch("/api/history?skip=" + skip).then(r => r.json()).then(list => {
-    list.forEach(v => $("older").append(card(v)));
-    if (list.length < 20) { $("moreHist").dataset.end = "1"; $("moreHist").hidden = true; }
+    olderViews = olderViews.concat(list);
+    if (list.length < 20) { $("moreHist").dataset.end = "1"; }
+    if (latest) renderJobs(latest.jobs || []);
   });
 };
 
 // Files of one copy: filters, paged rows, the file being worked on with its
 // own bar. Refreshed every 2 s while the copy runs and the page is visible.
 const fv = {};
-const fileLabel = { waiting: "Waiting", proven: "Proven", strong: "Proven · read twice", failed: "Failed", warning: "Source warning" };
-const fileChip = { proven: "ok", strong: "ok", failed: "bad", warning: "waiting", working: "running" };
+const fileLabel = { waiting: "Waiting", proven: "Verified", strong: "Verified · read twice", failed: "Error", warning: "Source warning", copied: "Copied · check to come" };
+const fileChip = { proven: "ok", strong: "ok", failed: "bad", warning: "waiting", working: "running", copied: "running" };
 function toggleFiles(v, c) {
-  if (fv[v.id]) { fv[v.id].box.remove(); delete fv[v.id]; card(v); return; }
+  if (fv[v.id]) { fv[v.id].box.remove(); delete fv[v.id]; return; }
   const box = el("div", "files");
   const f = fv[v.id] = { v, box, filter: v.failed || v.s2_warnings ? "problems" : "all", rows: [], next: -1, busy: false };
   const bar = el("div", "filters");
-  [["all", "All"], ["todo", "Still to do"], ["done", "Done"], ["problems", "Problems"]].forEach(([k, t]) => {
-    const b = el("button", "", t); b.type = "button"; b.dataset.f = k;
+  [["all", "All"], ["todo", "In progress"], ["done", "Verified"], ["problems", "Error"]].forEach(([k, t]) => {
+    const b = el("button", "", t + " "); b.type = "button"; b.dataset.f = k; b.append(el("span", "n", ""));
     b.onclick = () => { f.filter = k; loadFiles(f, false); }; bar.append(b);
   });
   const more = el("button", "", "Show more"); more.type = "button"; more.onclick = () => loadFiles(f, true);
   box.append(bar, el("div", "frows"), el("p", "mute note"), more);
-  c.append(box); card(v); loadFiles(f, false);
+  c.querySelector(".detail").append(box); loadFiles(f, false);
 }
 function loadFiles(f, append, refresh) {
   if (f.busy) return; f.busy = true;
   const from = append ? f.next : 0, limit = refresh ? Math.min(200, Math.max(50, f.rows.length)) : 50;
   fetch("/api/jobs/" + f.v.id + "/files?filter=" + f.filter + "&from=" + from + "&limit=" + limit).then(r => r.json()).then(p => {
-    f.rows = append ? f.rows.concat(p.rows || []) : (p.rows || []); f.next = p.next;
+    f.rows = append ? f.rows.concat(p.rows || []) : (p.rows || []); f.next = p.next; f.counts = p.counts;
     drawFiles(f, p.note);
   }).catch(() => {}).finally(() => { f.busy = false; });
 }
 function drawFiles(f, note) {
-  f.box.querySelectorAll(".filters button").forEach(b => b.setAttribute("aria-pressed", b.dataset.f === f.filter));
+  f.box.querySelectorAll(".filters button").forEach(b => {
+    b.setAttribute("aria-pressed", b.dataset.f === f.filter);
+    b.querySelector(".n").textContent = f.counts && f.counts[b.dataset.f] != null ? "(" + f.counts[b.dataset.f] + ")" : "";
+  });
   f.box.querySelector(".frows").replaceChildren(...f.rows.map(r => {
     const row = el("div", "frow"), t = el("div", "t");
     row.tabIndex = 0; row.onclick = () => fileInfo(f.v.id, r.i); row.onkeydown = e => { if (e.key === "Enter") row.onclick(); };

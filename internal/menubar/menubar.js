@@ -51,11 +51,11 @@ function run(argv) {
   const head = add('Shuttle Server — starting', null);
   const line = add('', null);
   menu.addItem($.NSMenuItem.separatorItem);
-  add('Open Shuttle page', 'openPage:');
+  add('Open Shuttle', 'openPage:');
   const upd = add('Check for updates', 'updateAction:');
   menu.addItem($.NSMenuItem.separatorItem);
-  add('Restart Shuttle Server', 'restartServer:');
-  add('Quit Shuttle Server', 'quitServer:');
+  add('Restart Shuttle', 'restartServer:');
+  add('Stop Shuttle', 'quitServer:');
   item.menu = menu;
 
   const icons = {

@@ -289,13 +289,13 @@ func Run(opts Options) (code int) {
 		case active != nil && active.Phase == "scan":
 			st.Headline, ok = fmt.Sprintf("Scanning the source — %d files so far", active.Scanned), true
 		case active != nil:
-			st.Headline, ok = fmt.Sprintf("Copying — %d of %d files proven", active.Verified+active.Identical, active.Files), true
+			st.Headline, ok = fmt.Sprintf("Copying — %d of %d files verified", active.Verified+active.Identical, active.Files), true
 		default:
 			st.Headline, ok = idleHeadline, true
 		}
 		st.Level = "warn"
 		switch {
-		case safe:
+		case safe, active != nil && active.Missing != "":
 			st.Level = "bad"
 		case ok:
 			st.Level = "ok"

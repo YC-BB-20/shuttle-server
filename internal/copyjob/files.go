@@ -52,18 +52,36 @@ func (j *Job) hashFile(ctx context.Context, e env, d *diskio.Disk, path string, 
 	return j.hashFileOpt(ctx, e, d, path, idx, stage, isSrc, true)
 }
 
+// gone reports whether a disk went away, or the folder the copy reads from
+// or writes to vanished with it: then a file that cannot be opened is a
+// shared problem (the copy waits), not a failure of that file.
+func (j *Job) gone(d *diskio.Disk, isSrc bool) bool {
+	if !diskio.Present(d) {
+		return true
+	}
+	root := j.st.Spec.Dest
+	if isSrc {
+		root = j.st.Spec.Source
+	}
+	_, err := os.Stat(root)
+	return err != nil
+}
+
 // hashFileOpt is hashFile; show=false keeps it off the progress line (the
 // next file's S1, read in parallel).
 func (j *Job) hashFileOpt(ctx context.Context, e env, d *diskio.Disk, path string, idx int, stage string, isSrc, show bool) (xxh3.Hash, error) {
 	size, mtime, err := statSM(path)
 	if err != nil {
-		if isSrc && !diskio.Present(d) {
+		if j.gone(d, isSrc) {
 			return xxh3.Hash{}, diskio.ErrGone
 		}
 		return xxh3.Hash{}, perFile("could not read: %v", err)
 	}
 	f, err := diskio.OpenRead(path)
 	if err != nil {
+		if j.gone(d, isSrc) {
+			return xxh3.Hash{}, diskio.ErrGone
+		}
 		return xxh3.Hash{}, perFile("could not open: %v", err)
 	}
 	defer f.Close()
@@ -130,6 +148,9 @@ func (j *Job) hashFileOpt(ctx context.Context, e env, d *diskio.Disk, path strin
 		}
 	}
 	if s2, m2, err := statSM(path); err != nil || s2 != size || m2 != mtime {
+		if err != nil && j.gone(d, isSrc) {
+			return xxh3.Hash{}, diskio.ErrGone
+		}
 		return xxh3.Hash{}, perFile("changed while being read")
 	}
 	return h.Sum128(), nil
@@ -143,7 +164,7 @@ func (j *Job) hashFileOpt(ctx context.Context, e env, d *diskio.Disk, path strin
 func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int, hs *xxh3.Hasher) error {
 	size, mtime, err := statSM(src)
 	if err != nil {
-		if !diskio.Present(e.src) {
+		if j.gone(e.src, true) {
 			return diskio.ErrGone
 		}
 		return perFile("could not read: %v", err)
@@ -171,6 +192,9 @@ func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int, hs 
 	}
 	in, err := diskio.OpenRead(src)
 	if err != nil {
+		if j.gone(e.src, true) {
+			return diskio.ErrGone
+		}
 		return perFile("could not open: %v", err)
 	}
 	defer in.Close()
@@ -339,6 +363,9 @@ func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int, hs 
 	}
 	if hs != nil {
 		if s2, m2, err := statSM(src); err != nil || s2 != size || m2 != mtime {
+			if err != nil && j.gone(e.src, true) {
+				return diskio.ErrGone
+			}
 			return perFile("changed while being read")
 		}
 		if size-off >= CheckpointEvery {

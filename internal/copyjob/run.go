@@ -149,6 +149,35 @@ func (j *Job) copyPhase(ctx context.Context, e env, jr *Journal, accepting func(
 		j.dropCheckpoints(en.I)
 	}
 
+	if j.st.Spec.checkLater() {
+		for cur := nextPending(); cur != nil; cur = nextPending() {
+			if !accepting() {
+				return waitErr{"Waiting for memory to free up"}
+			}
+			j.setLive(func(l *live) { l.file = cur.P })
+			began := time.Now()
+			recs, err := j.copyOnly(ctx, e, cur, src.Path(cur.P), filepath.Join(dst, filepath.FromSlash(cur.P)))
+			if err != nil {
+				if !isFileErr(err) {
+					return err
+				}
+				fail(cur, err)
+				continue
+			}
+			if len(recs) > 0 {
+				recs[0].Ms = time.Since(began).Milliseconds()
+			}
+			for _, r := range recs {
+				jr.Append(r)
+				j.mu.Lock()
+				j.apply(r)
+				j.mu.Unlock()
+			}
+			j.dropCheckpoints(cur.I)
+		}
+		return nil
+	}
+
 	if j.st.Spec.hashDuringCopy() {
 		for cur := nextPending(); cur != nil; cur = nextPending() {
 			if !accepting() {
@@ -156,7 +185,7 @@ func (j *Job) copyPhase(ctx context.Context, e env, jr *Journal, accepting func(
 			}
 			j.setLive(func(l *live) { l.file = cur.P })
 			began := time.Now()
-			recs, err := j.oneFileHashed(ctx, e, cur, src.Path(cur.P), filepath.Join(dst, filepath.FromSlash(cur.P)))
+			recs, err := j.oneFileHashed(ctx, e, cur, src.Path(cur.P), filepath.Join(dst, filepath.FromSlash(cur.P)), "")
 			if err != nil {
 				if !isFileErr(err) {
 					return err
@@ -331,9 +360,18 @@ func (j *Job) oneFile(ctx context.Context, e env, en *entry, srcPath, final stri
 // differs because the source itself has changed since, as a proven copy of
 // what was read, with a warning. Anything else is tried once more, then
 // kept aside under a plain name; nothing is deleted.
-func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, final string) ([]Rec, error) {
+//
+// copied is the C hash of a copy already made by the copy pass of the
+// copy-then-check scheme; then the first attempt only checks it.
+func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, final, copied string) ([]Rec, error) {
 	rec := Rec{I: en.I, N: en.S}
-	if _, err := os.Lstat(final); err == nil {
+	tmp := tempName(final)
+	if copied != "" {
+		if fi, err := os.Stat(tmp); err != nil || fi.Size() != en.S {
+			copied = "" // the copy is not there as it was left: copy it again
+		}
+	}
+	if _, err := os.Lstat(final); err == nil && copied == "" {
 		// Never overwrite: compare what is there instead. S2 follows in s2Phase.
 		j.setLive(func(l *live) { l.stage = "Reading the source (S1)" })
 		s1, err := j.hashFile(ctx, e, e.src, srcPath, en.I, "s1", true)
@@ -351,21 +389,25 @@ func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, fina
 		rec.St, rec.S1, rec.D1 = "identical", s1.String(), d1.String()
 		return []Rec{rec}, nil
 	}
-	tmp := tempName(final)
 	why := ""
 	for attempt := 0; attempt < 2; attempt++ {
 		if attempt > 0 {
 			j.dropCheckpoints(en.I)
 		}
-		hs := xxh3.New()
-		j.setLive(func(l *live) { l.stage = "Copying (the source is hashed as it is read)" })
-		if err := j.copyFile(ctx, e, srcPath, tmp, en.I, hs); err != nil {
-			if errors.Is(err, errNoSpace) {
-				return nil, waitErr{"Waiting for free space on the destination"}
+		var c string
+		if attempt == 0 && copied != "" {
+			c = copied
+		} else {
+			hs := xxh3.New()
+			j.setLive(func(l *live) { l.stage = "Copying (the source is hashed as it is read)" })
+			if err := j.copyFile(ctx, e, srcPath, tmp, en.I, hs); err != nil {
+				if errors.Is(err, errNoSpace) {
+					return nil, waitErr{"Waiting for free space on the destination"}
+				}
+				return nil, err
 			}
-			return nil, err
+			c = hs.Sum128().String()
 		}
-		c := hs.Sum128()
 
 		s2ch := make(chan hashRes, 1)
 		go func() {
@@ -374,7 +416,7 @@ func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, fina
 		}()
 		j.setLive(func(l *live) { l.stage = "Reading back the copy (D1) and the source again (S2)" })
 		d1, err := j.hashFile(ctx, e, e.dst, tmp, en.I, "d1", false)
-		if err == nil && d1 != c {
+		if err == nil && d1.String() != c {
 			// Read the destination once more before believing it.
 			j.dropCheckpoint(en.I, "d1")
 			j.setLive(func(l *live) { l.stage = "Reading back the copy again" })
@@ -387,11 +429,11 @@ func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, fina
 		if s2.err != nil && !isFileErr(s2.err) {
 			return nil, s2.err
 		}
-		if d1 != c {
+		if d1.String() != c {
 			why = "the copy does not match what was read from the source"
 			continue
 		}
-		rec.C, rec.D1 = c.String(), d1.String()
+		rec.C, rec.D1 = c, d1.String()
 		if s2.err == nil && s2.h == d1 {
 			if err := j.placeProven(tmp, final, en); err != nil {
 				return nil, err
@@ -417,6 +459,89 @@ func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, fina
 	kept := placeFailed(tmp, final)
 	j.setLive(func(l *live) { l.temp = "" })
 	return nil, perFile("%s, after two attempts; the last copy was kept as %s", why, filepath.Base(kept))
+}
+
+// copyOnly is the copy pass of the copy-then-check scheme: the file is
+// copied under its temporary name while the bytes read are hashed (C), and
+// flushed. D1 and S2 follow in checkPhase; it gets its real name only there.
+// A file already at the destination is compared as in the other schemes.
+func (j *Job) copyOnly(ctx context.Context, e env, en *entry, srcPath, final string) ([]Rec, error) {
+	if _, err := os.Lstat(final); err == nil {
+		return j.oneFileHashed(ctx, e, en, srcPath, final, "")
+	}
+	tmp := tempName(final)
+	hs := xxh3.New()
+	j.setLive(func(l *live) { l.stage = "Copying (the source is hashed as it is read)" })
+	if err := j.copyFile(ctx, e, srcPath, tmp, en.I, hs); err != nil {
+		if errors.Is(err, errNoSpace) {
+			return nil, waitErr{"Waiting for free space on the destination"}
+		}
+		return nil, err
+	}
+	j.setLive(func(l *live) { l.temp = "" }) // kept for the check pass; a Stop removes it (finishStopped)
+	return []Rec{{I: en.I, N: en.S, St: "copied", C: hs.Sum128().String()}}, nil
+}
+
+// checkPhase is the second pass of the copy-then-check scheme: each copy is
+// read back (D1) while its source is read again (S2), and named once all
+// three agree. A copy that does not match is copied once more.
+func (j *Job) checkPhase(ctx context.Context, e env, jr *Journal, accepting func() bool) error {
+	if j.st.CheckEnd == 0 {
+		jr.Flush()
+		j.mu.Lock()
+		j.st.CheckEnd = jr.Size()
+		j.mu.Unlock()
+		j.save()
+	}
+	it, err := openManifest(j.path("manifest.jsonl"))
+	if err != nil {
+		return err
+	}
+	defer it.Close()
+	src, dst := j.source(), j.st.Spec.Dest
+	var stop error
+	ReadJournal(j.path("journal.log"), j.st.CheckEnd, func(r Rec) bool {
+		j.mu.Lock()
+		todo := r.St == "copied" && r.I < len(j.status) && j.status[r.I] == stCopied
+		j.mu.Unlock()
+		if !todo {
+			return true
+		}
+		for it.E.I < r.I || it.E.P == "" {
+			if !it.Next() {
+				stop = errors.New("manifest ended early")
+				return false
+			}
+		}
+		if it.E.I != r.I {
+			return true
+		}
+		if !accepting() {
+			stop = waitErr{"Waiting for memory to free up"}
+			return false
+		}
+		en := it.E
+		j.setLive(func(l *live) { l.file = en.P })
+		began := time.Now()
+		recs, err := j.oneFileHashed(ctx, e, &en, src.Path(en.P), filepath.Join(dst, filepath.FromSlash(en.P)), r.C)
+		if err != nil {
+			if !isFileErr(err) {
+				stop = err
+				return false
+			}
+			recs = []Rec{{I: en.I, St: "failed", N: en.S, P: en.P, Err: err.Error()}}
+		}
+		recs[0].Ms = time.Since(began).Milliseconds()
+		for _, out := range recs {
+			jr.Append(out)
+			j.mu.Lock()
+			j.apply(out)
+			j.mu.Unlock()
+		}
+		j.dropCheckpoints(en.I)
+		return true
+	})
+	return stop
 }
 
 // placeProven gives a proven copy its real name and modified time.
@@ -507,6 +632,19 @@ func (j *Job) run(ctx context.Context, e env, accepting func() bool) error {
 	defer jr.Close()
 	if j.st.Phase == "copy" {
 		if err := j.copyPhase(ctx, e, jr, accepting); err != nil {
+			return err
+		}
+		jr.Flush()
+		j.mu.Lock()
+		j.st.Phase = "s2"
+		if j.st.Spec.checkLater() {
+			j.st.Phase = "check"
+		}
+		j.mu.Unlock()
+		j.save()
+	}
+	if j.st.Phase == "check" {
+		if err := j.checkPhase(ctx, e, jr, accepting); err != nil {
 			return err
 		}
 		jr.Flush()

@@ -103,6 +103,7 @@ func TestCommandsNeedTheShuttleHeader(t *testing.T) {
 func TestBrowseListsFolders(t *testing.T) {
 	s, _ := newTest()
 	dir := t.TempDir()
+	t.Setenv("HOME", filepath.Dir(dir))
 	os.MkdirAll(dir+"/Card A", 0o700)
 	os.MkdirAll(dir+"/.hidden", 0o700)
 	req := httptest.NewRequest("GET", "/api/browse?path="+url.QueryEscape(dir), nil)
@@ -117,10 +118,12 @@ func TestBrowseListsFolders(t *testing.T) {
 func TestBrowseFilesCrumbsAndPlaces(t *testing.T) {
 	s, _ := newTest()
 	dir := t.TempDir()
+	home := filepath.Dir(dir)
+	t.Setenv("HOME", home)
 	os.MkdirAll(dir+"/Card A", 0o700)
 	os.WriteFile(dir+"/clip.mov", []byte("1234"), 0o600)
-	get := func(q string) map[string]any {
-		req := httptest.NewRequest("GET", "/api/browse?path="+url.QueryEscape(dir)+q, nil)
+	getAt := func(at, q string) map[string]any {
+		req := httptest.NewRequest("GET", "/api/browse?path="+url.QueryEscape(at)+q, nil)
 		req.Host = "localhost"
 		rec := httptest.NewRecorder()
 		s.HTTP().Handler.ServeHTTP(rec, req)
@@ -130,6 +133,7 @@ func TestBrowseFilesCrumbsAndPlaces(t *testing.T) {
 		}
 		return out
 	}
+	get := func(q string) map[string]any { return getAt(dir, q) }
 	if strings.Contains(fmt.Sprint(get("")["folders"]), "clip.mov") {
 		t.Fatal("files listed without being asked for")
 	}
@@ -139,12 +143,18 @@ func TestBrowseFilesCrumbsAndPlaces(t *testing.T) {
 	}
 	cr := d["crumbs"].([]any)
 	last := cr[len(cr)-1].(map[string]any)
-	if cr[0].(map[string]any)["path"] != "/" || last["path"] != dir || last["name"] != filepath.Base(dir) {
+	if cr[0].(map[string]any)["path"] != home || last["path"] != dir || last["name"] != filepath.Base(dir) {
 		t.Fatalf("crumbs %v", cr)
 	}
 	pl := d["places"].([]any)
-	if pl[0].(map[string]any)["kind"] != "home" || pl[1].(map[string]any)["kind"] != "internal" {
+	if pl[0].(map[string]any)["kind"] != "internal" || pl[0].(map[string]any)["path"] != home {
 		t.Fatalf("places %v", pl)
+	}
+	// The system's folders above home are never shown: "/" opens home.
+	for _, at := range []string{"/", "/etc", filepath.Dir(home)} {
+		if d := getAt(at, ""); d["path"] != home || d["top"] != true || d["parent"] != home {
+			t.Fatalf("%s: %v", at, d)
+		}
 	}
 }
 

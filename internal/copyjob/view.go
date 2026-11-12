@@ -21,6 +21,7 @@ type View struct {
 	Finished   time.Time `json:"finished,omitzero"`
 	State      string    `json:"state"` // running, waiting, paused, queued, finished, stopped
 	Reason     string    `json:"reason,omitempty"`
+	Missing    string    `json:"missing,omitempty"` // source, destination or both: a disk is not connected
 	Phase      string    `json:"phase"`
 	Stage      string    `json:"stage,omitempty"`
 	File       string    `json:"file,omitempty"`
@@ -36,6 +37,7 @@ type View struct {
 	Strong     int       `json:"strong"`
 	S2Warn     int       `json:"s2_warnings"`
 	Proven     int64     `json:"bytes_proven"`
+	Copied     int       `json:"copied,omitempty"` // copy-then-check: copied, waiting for the check pass
 	Skipped    int       `json:"skipped"`
 	SameVolume bool      `json:"same_volume"`
 	SrcRate    int64     `json:"source_rate"`
@@ -72,6 +74,13 @@ func progress(st state, c counts, l live) float64 {
 	size, done := float64(l.size), float64(l.done)
 	has := func(p string) bool { return strings.HasPrefix(l.stage, p) }
 	var part float64
+	if st.Spec.checkLater() {
+		// The copy pass is the first half of the work, the check pass the second.
+		if has("Copying") || has("Reading the source (S1)") || has("Reading back") || has("Checking") {
+			part = done / 2
+		}
+		return min(1, (float64(c.BytesCopied)+float64(c.BytesProven))/2/float64(st.Bytes)+part/float64(st.Bytes))
+	}
 	if st.Spec.hashDuringCopy() {
 		switch {
 		case has("Copying"), has("Reading the source (S1)"):
@@ -143,7 +152,7 @@ func (m *Manager) Views() []View {
 			}
 			m.mu.Unlock()
 		case l.reason != "":
-			v.State, v.Reason = "waiting", l.reason
+			v.State, v.Reason, v.Missing = "waiting", l.reason, l.missing
 		default:
 			v.State = "queued"
 		}
@@ -165,7 +174,7 @@ func baseView(j *Job) (View, state, live) {
 	j.mu.Unlock()
 	v := View{ID: st.ID, Source: st.Spec.Source, Dest: st.Spec.Dest, S2: st.Spec.S2, Hash: st.Spec.Hash, Only: len(st.Spec.Only),
 		Created: st.Created, Finished: st.Finished, Phase: st.Phase, Files: st.Files, Bytes: st.Bytes, Skipped: st.Skipped,
-		Verified: c.Verified, Identical: c.Identical, Failed: c.Failed, Strong: c.Strong, S2Warn: c.S2Warn,
+		Verified: c.Verified, Identical: c.Identical, Failed: c.Failed, Strong: c.Strong, S2Warn: c.S2Warn, Copied: c.Copied,
 		Proven: c.BytesProven, SameVolume: st.SameVolume, Scanned: l.scanned, ScannedB: l.scannedBytes,
 		Progress: progress(st, c, l)}
 	if st.Phase == "done" && st.Choice == "stopped" {
@@ -244,6 +253,8 @@ type FilePage struct {
 	Rows []FileRow `json:"rows"`
 	Next int       `json:"next"`
 	Note string    `json:"note,omitempty"`
+	// Counts holds how many files each filter shows: all, todo, done, problems.
+	Counts map[string]int `json:"counts"`
 }
 
 // MaxFilePage bounds one page of the file list.
@@ -263,6 +274,8 @@ func rowStatus(st byte) string {
 		return "failed"
 	case stS2Warn:
 		return "warning"
+	case stCopied:
+		return "copied"
 	}
 	return "waiting"
 }
@@ -270,7 +283,7 @@ func rowStatus(st byte) string {
 func filterOK(filter, status string) bool {
 	switch filter {
 	case "todo":
-		return status == "waiting" || status == "working"
+		return status == "waiting" || status == "working" || status == "copied"
 	case "done":
 		return status == "proven" || status == "strong"
 	case "problems":
@@ -293,6 +306,14 @@ func (m *Manager) Files(id, filter string, from, limit int) (FilePage, error) {
 	}
 	j.mu.Lock()
 	phase, l := j.st.Phase, j.live
+	page.Counts = map[string]int{"all": len(j.status), "todo": 0, "done": 0, "problems": 0}
+	for _, st := range j.status { // the compact table: a byte per file, no disk read
+		for _, f := range []string{"todo", "done", "problems"} {
+			if filterOK(f, rowStatus(st)) {
+				page.Counts[f]++
+			}
+		}
+	}
 	j.mu.Unlock()
 	if phase == "scan" {
 		page.Note = "The source is still being scanned; the file list appears when the scan finishes."
@@ -378,10 +399,11 @@ type FileInfo struct {
 const maxEvents = 50
 
 var eventText = map[string]string{
-	"strong":     "Copied and proven: the copy read back and the source read a second time both match",
-	"verified":   "Copied and proven: the copy read back matches the source",
+	"strong":     "Copied and verified: the copy read back and the source read a second time both match",
+	"verified":   "Copied and verified: the copy read back matches the source",
 	"identical":  "Already at the destination; compared and identical, left untouched",
 	"failed":     "Failed",
+	"copied":     "Copied and hashed as it was read; the check (copy read back, source read again) comes in the second pass",
 	"s2ok":       "Source read a second time: matches",
 	"s2changed":  "Source read a second time: the source had changed after the copy",
 	"s2unstable": "Source read a second time: it read differently",
@@ -467,9 +489,11 @@ func (m *Manager) FileInfo(id string, i int) (FileInfo, error) {
 			fi.Proof += "; the second source read is still to come"
 		}
 	case "failed":
-		fi.Proof = "None: this file is not proven"
+		fi.Proof = "None: this file is not verified"
 	case "warning":
 		fi.Proof = "Verified against what was read, with a warning about the source"
+	case "copied":
+		fi.Proof = "Not yet: copied, waiting for the check pass; it keeps a temporary name until then"
 	default:
 		fi.Proof = "Not yet: this file has not been copied"
 	}

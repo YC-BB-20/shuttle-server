@@ -96,13 +96,14 @@ func rootName() string {
 	return "This computer"
 }
 
-// places lists Home, the computer's own disk and every connected disk and
-// network server. A folder left behind by an unplugged disk is not a mount
-// point and is not listed.
+// places lists the computer's own disk and every connected disk and network
+// server. The computer's own disk opens at the home folder: the system's
+// folders above it are never shown. A folder left behind by an unplugged
+// disk is not a mount point and is not listed.
 func places() []Place {
 	home, _ := os.UserHomeDir()
-	out := []Place{{Name: "Home", Path: home, Kind: "home"}}
-	internal := Place{Name: rootName(), Path: "/", Kind: "internal"}
+	internal := Place{Name: rootName(), Path: home, Kind: "internal"}
+	out := []Place{}
 	if v, ok, _ := volume("/", 2*time.Second); ok {
 		internal.Free, internal.Total = v.Free, v.Total
 	}
@@ -139,9 +140,11 @@ func places() []Place {
 	return out
 }
 
-// crumbs splits a path into buttons, starting at the disk it is on.
+// crumbs splits a path into buttons, starting at the disk it is on; on the
+// computer's own disk, at the home folder.
 func crumbs(p string, pl []Place) []Folder {
-	root := Folder{Name: rootName(), Path: "/"}
+	home, _ := os.UserHomeDir()
+	root := Folder{Name: rootName(), Path: home}
 	for _, x := range pl {
 		if (x.Kind == "disk" || x.Kind == "server") && (p == x.Path || strings.HasPrefix(p, x.Path+"/")) && len(x.Path) > len(root.Path) {
 			root = Folder{Name: x.Name, Path: x.Path}
@@ -173,8 +176,22 @@ func (s *Server) browse(w http.ResponseWriter, r *http.Request) {
 	if !filepath.IsAbs(p) {
 		p = filepath.Join(home, p)
 	}
+	onDisk, top := false, p == home
+	for _, x := range pl {
+		if x.Kind == "disk" || x.Kind == "server" {
+			onDisk = onDisk || p == x.Path || strings.HasPrefix(p, x.Path+"/")
+			top = top || p == x.Path
+		}
+	}
+	if !onDisk && p != home && !strings.HasPrefix(p, home+"/") {
+		p, top = home, true // the system's folders are not shown
+	}
+	parent := filepath.Dir(p)
+	if top {
+		parent = p
+	}
 	withFiles := r.URL.Query().Get("files") == "1"
-	out := map[string]any{"path": p, "parent": filepath.Dir(p), "places": pl, "crumbs": crumbs(p, pl), "folders": []Folder{}}
+	out := map[string]any{"path": p, "parent": parent, "top": top, "places": pl, "crumbs": crumbs(p, pl), "folders": []Folder{}}
 	if v, ok, _ := volume(p, 2*time.Second); ok && v.Network {
 		out["note"] = "This is a network server. Copies to or from network servers come later."
 	}
