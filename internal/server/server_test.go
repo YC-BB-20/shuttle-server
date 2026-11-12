@@ -2,10 +2,13 @@ package server
 
 import (
 	"bufio"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -108,5 +111,47 @@ func TestBrowseListsFolders(t *testing.T) {
 	s.HTTP().Handler.ServeHTTP(rec, req)
 	if !strings.Contains(rec.Body.String(), "Card A") || strings.Contains(rec.Body.String(), ".hidden") {
 		t.Fatal(rec.Body.String())
+	}
+}
+
+func TestBrowseFilesCrumbsAndPlaces(t *testing.T) {
+	s, _ := newTest()
+	dir := t.TempDir()
+	os.MkdirAll(dir+"/Card A", 0o700)
+	os.WriteFile(dir+"/clip.mov", []byte("1234"), 0o600)
+	get := func(q string) map[string]any {
+		req := httptest.NewRequest("GET", "/api/browse?path="+url.QueryEscape(dir)+q, nil)
+		req.Host = "localhost"
+		rec := httptest.NewRecorder()
+		s.HTTP().Handler.ServeHTTP(rec, req)
+		var out map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	if strings.Contains(fmt.Sprint(get("")["folders"]), "clip.mov") {
+		t.Fatal("files listed without being asked for")
+	}
+	d := get("&files=1")
+	if !strings.Contains(fmt.Sprint(d["folders"]), "clip.mov") {
+		t.Fatal("file not listed")
+	}
+	cr := d["crumbs"].([]any)
+	last := cr[len(cr)-1].(map[string]any)
+	if cr[0].(map[string]any)["path"] != "/" || last["path"] != dir || last["name"] != filepath.Base(dir) {
+		t.Fatalf("crumbs %v", cr)
+	}
+	pl := d["places"].([]any)
+	if pl[0].(map[string]any)["kind"] != "home" || pl[1].(map[string]any)["kind"] != "internal" {
+		t.Fatalf("places %v", pl)
+	}
+}
+
+func TestCrumbsStartAtTheDisk(t *testing.T) {
+	cr := crumbs("/Volumes/BCLOUD/Day 1/A001", []Place{{Name: "Home", Path: "/Users/bb", Kind: "home"},
+		{Name: "BCLOUD", Path: "/Volumes/BCLOUD", Kind: "disk"}})
+	if len(cr) != 3 || cr[0].Name != "BCLOUD" || cr[1].Path != "/Volumes/BCLOUD/Day 1" || cr[2].Name != "A001" {
+		t.Fatalf("%+v", cr)
 	}
 }

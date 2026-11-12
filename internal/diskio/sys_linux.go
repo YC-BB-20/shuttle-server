@@ -24,33 +24,36 @@ func volumeOf(p string) (Volume, error) {
 	if err := syscall.Statfs(p, &st); err != nil {
 		return Volume{}, err
 	}
-	mount := mountPoint(p)
+	mount, typ := mountPoint(p)
+	const stRdonly = 0x1
 	return Volume{ID: fmt.Sprintf("%x:%x:%s", st.Fsid.X__val[0], st.Fsid.X__val[1], mount), Mount: mount,
-		Name: filepath.Base(mount), Free: uint64(st.Bavail) * uint64(st.Bsize)}, nil
+		Name: filepath.Base(mount), Free: uint64(st.Bavail) * uint64(st.Bsize), Total: uint64(st.Blocks) * uint64(st.Bsize),
+		Type: typ, ReadOnly: st.Flags&stRdonly != 0, Network: networkTypes[typ]}, nil
 }
 
-// mountPoint is the longest mount in /proc/self/mounts that contains p.
-func mountPoint(p string) string {
+// mountPoint is the longest mount in /proc/self/mounts that contains p, and
+// its file system type.
+func mountPoint(p string) (string, string) {
 	abs, _ := filepath.Abs(p)
 	if r, err := filepath.EvalSymlinks(abs); err == nil {
 		abs = r
 	}
-	best := "/"
+	best, typ := "/", ""
 	f, err := os.Open("/proc/self/mounts")
 	if err != nil {
-		return best
+		return best, typ
 	}
 	defer f.Close()
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		fs := strings.Fields(sc.Text())
-		if len(fs) < 2 {
+		if len(fs) < 3 {
 			continue
 		}
 		m := strings.ReplaceAll(fs[1], `\040`, " ")
-		if (abs == m || strings.HasPrefix(abs, strings.TrimSuffix(m, "/")+"/")) && len(m) > len(best) {
-			best = m
+		if (abs == m || strings.HasPrefix(abs, strings.TrimSuffix(m, "/")+"/")) && len(m) >= len(best) {
+			best, typ = m, fs[2]
 		}
 	}
-	return best
+	return best, typ
 }

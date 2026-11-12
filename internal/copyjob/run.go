@@ -130,7 +130,7 @@ func (j *Job) copyPhase(ctx context.Context, e env, jr *Journal, accepting func(
 		return err
 	}
 	defer it.Close()
-	src, dst := location.Folder{Dir: j.st.Spec.Source}, j.st.Spec.Dest
+	src, dst := j.source(), j.st.Spec.Dest
 	nextPending := func() *entry {
 		for it.Next() {
 			if j.status[it.E.I] == stPending {
@@ -440,7 +440,7 @@ func (j *Job) s2Phase(ctx context.Context, e env, jr *Journal) error {
 		return err
 	}
 	defer it.Close()
-	src := location.Folder{Dir: j.st.Spec.Source}
+	src := j.source()
 	var stop error
 	ReadJournal(j.path("journal.log"), j.st.S2JournalEnd, func(r Rec) bool {
 		if (r.St != "verified" && r.St != "identical") || j.status[r.I] != stVerified {
@@ -486,7 +486,7 @@ func (j *Job) s2Phase(ctx context.Context, e env, jr *Journal) error {
 // run carries the job forward from wherever it stands.
 func (j *Job) run(ctx context.Context, e env, accepting func() bool) error {
 	if j.st.Phase == "scan" {
-		if err := j.scan(ctx, location.Folder{Dir: j.st.Spec.Source}); err != nil {
+		if err := j.scan(ctx, j.source()); err != nil {
 			return err
 		}
 	}

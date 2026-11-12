@@ -24,11 +24,11 @@ The design lives in the claude.ai project (`GOALS.md`, `DESIGN.md`, `COMPATIBILI
 | `internal/limits` | Buffer budget, memory watchdog, CPU share and priority |
 | `internal/safemode` | Start-up crash counter (3 within 5 min → safe mode) |
 | `internal/events` | Coalesced server-sent updates, slow pages dropped |
-| `internal/server` | HTTP handlers, localhost Host check, timeouts |
+| `internal/server` | HTTP handlers, localhost Host check, timeouts; `browse.go` is the picker (places, path buttons, files) |
 | `internal/xxh3` | XXH128 in plain Go, saveable state; `testdata/` holds the official vectors |
 | `internal/diskio` | All user-disk I/O: read-only opens, cache bypass, chunk retries, per-disk limit and stall timer, volume ids, `VolumeMounted` |
-| `internal/location` | The source boundary (section 17): today only `Folder` |
-| `internal/copyjob` | Copy jobs: scan → manifest, copy hashed as it is read then D1 and S2 at once (default) or S1/copy/D1 then S2, journal with grouped flush, checkpoints, manager and views |
+| `internal/location` | The source boundary (section 17): today only `Folder`, optionally limited to chosen names (`Only`) |
+| `internal/copyjob` | Copy jobs: scan → manifest, copy hashed as it is read then D1 and S2 at once (default) or S1/copy/D1 then S2, journal with grouped flush, checkpoints, manager and views, paged file list (`Files`) and history |
 | `internal/update` | One-click updates from the newest green CI run, version history (green builds + kept versions, install any) (GitHub Actions API, key in `secrets/github-update-key`, 0600, never logged); backups in `bin/backups`; rollback |
 | `internal/launcher` | Writes `~/Applications/Shuttle Server.app` |
 | `internal/soak` | Long-run resource test |

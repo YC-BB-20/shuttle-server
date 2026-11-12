@@ -89,6 +89,24 @@ func (m *Manager) Add(s Spec) (*Job, error) {
 	if fi, err := os.Stat(src); err != nil || !fi.IsDir() {
 		return nil, fmt.Errorf("the source folder %q was not found", src)
 	}
+	if len(s.Only) > MaxOnly {
+		return nil, fmt.Errorf("pick at most %d files and folders one by one, or choose their folder", MaxOnly)
+	}
+	seen := map[string]bool{}
+	var only []string
+	for _, n := range s.Only {
+		if n == "" || n == "." || n == ".." || strings.ContainsAny(n, "/\\") {
+			return nil, fmt.Errorf("%q is not a name inside the source folder", n)
+		}
+		if _, err := os.Lstat(filepath.Join(src, n)); err != nil {
+			return nil, fmt.Errorf("%q was not found in the source folder", n)
+		}
+		if !seen[n] {
+			seen[n] = true
+			only = append(only, n)
+		}
+	}
+	s.Only = only
 	if inside(dst, src) || inside(src, dst) {
 		return nil, errors.New("the source and destination cannot be inside each other")
 	}
@@ -116,6 +134,9 @@ func (m *Manager) Add(s Spec) (*Job, error) {
 	dv, err := diskio.VolumeOf(parent)
 	if err != nil {
 		return nil, err
+	}
+	if sv.Network || dv.Network {
+		return nil, errors.New("copies to or from a network server are not supported yet; connect the disk by cable")
 	}
 	if s.Hash != HashFirst {
 		s.Hash = HashDuringCopy // hashing while copying needs the second source read to be proof

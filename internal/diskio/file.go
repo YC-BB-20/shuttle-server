@@ -138,7 +138,17 @@ type Volume struct {
 	Mount string
 	Name  string
 	Free  uint64
+	Total uint64
+	Type  string // file system, for example apfs, hfs, exfat, smbfs
+	// ReadOnly and Network come from the mount; a network share is listed in
+	// the picker but not used for copies yet (DESIGN.md section 15).
+	ReadOnly bool
+	Network  bool
 }
+
+// networkTypes are file systems reached over the network.
+var networkTypes = map[string]bool{"smbfs": true, "afpfs": true, "nfs": true, "nfs4": true, "webdav": true,
+	"cifs": true, "smb3": true, "fuse.sshfs": true, "davfs": true, "9p": true}
 
 // VolumeOf finds the volume holding path (or its nearest existing parent).
 func VolumeOf(path string) (Volume, error) {

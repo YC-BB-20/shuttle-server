@@ -8,9 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
-	"sort"
-	"strings"
+	"strconv"
 	"time"
 
 	"github.com/YC-BB-20/shuttle-server/internal/copyjob"
@@ -110,56 +108,31 @@ func (s *Server) problems(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, p)
 }
 
-// Folder is one row in the folder picker.
-type Folder struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
-}
-
-// browse lists the folders inside a folder, for the folder picker. It shows
-// names only and lists at most 1000.
-func (s *Server) browse(w http.ResponseWriter, r *http.Request) {
-	home, _ := os.UserHomeDir()
-	places := []Folder{{"Home", home}}
-	if vols, err := os.ReadDir("/Volumes"); err == nil {
-		for _, v := range vols {
-			places = append(places, Folder{v.Name(), filepath.Join("/Volumes", v.Name())})
-		}
-	} else if vols, err := os.ReadDir("/media"); err == nil {
-		for _, v := range vols {
-			places = append(places, Folder{v.Name(), filepath.Join("/media", v.Name())})
-		}
-	}
-	p := r.URL.Query().Get("path")
-	if p == "" {
-		p = home
-	}
-	p = filepath.Clean(p)
-	out := map[string]any{"path": p, "parent": filepath.Dir(p), "places": places, "folders": []Folder{}}
-	ents, err := os.ReadDir(p)
-	if err != nil {
-		out["error"] = "This folder cannot be opened."
-		writeJSON(w, http.StatusOK, out)
+// files is one page of a copy's file list.
+func (s *Server) files(w http.ResponseWriter, r *http.Request) {
+	if s.Jobs == nil {
+		writeJSON(w, http.StatusOK, copyjob.FilePage{Rows: []copyjob.FileRow{}, Next: -1})
 		return
 	}
-	var dirs []Folder
-	for _, e := range ents {
-		if strings.HasPrefix(e.Name(), ".") {
-			continue
-		}
-		if e.IsDir() || (e.Type()&os.ModeSymlink != 0 && isDir(filepath.Join(p, e.Name()))) {
-			dirs = append(dirs, Folder{e.Name(), filepath.Join(p, e.Name())})
-		}
-		if len(dirs) >= 1000 {
-			out["truncated"] = true
-			break
-		}
+	q := r.URL.Query()
+	from, _ := strconv.Atoi(q.Get("from"))
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	p, err := s.Jobs.Files(r.PathValue("id"), q.Get("filter"), from, limit)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
 	}
-	sort.Slice(dirs, func(a, b int) bool { return strings.ToLower(dirs[a].Name) < strings.ToLower(dirs[b].Name) })
-	if dirs != nil {
-		out["folders"] = dirs
+	writeJSON(w, http.StatusOK, p)
+}
+
+// jobHistory lists finished and stopped copies, 20 at a time.
+func (s *Server) jobHistory(w http.ResponseWriter, r *http.Request) {
+	if s.Jobs == nil {
+		writeJSON(w, http.StatusOK, []copyjob.View{})
+		return
 	}
-	writeJSON(w, http.StatusOK, out)
+	skip, _ := strconv.Atoi(r.URL.Query().Get("skip"))
+	writeJSON(w, http.StatusOK, s.Jobs.History(max(skip, 0), 20))
 }
 
 func isDir(p string) bool { fi, err := os.Stat(p); return err == nil && fi.IsDir() }

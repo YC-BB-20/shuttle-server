@@ -31,8 +31,12 @@ type Source interface {
 	Path(rel string) string
 }
 
-// Folder is a folder on a mounted volume.
-type Folder struct{ Dir string }
+// Folder is a folder on a mounted volume. When Only is set, just those
+// entries of the folder itself (files or folders, by name) are taken.
+type Folder struct {
+	Dir  string
+	Only []string
+}
 
 func (f Folder) Root() string           { return f.Dir }
 func (f Folder) Path(rel string) string { return filepath.Join(f.Dir, filepath.FromSlash(rel)) }
@@ -46,6 +50,13 @@ func IsShuttleTemp(name string) bool {
 // Walk visits every regular file. Directories are read in batches and only a
 // stack of folder paths is held, never a list of every file.
 func (f Folder) Walk(ctx context.Context, file func(Entry) error, skip func(Skipped)) error {
+	var only map[string]bool
+	if len(f.Only) > 0 {
+		only = make(map[string]bool, len(f.Only))
+		for _, n := range f.Only {
+			only[n] = true
+		}
+	}
 	stack := []string{""}
 	for len(stack) > 0 {
 		rel := stack[len(stack)-1]
@@ -62,6 +73,9 @@ func (f Folder) Walk(ctx context.Context, file func(Entry) error, skip func(Skip
 			}
 			ents, err := d.ReadDir(512)
 			for _, e := range ents {
+				if only != nil && rel == "" && !only[e.Name()] {
+					continue
+				}
 				r := e.Name()
 				if rel != "" {
 					r = rel + "/" + e.Name()

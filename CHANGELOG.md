@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.6 — 12 November 2026
+
+- **Picker: places on top.** Home, this Mac's own disk, and every disk and card that is connected right now, each with its free space. A folder left behind by an unplugged disk is not shown. Network servers appear there too, greyed: copies to or from a server come later.
+- **Picker: the path is buttons.** Tap any folder in the path (Macintosh HD › Users › bb › Desktop) to jump straight there. On a disk, the path starts at the disk's name.
+- **Copy only some files.** When choosing what to copy, files are listed too. Tick any files and folders in a folder to copy only those; or press Use this folder to copy all of it.
+- **Queue and History.** Running, waiting and paused copies are under Queue; finished and stopped ones under History, with when they finished and how long they took. Show older copies loads more.
+- **Every file of a copy.** Press Files on any copy to see each file with its size and state: waiting, being worked on (with its own bar), proven, proven twice, failed (with the reason) or a source warning. Filters: All, Still to do, Done, Problems. The list updates by itself while the copy runs.
+
 ## 0.2.5 — 12 November 2026
 
 - **Settings tab.** The page now has Status and Settings at the top. Settings holds the data folder, updates (with Restart and Quit), and the new version history. When an update is available or an update step is running, Status shows a one-line note with a button to Settings.

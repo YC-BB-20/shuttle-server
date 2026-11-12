@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/YC-BB-20/shuttle-server/internal/fsx"
+	"github.com/YC-BB-20/shuttle-server/internal/location"
 )
 
 // FormatVersion of job.json, manifest.jsonl and journal.log.
@@ -37,6 +38,16 @@ type Spec struct {
 	Dest   string `json:"dest"`
 	S2     string `json:"s2"`             // "now" or "skip"; always "now" with Hash "copy"
 	Hash   string `json:"hash,omitempty"` // "copy" (hash while copying) or "first" (own read before); empty in jobs from before 0.2.3 means "first"
+	// Only lists the chosen files and folders inside Source, by name; empty
+	// means the whole folder.
+	Only []string `json:"only,omitempty"`
+}
+
+// MaxOnly bounds how many files and folders can be picked one by one.
+const MaxOnly = 1000
+
+func (j *Job) source() location.Folder {
+	return location.Folder{Dir: j.st.Spec.Source, Only: j.st.Spec.Only}
 }
 
 // Hash schemes.

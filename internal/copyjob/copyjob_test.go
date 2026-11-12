@@ -458,3 +458,59 @@ func TestStopWhilePausedFinishes(t *testing.T) {
 		})
 	}
 }
+
+func TestChosenFilesOnlyAndFileListAndHistory(t *testing.T) {
+	root := t.TempDir()
+	src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
+	files := makeTree(t, src, 100)
+	os.WriteFile(filepath.Join(src, "card", "a.mov"), []byte("aaaa"), 0o644)
+	os.WriteFile(filepath.Join(src, "card", "b.mov"), []byte("bb"), 0o644)
+	m := newManager(t, filepath.Join(root, "state"))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go m.Run(ctx)
+	if _, err := m.Add(Spec{Source: filepath.Join(src, "card"), Dest: dst, Only: []string{"../x"}}); err == nil {
+		t.Fatal("a name with a path in it was accepted")
+	}
+	if _, err := m.Add(Spec{Source: filepath.Join(src, "card"), Dest: dst, Only: []string{"missing.mov"}}); err == nil {
+		t.Fatal("a missing name was accepted")
+	}
+	j, err := m.Add(Spec{Source: filepath.Join(src, "card"), Dest: dst, Only: []string{"a.mov", "CLIP01", "a.mov"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := waitState(t, m, j.st.ID, "finished")
+	want := 1
+	for rel := range files {
+		if strings.HasPrefix(rel, "card/CLIP01/") {
+			want++
+		}
+	}
+	if v.Files != want || v.Strong != want || v.Only != 2 {
+		t.Fatalf("want %d files, got %+v", want, v)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "b.mov")); err == nil {
+		t.Fatal("a file that was not chosen was copied")
+	}
+	if b, _ := os.ReadFile(filepath.Join(dst, "a.mov")); string(b) != "aaaa" {
+		t.Fatal("a.mov not copied")
+	}
+	// File list, paged, and filtered.
+	p, err := m.Files(j.st.ID, "all", 0, 2)
+	if err != nil || len(p.Rows) != 2 || p.Next < 0 || p.Rows[0].Status != "strong" {
+		t.Fatalf("%+v %v", p, err)
+	}
+	p2, _ := m.Files(j.st.ID, "all", p.Next, 200)
+	if len(p.Rows)+len(p2.Rows) != want || p2.Next != -1 {
+		t.Fatalf("pages do not add up: %+v", p2)
+	}
+	if p3, _ := m.Files(j.st.ID, "problems", 0, 200); len(p3.Rows) != 0 {
+		t.Fatalf("%+v", p3)
+	}
+	if h := m.History(0, 20); len(h) != 1 || h[0].ID != j.st.ID || h[0].State != "finished" {
+		t.Fatalf("%+v", h)
+	}
+	if h := m.History(1, 20); len(h) != 0 {
+		t.Fatalf("%+v", h)
+	}
+}
