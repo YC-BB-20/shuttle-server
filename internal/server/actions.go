@@ -125,6 +125,21 @@ func (s *Server) files(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, p)
 }
 
+// fileInfo is everything known about one file of a copy.
+func (s *Server) fileInfo(w http.ResponseWriter, r *http.Request) {
+	i, err := strconv.Atoi(r.PathValue("i"))
+	if s.Jobs == nil || err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such file"})
+		return
+	}
+	fi, err := s.Jobs.FileInfo(r.PathValue("id"), i)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, fi)
+}
+
 // jobHistory lists finished and stopped copies, 20 at a time.
 func (s *Server) jobHistory(w http.ResponseWriter, r *http.Request) {
 	if s.Jobs == nil {

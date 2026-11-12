@@ -97,7 +97,30 @@
   .pick > button, .pick > label { flex:1; min-width:0; border:0; background:transparent; text-align:left; padding:8px 0; margin:0; font-weight:400; overflow-wrap:anywhere; }
   .pick .sz { color:var(--mute); font-size:13px; white-space:nowrap; }
   .pick input { width:18px; height:18px; flex:none; }
+  .big { display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; margin-top:8px; }
+  .big b { font-size:22px; font-variant-numeric:tabular-nums; }
+  .big span { color:var(--mute); font-size:14px; font-variant-numeric:tabular-nums; }
+  .bar.main { height:10px; border-radius:5px; margin:6px 0 4px; }
+  .speed { font-size:14px; color:var(--mute); margin:0 0 6px; font-variant-numeric:tabular-nums; }
+  .job .line { font-size:14px; }
+  .bar.file { height:4px; }
+  .frow { cursor:pointer; }
+  .frow:hover { background:color-mix(in srgb, var(--accent) 6%, var(--card)); }
+  .kv { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:4px 12px; margin:0 0 12px; font-size:14px; }
+  .kv dt { color:var(--mute); }
+  .kv dd { margin:0; overflow-wrap:anywhere; }
+  .hash { font-family: ui-monospace, Menlo, monospace; font-size:13px; }
+  .match { color:var(--ok); } .nomatch { color:var(--bad); }
+  .story { list-style:none; padding:0; margin:0 0 12px; font-size:14px; }
+  .story li { padding:6px 0; border-bottom:1px solid var(--line); }
+  .story li:last-child { border-bottom:0; }
+  #infoDlg h3 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--mute); margin:12px 0 6px; }
+  .job { cursor:pointer; }
+  .job .files { cursor:auto; }
+  .job .top::after { content:"›"; color:var(--mute); font-size:20px; line-height:1; transition:transform .15s; }
+  .job.open .top::after { transform:rotate(90deg); }
   .job.old { padding:10px 16px; }
+  .job.old .speed, .job.old .big { display:none; }
   .job.old .bar { display:none; }
   .when { font-size:13px; color:var(--mute); margin-top:2px; }
   .files { margin-top:10px; border-top:1px solid var(--line); padding-top:8px; }
@@ -204,6 +227,10 @@
 <dialog id="probDlg">
   <div class="head"><h2>Files that need attention</h2><button type="button" data-close>Close</button></div>
   <div class="body" id="probList"></div>
+</dialog>
+<dialog id="infoDlg">
+  <div class="head"><h2 id="infoTitle">File</h2><button type="button" data-close>Close</button></div>
+  <div class="body" id="infoBody"></div>
 </dialog>
 <dialog id="about">
   <div class="head"><h2>About Shuttle Server</h2><button type="button" id="aboutClose">Close</button></div>
@@ -314,7 +341,7 @@ function post(url, body) {
   return fetch(url, { method: "POST", headers: { "X-Shuttle": "1", "Content-Type": "application/json" }, body: JSON.stringify(body || {}) })
     .then(r => r.json().then(j => { if (!r.ok) throw new Error(j.error || "Something went wrong"); return j; }));
 }
-const rate = n => n > 0 ? size(n) + "/s" : "";
+const rate = n => n > 0 ? size(Math.round(n)) + "/s" : "";
 
 // New copy
 $("newBtn").onclick = () => { $("newErr").textContent = ""; $("newDlg").showModal(); };
@@ -428,28 +455,44 @@ function card(v) {
   if (!c) {
     c = document.createElement("section"); c.className = "job";
     c.innerHTML = '<div class="top"><div><div class="route"></div><div class="mute path dest"></div></div><span class="chip"></span></div>' +
-      '<p class="when"></p><p class="line"></p><div class="bar ok"><i></i></div><div class="bar"><i></i></div><p class="counts"></p><p class="warn same" hidden>Source and destination are on the same disk: this copy does not protect against that disk failing.</p><div class="btns"></div>';
+      '<p class="when"></p><div class="big"><b class="pc"></b><span class="of"></span></div><div class="bar main"><i></i></div><p class="speed"></p>' +
+      '<p class="line"></p><div class="bar file"><i></i></div><p class="counts"></p><p class="warn same" hidden>Source and destination are on the same disk: this copy does not protect against that disk failing.</p><div class="btns"></div>';
     cards[v.id] = c;
+    // Tapping a copy opens its files; tapping it again closes them.
+    c.onclick = e => {
+      if (e.target.closest("button, input, a, .files") || getSelection().toString()) return;
+      if (c._v.phase !== "scan" || c._v.state === "finished" || c._v.state === "stopped") toggleFiles(c._v, c);
+    };
   }
+  c._v = v;
+  c.classList.toggle("open", !!fv[v.id]);
   const q = sel => c.querySelector(sel);
   q(".route").textContent = v.source + (v.only ? " (" + v.only + " chosen)" : ""); q(".dest").textContent = "→ " + v.dest;
   const old = v.state === "finished" || v.state === "stopped";
   c.classList.toggle("old", old);
-  q(".when").textContent = old && v.finished ? when(v.finished) + " · took " + took(v.created, v.finished) : "Added " + when(v.created);
+  q(".when").textContent = old && v.finished ? when(v.finished) + " · took " + took(v.created, v.finished) +
+    (v.bytes ? " · " + size(v.bytes) + (secs(v.created, v.finished) >= 1 ? " at " + rate(v.bytes / secs(v.created, v.finished)) + " on average" : "") : "") : "Added " + when(v.created);
   const chip = q(".chip"); chip.textContent = stateText[v.state] || v.state;
   chip.className = "chip " + ((v.state === "finished" && (v.failed || v.s2_warnings)) ? "bad" : v.state);
   let line = "";
   if (v.state === "running" && v.phase === "scan") line = "Scanning the source — " + v.scanned + " files, " + size(v.scanned_bytes) + " so far";
-  else if (v.state === "running") line = v.stage + ": " + v.file + (v.file_size ? " — " + size(v.file_done) + " of " + size(v.file_size) : "") +
-    (rate(v.source_rate) ? " · source " + rate(v.source_rate) : "") + (rate(v.dest_rate) ? " · destination " + rate(v.dest_rate) : "");
+  else if (v.state === "running") line = "Now: " + v.file + " — " + v.stage + (v.file_size ? ", " + size(v.file_done) + " of " + size(v.file_size) : "");
   else if (v.state === "waiting") line = v.reason;
   else if (v.state === "paused") line = "Paused by you. Resume continues exactly where it stopped.";
   else if (v.state === "queued") line = "Waiting for the copy before it to finish.";
   else if (v.state === "finished") line = (v.failed || v.s2_warnings) ? "Finished with problems — see below." : "Finished. Every file is proven" + (v.s2 === "now" ? " twice (source read again)." : ".");
   else line = "Stopped by you. Files already proven were kept.";
   q(".line").textContent = line;
-  q(".bar.ok > i").style.width = pct(v.bytes_proven, v.bytes) + "%";
-  q(".bar:not(.ok) > i").style.width = v.state === "running" ? pct(v.file_done, v.file_size) + "%" : "0%";
+  const p = Math.round((v.progress || 0) * 1000) / 10, scanning = v.phase === "scan";
+  q(".pc").textContent = scanning ? "Scanning" : (p >= 100 || p === Math.floor(p) ? Math.floor(p) : p.toFixed(1)) + "%";
+  q(".of").textContent = scanning ? v.scanned + " files, " + size(v.scanned_bytes) + " so far" :
+    v.state !== "running" ? "" : v.eta_seconds ? left(v.eta_seconds) : "working out the time left";
+  const mb = q(".bar.main > i"); mb.style.width = (scanning ? 0 : p) + "%";
+  mb.style.background = v.state === "finished" ? (v.failed || v.s2_warnings ? "var(--warn)" : "var(--ok)") : "var(--accent)";
+  q(".speed").textContent = v.state !== "running" || scanning ? "" :
+    [rate(v.rate) && "Speed " + rate(v.rate), rate(v.source_rate) && "source disk reading " + rate(v.source_rate), rate(v.dest_rate) && "destination disk " + rate(v.dest_rate)].filter(Boolean).join(" · ") || "Measuring speed…";
+  q(".bar.file").hidden = v.state !== "running" || scanning;
+  q(".bar.file > i").style.width = v.state === "running" ? pct(v.file_done, v.file_size) + "%" : "0%";
   const proven = v.verified + v.identical;
   q(".counts").textContent = "Proven " + proven + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
     (v.identical ? " · " + v.identical + " were already there" : "") + (v.s2 === "now" ? " · read twice: " + v.strong : "") +
@@ -461,7 +504,6 @@ function card(v) {
   if (v.state === "paused") btn("Resume", () => post("/api/jobs/" + v.id + "/resume").catch(e => alert(e.message)), "primary");
   if (!["finished", "stopped"].includes(v.state)) btn("Stop…", () => stopJob(v));
   if (v.failed || v.s2_warnings) btn("Show problems", () => showProblems(v.id));
-  if (v.phase !== "scan" || old) btn(fv[v.id] ? "Hide files" : "Files", () => toggleFiles(v, c));
   const key = btns.map(b => b.textContent).join("|");
   if (fv[v.id]) { const was = fv[v.id].v.state; fv[v.id].v = v; if (was !== v.state) loadFiles(fv[v.id], false, true); }
   if (c.dataset.btns !== key) { c.dataset.btns = key; q(".btns").replaceChildren(...btns); }
@@ -515,7 +557,9 @@ $("keySave").onclick = () => {
     .catch(e => $("keyErr").textContent = e.message);
 };
 const when = t => new Date(t).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-const took = (a, b) => { const m = Math.max(0, Math.round((new Date(b) - new Date(a)) / 60000)); return m < 60 ? m + " min" : Math.floor(m / 60) + " h " + (m % 60) + " min"; };
+const secs = (a, b) => (new Date(b) - new Date(a)) / 1000;
+const left = s => s < 60 ? "under a minute left" : s < 5400 ? "about " + Math.round(s / 60) + " min left" : "about " + Math.floor(s / 3600) + " h " + Math.round(s % 3600 / 60) + " min left";
+const took = (a, b) => { const sec = Math.max(0, secs(a, b)); if (sec < 90) return Math.round(sec) + " s"; const m = Math.round(sec / 60); return m < 60 ? m + " min" : Math.floor(m / 60) + " h " + (m % 60) + " min"; };
 function place(box, want, keep) {
   want.forEach((c, i) => { if (box.children[i + keep] !== c) box.insertBefore(c, box.children[i + keep] || null); });
   while (box.children.length > want.length + keep) box.lastChild.remove();
@@ -568,6 +612,7 @@ function drawFiles(f, note) {
   f.box.querySelectorAll(".filters button").forEach(b => b.setAttribute("aria-pressed", b.dataset.f === f.filter));
   f.box.querySelector(".frows").replaceChildren(...f.rows.map(r => {
     const row = el("div", "frow"), t = el("div", "t");
+    row.tabIndex = 0; row.onclick = () => fileInfo(f.v.id, r.i); row.onkeydown = e => { if (e.key === "Enter") row.onclick(); };
     t.append(el("span", "", r.path), el("span", "sz", size(r.size)), el("span", "chip " + (fileChip[r.status] || ""), r.status === "working" ? "Working" : fileLabel[r.status] || r.status));
     row.append(t);
     if (r.status === "working") {
@@ -581,8 +626,57 @@ function drawFiles(f, note) {
   f.box.querySelector(".note").textContent = note || (f.rows.length ? "" : "No files here.");
   f.box.querySelector(".files > button").hidden = f.next < 0;
 }
+// File info: what the file is, where it went, its hashes and its story.
+const hashName = { c: "Read for the copy (C)", s1: "Source, read on its own (S1)", d1: "Copy, read back (D1)", s2: "Source, read again (S2)" };
+function kv(pairs) {
+  const dl = el("dl", "kv");
+  pairs.filter(p => p[1] !== "" && p[1] != null).forEach(([k, v]) => { dl.append(el("dt", "", k)); const d = el("dd"); if (v instanceof Node) d.append(v); else d.textContent = v; dl.append(d); });
+  return dl;
+}
+let infoAt = null;
+function fileInfo(id, i) {
+  infoAt = { id, i };
+  $("infoTitle").textContent = "File"; $("infoBody").textContent = "Loading…";
+  if (!$("infoDlg").open) $("infoDlg").showModal();
+  loadInfo();
+}
+function loadInfo() {
+  const at = infoAt;
+  fetch("/api/jobs/" + at.id + "/files/" + at.i).then(r => r.json().then(j => { if (!r.ok) throw new Error(j.error); return j; })).then(fi => {
+    if (infoAt !== at) return;
+    const name = fi.path.split("/").pop();
+    $("infoTitle").textContent = name;
+    const body = [];
+    const state = fi.status === "working" ? fi.stage + (fi.size ? " — " + size(fi.done) + " of " + size(fi.size) : "") : fileLabel[fi.status] || fi.status;
+    body.push(el("h3", "", "General"), kv([["Name", name], ["Folder", fi.path.includes("/") ? fi.path.slice(0, fi.path.lastIndexOf("/")) : "(top of the copy)"],
+      ["Size", size(fi.size) + " (" + fi.size.toLocaleString() + " bytes)"], ["Modified", new Date(fi.mtime).toLocaleString()],
+      ["State", state], ["Proof", fi.proof], ["Problem", fi.why || ""]]));
+    const dest = fi.dest_exists ? (fi.dest_size === fi.size ? "there, same size" : "there, but " + size(fi.dest_size) + " — not the same size") : "not there yet";
+    body.push(el("h3", "", "Where"), kv([["From", el("span", "path", fi.source)], ["To", el("span", "path", fi.dest)], ["At the destination", dest]]));
+    const hs = Object.entries(hashName).filter(([k]) => fi.hash[k]);
+    if (hs.length) {
+      const ref = fi.hash.c || fi.hash.s1;
+      body.push(el("h3", "", "Hashes (XXH128)"), kv(hs.map(([k, label]) => {
+        const v = el("span"); v.append(el("span", "hash", fi.hash[k]));
+        if (ref && k !== "c" && !(k === "s1" && !fi.hash.c)) v.append(el("span", fi.hash[k] === ref ? "match" : "nomatch", fi.hash[k] === ref ? "  ✓ matches" : "  ✗ differs"));
+        return [label, v];
+      })));
+    } else body.push(el("h3", "", "Hashes (XXH128)"), el("p", "mute", "None yet: hashes are made as the file is copied and read back."));
+    const story = el("ol", "story");
+    (fi.events || []).forEach(e => {
+      const li = el("li"); li.append(el("div", "mute", new Date(e.time).toLocaleString() + (e.ms ? " · took " + (e.ms < 1000 ? e.ms + " ms" : (e.ms / 1000).toFixed(1) + " s") : "") +
+        (e.attempts > 1 ? " · copied twice: the first copy did not match" : "")), el("div", "", e.what));
+      if (e.why) li.append(el("div", "bad", e.why));
+      story.append(li);
+    });
+    body.push(el("h3", "", "What happened"), (fi.events || []).length ? story : el("p", "mute", fi.status === "working" ? "Being copied now." : "Nothing yet: it is waiting its turn."));
+    $("infoBody").replaceChildren(...body);
+  }).catch(e => { if (infoAt === at) $("infoBody").textContent = e.message || "Could not load this file."; });
+}
+$("infoDlg").addEventListener("close", () => { infoAt = null; });
 setInterval(() => {
   if (document.hidden) return;
+  if (infoAt && $("infoDlg").open && fv[infoAt.id] && ["running", "waiting"].includes(fv[infoAt.id].v.state)) loadInfo();
   Object.values(fv).forEach(f => { if (["running", "waiting"].includes(f.v.state) && f.box.isConnected) loadFiles(f, false, true); });
 }, 2000);
 </script>

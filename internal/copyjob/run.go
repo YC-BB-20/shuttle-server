@@ -155,6 +155,7 @@ func (j *Job) copyPhase(ctx context.Context, e env, jr *Journal, accepting func(
 				return waitErr{"Waiting for memory to free up"}
 			}
 			j.setLive(func(l *live) { l.file = cur.P })
+			began := time.Now()
 			recs, err := j.oneFileHashed(ctx, e, cur, src.Path(cur.P), filepath.Join(dst, filepath.FromSlash(cur.P)))
 			if err != nil {
 				if !isFileErr(err) {
@@ -162,6 +163,9 @@ func (j *Job) copyPhase(ctx context.Context, e env, jr *Journal, accepting func(
 				}
 				fail(cur, err)
 				continue
+			}
+			if len(recs) > 0 {
+				recs[0].Ms = time.Since(began).Milliseconds()
 			}
 			for _, r := range recs {
 				jr.Append(r)
@@ -221,7 +225,9 @@ func (j *Job) copyPhase(ctx context.Context, e env, jr *Journal, accepting func(
 			cancelNext()
 		}
 
+		began := time.Now()
 		rec, err := j.oneFile(ctx, e, cur, srcPath, final, s1, startNext)
+		rec.Ms = time.Since(began).Milliseconds()
 		if err != nil && !isFileErr(err) {
 			cancelNext()
 			if nextRes != nil {
@@ -309,7 +315,7 @@ func (j *Job) oneFile(ctx context.Context, e env, en *entry, srcPath, final stri
 				return rec, perFile("could not give the copy its name: %v", err)
 			}
 			j.setLive(func(l *live) { l.temp = "" })
-			rec.St, rec.D1 = "verified", d1.String()
+			rec.St, rec.D1, rec.A = "verified", d1.String(), attempt+1
 			return rec, nil
 		}
 	}
@@ -390,7 +396,7 @@ func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, fina
 			if err := j.placeProven(tmp, final, en); err != nil {
 				return nil, err
 			}
-			rec.St, rec.S2 = "strong", s2.h.String()
+			rec.St, rec.S2, rec.A = "strong", s2.h.String(), attempt+1
 			return []Rec{rec}, nil
 		}
 		if sz, m, serr := statSM(srcPath); serr == nil && (sz != en.S || m != en.M) {
@@ -399,7 +405,7 @@ func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, fina
 			if err := j.placeProven(tmp, final, en); err != nil {
 				return nil, err
 			}
-			rec.St = "verified"
+			rec.St, rec.A = "verified", attempt+1
 			return []Rec{rec, {I: en.I, N: en.S, D1: rec.D1, St: "s2changed", P: en.P,
 				Err: "the source changed after the copy (not a copy error)"}}, nil
 		}

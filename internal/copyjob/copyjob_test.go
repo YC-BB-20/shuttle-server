@@ -518,4 +518,33 @@ func TestChosenFilesOnlyAndFileListAndHistory(t *testing.T) {
 	if h := m.History(1, 20); len(h) != 0 {
 		t.Fatalf("%+v", h)
 	}
+	// File info: hashes, story, paths.
+	fi, err := m.FileInfo(j.st.ID, p.Rows[0].I)
+	if err != nil || fi.Hash.C == "" || fi.Hash.C != fi.Hash.D1 || fi.Hash.D1 != fi.Hash.S2 || !fi.DestExists ||
+		fi.DestSize != fi.Size || len(fi.Events) != 1 || fi.Events[0].Attempts != 1 || !strings.HasPrefix(fi.Proof, "Strong") ||
+		fi.Dest != filepath.Join(dst, filepath.FromSlash(fi.Path)) {
+		t.Fatalf("%+v %v", fi, err)
+	}
+	if _, err := m.FileInfo(j.st.ID, 9999); err == nil {
+		t.Fatal("a file that is not in the copy was found")
+	}
+	if v.Progress != 1 {
+		t.Fatalf("finished but progress %v", v.Progress)
+	}
+}
+
+func TestProgressCountsEveryPass(t *testing.T) {
+	st := state{Phase: "copy", Bytes: 1000, Files: 2, Spec: Spec{Hash: HashDuringCopy, S2: "now"}}
+	// Half of file 1 (size 400) copied: 100 of 1000 bytes of work.
+	if p := progress(st, counts{}, live{stage: "Copying (the source is hashed as it is read)", size: 400, done: 200}); p != 0.1 {
+		t.Fatal(p)
+	}
+	// File 1 proven, file 2 (600) being read back half way: 400 + 300 + 150.
+	if p := progress(st, counts{BytesProven: 400}, live{stage: "Reading back the copy (D1) and the source again (S2)", size: 600, done: 300}); p != 0.85 {
+		t.Fatal(p)
+	}
+	old := state{Phase: "s2", Bytes: 1000, Files: 2, Spec: Spec{Hash: HashFirst, S2: "now"}}
+	if p := progress(old, counts{BytesProven: 1000, Verified: 2, Strong: 1}, live{}); p != 0.875 {
+		t.Fatal(p)
+	}
 }

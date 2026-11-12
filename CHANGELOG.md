@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.7 — 12 November 2026
+
+- **Progress, speed and time left.** Every copy shows how far it is as a percentage with a large bar, the time left, and its speed: overall, and what the source and destination disks are doing right now. The percentage counts all the work, the copy and the reading back, so it moves steadily rather than jumping when a big file is proven. Finished copies show their size and average speed.
+- **Tap a copy to see its files.** The Files button is gone: tapping a copy opens its file list with All, Still to do, Done and Problems; tapping again closes it.
+- **File info.** Tapping a file opens a window with everything about it: name, folder, size, modified date, where it came from and where it went, whether it is at the destination, its proof, every hash (read for the copy, read back, source read again) with a tick where they match, and what happened to it, when, and how long it took. While a copy runs, the window updates by itself.
+- Each file's record now also keeps how long it took and whether it had to be copied twice.
+
 ## 0.2.6 — 12 November 2026
 
 - **Picker: places on top.** Home, this Mac's own disk, and every disk and card that is connected right now, each with its free space. A folder left behind by an unplugged disk is not shown. Network servers appear there too, greyed: copies to or from a server come later.

@@ -2,6 +2,9 @@ package copyjob
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -37,12 +40,63 @@ type View struct {
 	SameVolume bool      `json:"same_volume"`
 	SrcRate    int64     `json:"source_rate"`
 	DstRate    int64     `json:"dest_rate"`
+	Progress   float64   `json:"progress"`              // 0 to 1, all reads and writes the job needs
+	Rate       int64     `json:"rate,omitempty"`        // overall bytes of the job finished per second, smoothed
+	ETA        int64     `json:"eta_seconds,omitempty"` // time left, when it can be estimated
 }
 
 type rateMemo struct {
 	t        time.Time
 	src, dst int64
 	sr, dr   int64
+	work     float64 // progress in bytes at t
+	rate     float64 // smoothed
+}
+
+// progress is how far a job is, 0 to 1, counting the passes it makes: with
+// hashing while copying, the copy and then D1 and S2 together; with the
+// earlier scheme S1, the copy and D1, then S2 at the end. The stage names
+// are the ones run.go sets.
+func progress(st state, c counts, l live) float64 {
+	switch {
+	case st.Phase == "scan":
+		return 0
+	case st.Phase == "done":
+		return 1
+	case st.Bytes <= 0:
+		if st.Files == 0 {
+			return 1
+		}
+		return float64(c.Verified+c.Identical+c.Failed) / float64(st.Files)
+	}
+	size, done := float64(l.size), float64(l.done)
+	has := func(p string) bool { return strings.HasPrefix(l.stage, p) }
+	var part float64
+	if st.Spec.hashDuringCopy() {
+		switch {
+		case has("Copying"), has("Reading the source (S1)"):
+			part = done / 2
+		case has("Reading back"), has("Checking"):
+			part = size/2 + done/2
+		}
+	} else {
+		switch {
+		case has("Reading the source (S1)"):
+			part = done / 3
+		case has("Copying"):
+			part = size/3 + done/3
+		case has("Reading back"), has("Checking"):
+			part = 2*size/3 + done/3
+		}
+	}
+	f := min(1, (float64(c.BytesProven)+part)/float64(st.Bytes))
+	if st.Spec.hashDuringCopy() || st.Spec.S2 != "now" {
+		return f
+	}
+	if st.Phase != "s2" {
+		return 0.75 * f
+	}
+	return 0.75 + 0.25*min(1, float64(c.Strong+c.S2Warn)/float64(max(1, c.Verified+c.Identical)))
 }
 
 var memo = map[*Job]*rateMemo{}
@@ -69,15 +123,24 @@ func (m *Manager) Views() []View {
 			m.mu.Lock()
 			r := memo[j]
 			if r == nil {
-				r = &rateMemo{t: now, src: j.srcBytes.Load(), dst: j.dstBytes.Load()}
+				r = &rateMemo{t: now, src: j.srcBytes.Load(), dst: j.dstBytes.Load(), work: v.Progress * float64(st.Bytes)}
 				memo[j] = r
 			}
+			work := v.Progress * float64(st.Bytes)
 			if dt := now.Sub(r.t).Seconds(); dt >= 1 {
 				s, d := j.srcBytes.Load(), j.dstBytes.Load()
 				r.sr, r.dr = int64(float64(s-r.src)/dt), int64(float64(d-r.dst)/dt)
-				r.t, r.src, r.dst = now, s, d
+				if w := max(0, work-r.work) / dt; r.rate == 0 || dt > 10 { // fresh, or back from a pause
+					r.rate = w
+				} else {
+					r.rate = 0.85*r.rate + 0.15*w // smooth: big files finish in jumps
+				}
+				r.t, r.src, r.dst, r.work = now, s, d, work
 			}
-			v.SrcRate, v.DstRate = r.sr, r.dr
+			v.SrcRate, v.DstRate, v.Rate = r.sr, r.dr, int64(r.rate)
+			if r.rate > 0 && st.Phase != "scan" {
+				v.ETA = int64((1 - v.Progress) * float64(st.Bytes) / r.rate)
+			}
 			m.mu.Unlock()
 		case l.reason != "":
 			v.State, v.Reason = "waiting", l.reason
@@ -103,7 +166,14 @@ func baseView(j *Job) (View, state, live) {
 	v := View{ID: st.ID, Source: st.Spec.Source, Dest: st.Spec.Dest, S2: st.Spec.S2, Hash: st.Spec.Hash, Only: len(st.Spec.Only),
 		Created: st.Created, Finished: st.Finished, Phase: st.Phase, Files: st.Files, Bytes: st.Bytes, Skipped: st.Skipped,
 		Verified: c.Verified, Identical: c.Identical, Failed: c.Failed, Strong: c.Strong, S2Warn: c.S2Warn,
-		Proven: c.BytesProven, SameVolume: st.SameVolume, Scanned: l.scanned, ScannedB: l.scannedBytes}
+		Proven: c.BytesProven, SameVolume: st.SameVolume, Scanned: l.scanned, ScannedB: l.scannedBytes,
+		Progress: progress(st, c, l)}
+	if st.Phase == "done" && st.Choice == "stopped" {
+		v.Progress = 0 // a stopped copy shows what is proven, not a full bar
+		if st.Bytes > 0 {
+			v.Progress = float64(c.BytesProven) / float64(st.Bytes)
+		}
+	}
 	switch {
 	case st.Phase == "done" && st.Choice == "stopped":
 		v.State = "stopped"
@@ -272,4 +342,136 @@ func (m *Manager) Files(id, filter string, from, limit int) (FilePage, error) {
 		})
 	}
 	return page, nil
+}
+
+// Event is one step in a file's story, from the journal.
+type Event struct {
+	Time     time.Time `json:"time"`
+	What     string    `json:"what"`
+	Why      string    `json:"why,omitempty"`
+	Attempts int       `json:"attempts,omitempty"`
+	Ms       int64     `json:"ms,omitempty"`
+}
+
+// Hashes are the file's XXH128 hashes; any can be empty.
+type Hashes struct {
+	C  string `json:"c,omitempty"`  // bytes read for the copy
+	S1 string `json:"s1,omitempty"` // source read on its own first
+	D1 string `json:"d1,omitempty"` // copy read back
+	S2 string `json:"s2,omitempty"` // source read again
+}
+
+// FileInfo is everything known about one file of a job.
+type FileInfo struct {
+	FileRow
+	Mtime      time.Time `json:"mtime"`
+	Source     string    `json:"source"`
+	Dest       string    `json:"dest"`
+	DestExists bool      `json:"dest_exists"`
+	DestSize   int64     `json:"dest_size,omitempty"`
+	Proof      string    `json:"proof"`
+	Hash       Hashes    `json:"hash"`
+	Events     []Event   `json:"events"`
+}
+
+// maxEvents bounds a file's story; a file has a handful of records at most.
+const maxEvents = 50
+
+var eventText = map[string]string{
+	"strong":     "Copied and proven: the copy read back and the source read a second time both match",
+	"verified":   "Copied and proven: the copy read back matches the source",
+	"identical":  "Already at the destination; compared and identical, left untouched",
+	"failed":     "Failed",
+	"s2ok":       "Source read a second time: matches",
+	"s2changed":  "Source read a second time: the source had changed after the copy",
+	"s2unstable": "Source read a second time: it read differently",
+}
+
+// FileInfo describes file i of a job: what it is, where it went, every hash
+// and every step recorded for it. Reads the manifest and journal from disk.
+func (m *Manager) FileInfo(id string, i int) (FileInfo, error) {
+	var fi FileInfo
+	j := m.find(id)
+	if j == nil {
+		return fi, errors.New("this copy no longer exists")
+	}
+	j.mu.Lock()
+	phase, l, spec := j.st.Phase, j.live, j.st.Spec
+	st := stPending
+	if i >= 0 && i < len(j.status) {
+		st = j.status[i]
+	}
+	j.mu.Unlock()
+	if phase == "scan" {
+		return fi, errors.New("the source is still being scanned")
+	}
+	listMu.Lock()
+	defer listMu.Unlock()
+	it, err := openManifest(j.path("manifest.jsonl"))
+	if err != nil {
+		return fi, errors.New("the file list cannot be read")
+	}
+	found := false
+	for it.Next() {
+		if it.E.I == i {
+			found = true
+			break
+		}
+	}
+	e := it.E
+	it.Close()
+	if !found {
+		return fi, errors.New("no such file in this copy")
+	}
+	fi.FileRow = FileRow{I: e.I, Path: e.P, Size: e.S, Status: rowStatus(st)}
+	if l.file == e.P && l.stage != "" && phase != "done" {
+		fi.Status, fi.Stage, fi.Done = "working", l.stage, l.done
+	}
+	fi.Mtime = time.Unix(0, e.M)
+	fi.Source = j.source().Path(e.P)
+	fi.Dest = filepath.Join(spec.Dest, filepath.FromSlash(e.P))
+	if d, err := os.Stat(fi.Dest); err == nil {
+		fi.DestExists, fi.DestSize = true, d.Size()
+	}
+	fi.Events = []Event{}
+	ReadJournal(j.path("journal.log"), 0, func(r Rec) bool {
+		if r.I != i {
+			return true
+		}
+		for _, h := range []struct {
+			dst *string
+			v   string
+		}{{&fi.Hash.C, r.C}, {&fi.Hash.S1, r.S1}, {&fi.Hash.D1, r.D1}, {&fi.Hash.S2, r.S2}} {
+			if h.v != "" {
+				*h.dst = h.v
+			}
+		}
+		if len(fi.Events) < maxEvents {
+			ev := Event{Time: time.Unix(r.T, 0), What: eventText[r.St], Why: r.Err, Attempts: r.A, Ms: r.Ms}
+			if ev.What == "" {
+				ev.What = r.St
+			}
+			if r.Err != "" {
+				fi.Why = r.Err
+			}
+			fi.Events = append(fi.Events, ev)
+		}
+		return true
+	})
+	switch fi.Status {
+	case "strong":
+		fi.Proof = "Strong: two separate reads of the source match what the destination holds"
+	case "proven":
+		fi.Proof = "Verified: the copy read back matches the source"
+		if spec.S2 == "now" && phase != "done" {
+			fi.Proof += "; the second source read is still to come"
+		}
+	case "failed":
+		fi.Proof = "None: this file is not proven"
+	case "warning":
+		fi.Proof = "Verified against what was read, with a warning about the source"
+	default:
+		fi.Proof = "Not yet: this file has not been copied"
+	}
+	return fi, nil
 }
