@@ -233,12 +233,16 @@ function browse(path) {
 $("pickUse").onclick = () => { $(pickFor).value = pickAt; $("pickDlg").close(); };
 
 // Confirmations
+// Answers only once the box has really closed: the close event comes a moment
+// after close(), and must not land on the next box (that broke Stop's second prompt).
 function confirmBox(title, text, yes) {
+  const dlg = $("confirmDlg");
   return new Promise(res => {
+    let answer = false;
     $("confirmTitle").textContent = title; $("confirmText").textContent = text; $("confirmYes").textContent = yes;
-    $("confirmYes").onclick = () => { $("confirmDlg").close(); res(true); };
-    $("confirmDlg").onclose = () => res(false);
-    $("confirmDlg").showModal();
+    $("confirmYes").onclick = () => { answer = true; dlg.close(); };
+    dlg.onclose = () => { dlg.onclose = null; res(answer); };
+    dlg.showModal();
   });
 }
 async function stopJob(v) {

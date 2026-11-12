@@ -413,3 +413,44 @@ func TestNewJobsHashWhileCopyingAndOldJobsKeepTheirScheme(t *testing.T) {
 		t.Fatal("a job saved before 0.2.3 (no hash field) must keep the separate first read")
 	}
 }
+
+// Stopping a paused copy must finish the stop (nothing is running to do it)
+// and remove the partial copy, also when Shuttle was restarted in between.
+func TestStopWhilePausedFinishes(t *testing.T) {
+	for _, restart := range []bool{false, true} {
+		root := t.TempDir()
+		src, dst, state := filepath.Join(root, "src"), filepath.Join(root, "dst"), filepath.Join(root, "state")
+		makeTree(t, src, 40<<20)
+		m := newManager(t, state)
+		ctx, cancel := context.WithCancel(context.Background())
+		go m.Run(ctx)
+		j, _ := m.Add(Spec{Source: src, Dest: dst})
+		for {
+			v := waitState(t, m, j.st.ID, "running", "finished")
+			if strings.HasPrefix(v.Stage, "Copying") && v.FileSize == 40<<20 && v.FileDone > 1<<20 {
+				break
+			}
+			time.Sleep(time.Millisecond)
+		}
+		m.Pause(j.st.ID)
+		waitState(t, m, j.st.ID, "paused")
+		if restart {
+			cancel()
+			time.Sleep(50 * time.Millisecond)
+			m = newManager(t, state)
+			ctx, cancel = context.WithCancel(context.Background())
+			go m.Run(ctx)
+		}
+		if err := m.Stop(j.st.ID); err != nil {
+			t.Fatal(err)
+		}
+		waitState(t, m, j.st.ID, "stopped")
+		cancel()
+		filepath.Walk(dst, func(p string, fi os.FileInfo, err error) error {
+			if err == nil && strings.HasSuffix(p, ".shuttle-part") {
+				t.Errorf("restart=%v: partial copy left: %s", restart, p)
+			}
+			return nil
+		})
+	}
+}

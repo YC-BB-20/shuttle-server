@@ -194,10 +194,15 @@ func (m *Manager) choose(id, choice string, cause error) error {
 		return err
 	}
 	m.mu.Lock()
-	if m.running == j && cause != nil {
+	running := m.running == j
+	if running && cause != nil {
 		m.cancel(cause)
 	}
 	m.mu.Unlock()
+	if choice == "stopped" && !running {
+		// Paused, waiting or queued: nothing is running to finish the stop.
+		m.finishStopped(j)
+	}
 	m.Log.Info("owner changed a copy job", "job", id, "to", choice)
 	m.poke()
 	return nil
@@ -252,6 +257,14 @@ func (m *Manager) runOne(ctx context.Context, j *Job) {
 	m.mu.Lock()
 	m.running, m.cancel = j, cancel
 	m.mu.Unlock()
+	j.mu.Lock()
+	switch j.st.Choice { // changed between pick and here
+	case "stopped":
+		cancel(errOwnerStop)
+	case "paused":
+		cancel(errOwnerPause)
+	}
+	j.mu.Unlock()
 	j.setLive(func(l *live) { l.reason = "" })
 	err := j.run(jctx, env{budget: m.Budget, src: sd, dst: dd, afterCopy: m.AfterCopy, copyRead: m.CopyRead}, m.Accepting)
 	cancel(nil)
@@ -260,23 +273,18 @@ func (m *Manager) runOne(ctx context.Context, j *Job) {
 	m.mu.Unlock()
 
 	cause := context.Cause(jctx)
+	j.mu.Lock()
+	stopped := j.st.Choice == "stopped" // also when Stop came while a pause was settling
+	j.mu.Unlock()
 	switch {
+	case stopped:
+		m.finishStopped(j)
 	case err == nil:
 		j.mu.Lock()
 		c := j.c
 		j.mu.Unlock()
 		m.Log.Info("copy job finished", "job", j.st.ID, "verified", c.Verified, "already_there", c.Identical,
 			"failed", c.Failed, "s2_ok", c.Strong, "s2_warnings", c.S2Warn)
-	case errors.Is(cause, errOwnerStop):
-		j.mu.Lock()
-		tmp := j.live.temp
-		j.st.Phase, j.st.Finished, j.st.Checkpoints = "done", time.Now(), nil
-		j.live = live{}
-		j.mu.Unlock()
-		if tmp != "" {
-			os.Remove(tmp) // our own partial copy
-		}
-		j.save()
 	case errors.Is(cause, errOwnerPause), ctx.Err() != nil:
 		j.setLive(func(l *live) { l.reason = "" })
 	case errors.Is(err, diskio.ErrGone):
@@ -292,6 +300,46 @@ func (m *Manager) runOne(ctx context.Context, j *Job) {
 		m.Log.Error("copy job hit a problem; it will try again", "job", j.st.ID, "err", err)
 		m.wait(ctx, j, "Problem: "+err.Error()+" — trying again shortly")
 	}
+}
+
+// finishStopped ends a stopped job: proven files stay, the partial copy of
+// the file in progress (our own temporary file) is removed.
+func (m *Manager) finishStopped(j *Job) {
+	j.mu.Lock()
+	if j.st.Phase == "done" {
+		j.mu.Unlock()
+		return
+	}
+	temps := map[string]bool{}
+	if j.live.temp != "" {
+		temps[j.live.temp] = true
+	}
+	idx := map[int]bool{}
+	for _, c := range j.st.Checkpoints {
+		if c.Stage == "copy" {
+			idx[c.Index] = true
+		}
+	}
+	dst := j.st.Spec.Dest
+	j.st.Phase, j.st.Finished, j.st.Checkpoints = "done", time.Now(), nil
+	j.live = live{}
+	j.mu.Unlock()
+	if len(idx) > 0 { // after a restart the partial copy is known only from its checkpoint
+		if it, err := openManifest(j.path("manifest.jsonl")); err == nil {
+			for it.Next() {
+				if idx[it.E.I] {
+					temps[tempName(filepath.Join(dst, filepath.FromSlash(it.E.P)))] = true
+				}
+			}
+			it.Close()
+		}
+	}
+	for t := range temps {
+		if strings.HasSuffix(t, ".shuttle-part") {
+			os.Remove(t) // our own partial copy
+		}
+	}
+	j.save()
 }
 
 // wait shows why a job is resting, then lets the queue try again. Waiting

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.4 — 12 November 2026
+
+- Fixed: **Stop did nothing** after its two questions. The second question was answered "no" by the first one closing a moment late. Each question now waits for the one before to close.
+- Fixed: stopping a copy that was paused, or waiting for a disk, never finished. It now stops straight away, keeps every proven file, and removes the half-written copy of the file in progress, also after Shuttle was restarted in between.
+
 ## 0.2.3 — 12 November 2026
 
 - **Hash while copying, now the default.** The bytes read from the source for the copy are hashed at the same moment they are written, instead of in a separate read before. Then the copy is read back from the destination while the source is read a second time, both at once, one on each disk. A file gets its real name only when all three agree. The source is read twice instead of three times, and the whole job takes about two passes instead of three, with the same strongest proof.
