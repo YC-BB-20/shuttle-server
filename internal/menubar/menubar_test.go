@@ -84,3 +84,23 @@ func alive(pid int) bool {
 	f := strings.Fields(string(b))
 	return len(f) > 2 && f[2] != "Z"
 }
+
+// The update item must not close the menu when pressed: it is a button inside
+// a view, and the refresh timer also runs while the menu is open, so the text
+// moves on to "Checking for updates…" or "Installing update…" in place.
+func TestUpdateItemKeepsMenuOpen(t *testing.T) {
+	s := string(script)
+	for _, want := range []string{
+		"upd.view = updView",
+		"buttonWithTitleTargetAction('Check for updates', target, 'updateAction:')",
+		"addTimerForMode(timer, $.NSRunLoopCommonModes)",
+		"updButton.title = title",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("menubar.js lacks %q", want)
+		}
+	}
+	if strings.Contains(s, "add('Check for updates', 'updateAction:')") {
+		t.Error("update is still a plain menu item, which closes the menu")
+	}
+}

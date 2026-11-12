@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.11 — 12 November 2026
+
+- **Menu bar: the menu stays open when you press Check for updates or Install update.** The item changes in place to "Checking for updates…", "Downloading update…" or "Installing update…", then to "Shuttle is up to date", the update found, or what went wrong, while you watch. "Set up updates…" still closes the menu, since it opens Shuttle.
+
 ## 0.2.10 — 12 November 2026
 
 - **File info names the reads correctly for files that were already at the destination.** Those files are not copied: the source is read in full and compared with the file already there, and the fingerprints now say so instead of "before the copy". For copies made with "Read the source on its own first", the line now reads "Source — full read on its own, before the copy".
