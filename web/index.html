@@ -60,11 +60,14 @@
   .warn { color:var(--warn); } .bad { color:var(--bad); } .mute { color:var(--mute); font-size:14px; }
   .path { font-family: ui-monospace, Menlo, monospace; font-size:13px; overflow-wrap:anywhere; }
   dialog { border:1px solid var(--line); border-radius:14px; background:var(--card); color:var(--fg); padding:0;
-           width:min(560px, calc(100vw - 24px)); max-height:min(80vh, 640px); margin:auto; }
+           width:min(560px, calc(100vw - 24px)); max-height:min(80vh, 640px); max-height:min(85dvh, 640px); margin:auto; }
+  /* Head and buttons stay put; only the middle scrolls, so Start copy and Cancel are always in view. */
+  dialog[open] { display:flex; flex-direction:column; overflow:hidden; }
+  dialog .head, dialog .foot { flex:none; }
   dialog::backdrop { background:rgba(0,0,0,.4); }
   dialog .head { display:flex; align-items:center; padding:12px 16px; border-bottom:1px solid var(--line); }
   dialog .head h2 { flex:1; margin:0; font-size:17px; }
-  dialog .body { padding:12px 16px; overflow:auto; max-height:calc(min(80vh, 640px) - 56px); }
+  dialog .body { padding:12px 16px; overflow:auto; flex:1 1 auto; min-height:0; }
   .jobs-head { display:flex; align-items:center; gap:12px; margin:18px 0 8px; }
   .jobs-head h2 { flex:1; margin:0; font-size:17px; }
   .primary { background:var(--accent); color:#fff; border-color:var(--accent); }
@@ -265,9 +268,9 @@
       <label>When to check</label>
       <div id="whenBox">
         <label class="opt"><input type="radio" name="when" id="whenFile" checked><span>As each file is copied</span></label>
-        <label class="opt"><input type="radio" name="when" id="whenEnd"><span>After all files are copied (each copy keeps a temporary name until it is checked)</span></label>
+        <label class="opt"><input type="radio" name="when" id="whenEnd"><span>After all files are copied</span></label>
       </div>
-      <label class="opt"><input type="checkbox" id="ckSep"><span>Check in a separate queue item, after the copy (files get their real names straight away)</span></label>
+      <label class="opt"><input type="checkbox" id="ckSep"><span>Check in a separate queue item, after the copy</span></label>
       <label class="opt in"><input type="checkbox" id="ckPaused"><span>Add that item paused, to start when you choose</span></label>
     </div>
     <p class="mute" id="proofSum"></p>
@@ -557,8 +560,9 @@ function confirmBox(title, text, yes) {
 async function stopJob(v) {
   const proven = v.verified + v.identical;
   if (!await confirmBox("Stop this copy?", proven + " files (" + size(v.bytes_proven) + ") are copied and verified and will stay. " +
-      (v.copied ? v.copied + " copied files not yet checked are discarded. " : "") +
-      Math.max(0, v.files - proven - v.failed - (v.copied || 0)) + " files have not been copied yet. The file being copied now is discarded.", "Stop")) return;
+      (v.copied ? v.copied + " copied files not yet checked stay, marked not verified. " : "") +
+      Math.max(0, v.files - proven - v.failed - (v.copied || 0)) + " files have not been copied yet. The file being copied now is discarded." +
+      (v.verify_job ? " Its Verify item is paused; resume it to check the files copied so far." : ""), "Stop")) return;
   if (!await confirmBox("Really stop?", "A stopped copy cannot be resumed; you can start a new one, which skips files already there after comparing them.", "Yes, stop")) return;
   post("/api/jobs/" + v.id + "/stop").catch(e => alert(e.message));
 }
@@ -621,8 +625,8 @@ function card(v) {
   else if (v.state === "running" && scanning && ver) sub = "Reading the stored hashes — " + v.scanned + " files so far";
   else if (v.state === "running" && scanning) sub = "Scanning the source — " + v.scanned + " files, " + size(v.scanned_bytes) + " so far";
   else if (v.state === "running") sub = [pc, size((v.progress || 0) * v.bytes) + " of " + size(v.bytes), v.eta_seconds ? left(v.eta_seconds) : "working out the time left", ver ? rate(v.rate) : rate(v.copy_rate) && "copy speed " + rate(v.copy_rate)].filter(Boolean).join(" · ");
-  else if (v.state === "paused") sub = pc + " · Paused by you";
-  else if (v.state === "queued") sub = "Waiting for the job before it to finish";
+  else if (v.state === "paused") sub = v.after ? "Paused by you · press ▶ and it starts when the copy above has finished" : pc + " · Paused by you";
+  else if (v.state === "queued") sub = v.after ? "Starts when the copy above has finished" : "Waiting for the job before it to finish";
   else if (v.state === "finished") { sub = (v.finished ? when(v.finished) + " · " : "") + took(v.created, v.finished) + " · " + size(v.bytes) +
       (secs(v.created, v.finished) >= 1 && v.bytes ? " · " + rate(v.bytes / secs(v.created, v.finished)) + " average" : "") +
       (ver ? " · " + (v.failed ? v.verified + " match, " + v.failed + " do not" : v.verified + (v.verified === 1 ? " file matches" : " files match")) :

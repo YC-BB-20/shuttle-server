@@ -563,24 +563,26 @@ func TestProgressCountsEveryPass(t *testing.T) {
 }
 
 // Copy everything first, then check: every file is copied (hashed as it is
-// read) before any read-back; a copy keeps its temporary name until its
-// check passes; a bad copy is copied again in the check pass.
+// read) before any read-back; each copy gets its real name as soon as it is
+// written (v0.2.16), before its check; a bad copy is copied again in the
+// check pass.
 func TestCopyThenCheck(t *testing.T) {
 	root := t.TempDir()
 	src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
 	files := makeTree(t, src, 2<<20)
 	m := newManager(t, filepath.Join(root, "state"))
-	var copies, named int
+	var copies, unnamed int
 	damaged := false
 	m.AfterCopy = func(tmp string) {
 		copies++
 		if copies > len(files) {
 			return // the redone copy in the check pass
 		}
-		// While the copy pass runs, nothing has its real name yet.
+		// Only the file being copied has a temporary name; earlier copies,
+		// though not yet checked, already have their real names.
 		filepath.Walk(dst, func(p string, fi os.FileInfo, err error) error {
-			if err == nil && !fi.IsDir() && !strings.Contains(p, ".shuttle-") {
-				named++
+			if err == nil && !fi.IsDir() && strings.Contains(p, ".shuttle-") && p != tmp {
+				unnamed++
 			}
 			return nil
 		})
@@ -600,8 +602,8 @@ func TestCopyThenCheck(t *testing.T) {
 	if v.Strong != len(files) || v.Failed != 0 || v.Copied != 0 || v.Progress != 1 {
 		t.Fatalf("%+v", v)
 	}
-	if named != 0 {
-		t.Fatalf("%d files had their real name before the check pass", named)
+	if unnamed != 0 {
+		t.Fatalf("%d copies kept a temporary name after their copy", unnamed)
 	}
 	if copies != len(files)+1 {
 		t.Fatalf("want %d copies (one redone), got %d", len(files)+1, copies)
@@ -625,7 +627,9 @@ func TestProgressCopyThenCheck(t *testing.T) {
 	}
 }
 
-func TestStopCopyThenCheckRemovesUncheckedCopies(t *testing.T) {
+// Stopping before the check keeps the copies under their real names (they
+// show as "Copied · not verified"); only partial copies are removed.
+func TestStopCopyThenCheckKeepsNamedCopies(t *testing.T) {
 	root := t.TempDir()
 	src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
 	makeTree(t, src, 1<<20)
@@ -645,23 +649,27 @@ func TestStopCopyThenCheckRemovesUncheckedCopies(t *testing.T) {
 		t.Fatal(err)
 	}
 	jr.Close()
-	parts := 0
-	filepath.Walk(dst, func(p string, fi os.FileInfo, err error) error {
-		if err == nil && strings.HasSuffix(p, ".shuttle-part") {
-			parts++
-		}
-		return nil
-	})
-	if parts == 0 || j.c.Copied != parts {
-		t.Fatalf("copy pass left %d temporary copies, counted %d", parts, j.c.Copied)
+	count := func() (named, parts int) {
+		filepath.Walk(dst, func(p string, fi os.FileInfo, err error) error {
+			if err == nil && !fi.IsDir() {
+				if strings.Contains(p, ".shuttle-") {
+					parts++
+				} else {
+					named++
+				}
+			}
+			return nil
+		})
+		return
+	}
+	named, parts := count()
+	if parts != 0 || named == 0 || j.c.Copied != named {
+		t.Fatalf("copy pass: %d named, %d temporary, counted %d copied", named, parts, j.c.Copied)
 	}
 	m.finishStopped(j)
-	filepath.Walk(dst, func(p string, fi os.FileInfo, err error) error {
-		if err == nil && strings.Contains(p, ".shuttle-") {
-			t.Errorf("unchecked copy left after Stop: %s", p)
-		}
-		return nil
-	})
+	if n, p := count(); n != named || p != 0 {
+		t.Fatalf("after Stop: %d named (want %d), %d temporary", n, named, p)
+	}
 }
 
 func TestMissingDiskIsNamed(t *testing.T) {

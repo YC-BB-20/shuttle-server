@@ -159,10 +159,7 @@ func (j *Job) copyPhase(ctx context.Context, e env, jr *Journal, accepting func(
 			began := time.Now()
 			recs, err := j.copyOnly(ctx, e, cur, src.Path(cur.P), filepath.Join(dst, filepath.FromSlash(cur.P)))
 			if err == nil && j.st.Spec.copyOnly() && len(recs) == 1 && recs[0].St == "copied" {
-				// No check in this job: the copy, flushed, gets its real name now.
-				if err = j.placeProven(tempFor(filepath.Join(dst, filepath.FromSlash(cur.P))), filepath.Join(dst, filepath.FromSlash(cur.P)), cur); err == nil {
-					recs[0].St = "hashed"
-				}
+				recs[0].St = "hashed" // no check in this job
 			}
 			if err != nil {
 				if !isFileErr(err) {
@@ -373,10 +370,28 @@ func (j *Job) oneFile(ctx context.Context, e env, en *entry, srcPath, final stri
 func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, final, copied string) ([]Rec, error) {
 	rec := Rec{I: en.I, N: en.S}
 	tmp := tempFor(final)
+	// at is where the copy now is. Since v0.2.16 a copy gets its real name as
+	// soon as it is written and flushed, before it is checked; copies left by
+	// v0.2.15 in the middle of a job are still under the temporary name.
+	at := tmp
 	if copied != "" {
-		if fi, err := os.Stat(tmp); err != nil || fi.Size() != en.S {
+		if fi, err := os.Stat(tmp); err == nil && fi.Size() == en.S {
+			at = tmp
+		} else if fi, err := os.Stat(final); err == nil && fi.Size() == en.S {
+			at = final
+		} else {
 			copied = "" // the copy is not there as it was left: copy it again
 		}
+	}
+	name := func() error { // the real name, given once and never over another file
+		if at == final {
+			return nil
+		}
+		if err := j.placeProven(tmp, final, en); err != nil {
+			return err
+		}
+		at = final
+		return nil
 	}
 	if _, err := os.Lstat(final); err == nil && copied == "" {
 		// Never overwrite: compare what is there instead. S2 follows in s2Phase.
@@ -414,6 +429,10 @@ func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, fina
 				return nil, err
 			}
 			c = hs.Sum128().String()
+			at = tmp
+			if err := name(); err != nil {
+				return nil, err
+			}
 		}
 
 		withS2 := j.st.Spec.S2 == "now"
@@ -428,12 +447,12 @@ func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, fina
 			s2ch <- hashRes{}
 			j.setLive(func(l *live) { l.stage = "Reading back the copy (D1)" })
 		}
-		d1, err := j.hashFile(ctx, e, e.dst, tmp, en.I, "d1", false)
+		d1, err := j.hashFile(ctx, e, e.dst, at, en.I, "d1", false)
 		if err == nil && d1.String() != c {
 			// Read the destination once more before believing it.
 			j.dropCheckpoint(en.I, "d1")
 			j.setLive(func(l *live) { l.stage = "Reading back the copy again" })
-			d1, err = j.hashFile(ctx, e, e.dst, tmp, en.I, "d1", false)
+			d1, err = j.hashFile(ctx, e, e.dst, at, en.I, "d1", false)
 		}
 		s2 := <-s2ch // always wait: the source read must not outlive this file
 		if err != nil {
@@ -444,19 +463,22 @@ func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, fina
 		}
 		if d1.String() != c {
 			why = "the copy does not match what was read from the source"
+			if err := j.unname(&at, tmp, final); err != nil {
+				return nil, err
+			}
 			continue
 		}
 		rec.C, rec.D1 = c, d1.String()
 		if !withS2 {
 			// The destination is checked; the source is not read again.
-			if err := j.placeProven(tmp, final, en); err != nil {
+			if err := name(); err != nil {
 				return nil, err
 			}
 			rec.St, rec.A = "verified", attempt+1
 			return []Rec{rec}, nil
 		}
 		if s2.err == nil && s2.h == d1 {
-			if err := j.placeProven(tmp, final, en); err != nil {
+			if err := name(); err != nil {
 				return nil, err
 			}
 			rec.St, rec.S2, rec.A = "strong", s2.h.String(), attempt+1
@@ -465,7 +487,7 @@ func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, fina
 		if sz, m, serr := statSM(srcPath); serr == nil && (sz != en.S || m != en.M) {
 			// The source changed after it was listed: the copy is proven against
 			// what was read for it, which is not a copy error.
-			if err := j.placeProven(tmp, final, en); err != nil {
+			if err := name(); err != nil {
 				return nil, err
 			}
 			rec.St, rec.A = "verified", attempt+1
@@ -476,16 +498,20 @@ func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, fina
 		if s2.err != nil {
 			why += " (" + s2.err.Error() + ")"
 		}
+		if err := j.unname(&at, tmp, final); err != nil {
+			return nil, err
+		}
 	}
 	kept := placeFailed(tmp, final)
 	j.setLive(func(l *live) { l.temp = "" })
 	return nil, perFile("%s, after two attempts; the last copy was kept as %s", why, filepath.Base(kept))
 }
 
-// copyOnly is the copy pass of the copy-then-check scheme: the file is
-// copied under its temporary name while the bytes read are hashed (C), and
-// flushed. D1 and S2 follow in checkPhase; it gets its real name only there.
-// A file already at the destination is compared as in the other schemes.
+// copyOnly is the copy pass of the copy-then-check scheme (and of a copy
+// with no check): the file is copied under its temporary name while the
+// bytes read are hashed (C), flushed, and then given its real name at once.
+// D1 and S2 follow in checkPhase or a Verify item. A file already at the
+// destination is compared as in the other schemes.
 func (j *Job) copyOnly(ctx context.Context, e env, en *entry, srcPath, final string) ([]Rec, error) {
 	if _, err := os.Lstat(final); err == nil {
 		return j.oneFileHashed(ctx, e, en, srcPath, final, "")
@@ -499,8 +525,28 @@ func (j *Job) copyOnly(ctx context.Context, e env, en *entry, srcPath, final str
 		}
 		return nil, err
 	}
-	j.setLive(func(l *live) { l.temp = "" }) // kept for the check pass; a Stop removes it (finishStopped)
+	if err := j.placeProven(tmp, final, en); err != nil {
+		return nil, err
+	}
 	return []Rec{{I: en.I, N: en.S, St: "copied", C: hs.Sum128().String()}}, nil
+}
+
+// unname takes the real name away from a copy that failed its check, so a
+// bad copy never sits under the name of a good one: it goes back to our own
+// temporary name, where the next attempt replaces it or, after the last
+// attempt, it is kept aside as "name.shuttle-failed-copy". Nothing is deleted.
+func (j *Job) unname(at *string, tmp, final string) error {
+	if *at != final {
+		return nil
+	}
+	if _, err := os.Lstat(tmp); err == nil {
+		return perFile("could not set the failed copy aside: %s is in the way", filepath.Base(tmp))
+	}
+	if err := os.Rename(final, tmp); err != nil {
+		return perFile("could not set the failed copy aside: %v", err)
+	}
+	*at = tmp
+	return nil
 }
 
 // checkPhase is the second pass of the copy-then-check scheme: each copy is

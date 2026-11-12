@@ -36,19 +36,21 @@ function run(argv) {
       'restartServer:': { types: ['void', ['id']], implementation: function () {
         post('/api/restart', '{}');
       } },
+      'reopen:': { types: ['void', ['id']], implementation: function () { item.button.performClick($()); } },
       'updateAction:': { types: ['void', ['id']], implementation: function () {
         if (updateState === 'available') {
           pending = { kind: 'install', from: updateState, at: Date.now() };
           showUpdate('Installing update…', false);
           post('/api/update/install', '{}');
+          reopenMenu();
         } else if (updateState === 'nokey') {
-          menu.cancelTracking; // this one opens the page, so the menu closes
           $.NSWorkspace.sharedWorkspace.openURL($.NSURL.URLWithString(pageURL + '/#updates'));
         }
         else {
           pending = { kind: 'check', from: updateState, at: Date.now() };
           showUpdate('Checking for updates…', false);
           post('/api/update/check', '{}');
+          reopenMenu();
         }
       } },
     },
@@ -65,20 +67,12 @@ function run(argv) {
   const line = add('', null);
   menu.addItem($.NSMenuItem.separatorItem);
   add('Open Shuttle', 'openPage:');
-  // The update item is a button inside the menu, not a plain menu item: a
-  // plain item closes the menu when clicked, and the owner wants to see it
-  // change to "Checking for updates…" or "Installing update…" in place.
-  const upd = add('Check for updates', null);
-  const font = $.NSFont.menuFontOfSize(0);
-  const updView = $.NSView.alloc.initWithFrame($.NSMakeRect(0, 0, 260, 22));
-  const updButton = $.NSButton.buttonWithTitleTargetAction('Check for updates', target, 'updateAction:');
-  updButton.bezelStyle = 13; // recessed: no frame until the pointer is over it
-  updButton.showsBorderOnlyWhileMouseInside = true;
-  updButton.alignment = 0; // left, like the other items
-  updButton.font = font;
-  updButton.frame = $.NSMakeRect(8, 0, 244, 22);
-  updView.addSubview(updButton);
-  upd.view = updView;
+  menu.addItem($.NSMenuItem.separatorItem);
+  // The update item is an ordinary menu item, in its own section, so it looks
+  // exactly like the others. A click closes the menu as any item does; the menu
+  // then opens again by itself so "Checking for updates…" or "Installing
+  // update…" is seen in place.
+  const upd = add('Check for updates', 'updateAction:');
   menu.addItem($.NSMenuItem.separatorItem);
   add('Restart Shuttle', 'restartServer:');
   add('Stop Shuttle', 'quitServer:');
@@ -105,15 +99,11 @@ function run(argv) {
   }
 
   function showUpdate(title, enabled) {
-    upd.title = title; // read by VoiceOver
-    updButton.title = title;
-    updButton.enabled = enabled;
-    // Grow (never shrink) so a long message is not cut off.
-    const w = $(title).sizeWithAttributes($({ NSFont: font })).width + 40;
-    if (w > updView.frame.size.width) {
-      updView.setFrameSize($.NSMakeSize(w, 22));
-      updButton.setFrameSize($.NSMakeSize(w - 16, 22));
-    }
+    upd.title = title;
+    upd.enabled = enabled;
+  }
+  function reopenMenu() {
+    $.NSTimer.scheduledTimerWithTimeIntervalTargetSelectorUserInfoRepeats(0.2, target, 'reopen:', $(), false);
   }
 
   function refresh() {

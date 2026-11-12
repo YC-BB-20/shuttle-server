@@ -93,14 +93,18 @@ func (m *Manager) addVerify(s Spec) (*Job, error) {
 // between the two saves never queues it twice.
 const verifyIDSuffix = "-verify"
 
-// queueVerify adds the Verify job a finished copy asked for (Spec.Verify):
-// the copy read back in full and, when the copy's S2 is "now", its source
-// read again beside it. It is added paused when the owner chose that.
+// queueVerify adds the Verify job a copy asked for (Spec.Verify): the copy
+// read back in full and, when the copy's S2 is "now", its source read again
+// beside it. Since v0.2.16 it is added together with the copy, so it shows in
+// the queue under it from the start, and waits for the copy to finish
+// (After); it is added paused when the owner chose that. On start-up it is
+// added for a copy saved without one (an older version, or a crash between
+// the two saves) — never twice, thanks to its fixed id.
 func (m *Manager) queueVerify(cj *Job) {
 	cj.mu.Lock()
 	st := cj.st
 	cj.mu.Unlock()
-	if st.Spec.isVerify() || st.Spec.Verify == "" || st.Phase != "done" || st.Choice == "stopped" || st.VerifyJob != "" {
+	if st.Spec.isVerify() || st.Spec.Verify == "" || st.Choice == "stopped" || st.VerifyJob != "" {
 		return
 	}
 	id := st.ID + verifyIDSuffix
@@ -113,7 +117,11 @@ func (m *Manager) queueVerify(cj *Job) {
 		if st.Spec.S2 == "now" {
 			src, srcVol = st.Spec.Source, st.SourceVol
 		}
-		j := &Job{dir: filepath.Join(m.Dir, id), st: state{FormatVersion: FormatVersion, ID: id, Created: time.Now(), Choice: choice, Phase: "scan",
+		after := ""
+		if st.Phase != "done" {
+			after = st.ID
+		}
+		j := &Job{dir: filepath.Join(m.Dir, id), st: state{FormatVersion: FormatVersion, ID: id, Created: time.Now(), Choice: choice, Phase: "scan", After: after,
 			Spec:      Spec{Kind: KindVerify, Source: src, Dest: st.Spec.Dest, S2: st.Spec.S2, From: []string{st.ID}},
 			SourceVol: srcVol, DestVol: st.DestVol, SameVolume: srcVol == st.DestVol}}
 		if err := os.MkdirAll(j.dir, 0o700); err != nil {
@@ -127,7 +135,7 @@ func (m *Manager) queueVerify(cj *Job) {
 		m.mu.Lock()
 		m.jobs = append(m.jobs, j)
 		m.mu.Unlock()
-		m.Log.Info("verify job queued for a finished copy", "job", id, "copy", st.ID, "paused", choice == "paused", "source_again", st.Spec.S2 == "now")
+		m.Log.Info("verify job queued for a copy", "job", id, "waits_for_copy", after != "", "copy", st.ID, "paused", choice == "paused", "source_again", st.Spec.S2 == "now")
 	}
 	cj.mu.Lock()
 	cj.st.VerifyJob = id

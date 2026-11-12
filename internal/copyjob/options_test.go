@@ -175,3 +175,49 @@ func TestProgressCopyOnly(t *testing.T) {
 		t.Fatal(p)
 	}
 }
+
+// The separate Verify item is in the queue from the moment the copy is
+// added, right under it, and waits for the copy rather than running beside
+// it; a stopped copy leaves its Verify item paused, not stopped.
+func TestVerifyItemShownFromStartAndWaitsForCopy(t *testing.T) {
+	for _, choice := range []string{"run", "paused"} {
+		root := t.TempDir()
+		src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
+		makeTree(t, src, 1<<10)
+		m := newManager(t, filepath.Join(root, "state"))
+		j, err := m.Add(Spec{Source: src, Dest: dst, Check: "none", Verify: choice, S2: "now"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		vs := m.Views()
+		if len(vs) != 2 {
+			t.Fatalf("%s: want the copy and its Verify item, got %d jobs", choice, len(vs))
+		}
+		var fv View
+		for _, v := range vs {
+			if v.Kind == KindVerify {
+				fv = v
+			}
+		}
+		want := map[string]string{"run": "queued", "paused": "paused"}[choice]
+		if fv.ID != j.st.ID+verifyIDSuffix || fv.After != j.st.ID || fv.State != want || !fv.Created.After(j.st.Created) {
+			t.Fatalf("%s: verify item %+v", choice, fv)
+		}
+		m.Resume(fv.ID)
+		if p := m.pick(); p != j {
+			t.Fatalf("%s: the Verify item must wait for its copy", choice)
+		}
+		m.Stop(j.st.ID)
+		f := m.find(fv.ID)
+		if f.st.Choice != "paused" || f.st.Phase == "done" {
+			t.Fatalf("%s: after the copy was stopped the Verify item is %s/%s", choice, f.st.Choice, f.st.Phase)
+		}
+		if p := m.pick(); p != nil {
+			t.Fatalf("%s: nothing should run, got %s", choice, p.st.ID)
+		}
+		m.Resume(fv.ID)
+		if p := m.pick(); p != f {
+			t.Fatalf("%s: once its copy has ended the Verify item can run", choice)
+		}
+	}
+}

@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/YC-BB-20/shuttle-server/internal/copyjob"
 	"os"
 	"path/filepath"
 	"strings"
@@ -58,5 +59,21 @@ func TestDamagedConfigMeansSafeMode(t *testing.T) {
 	}
 	if !strings.Contains(out, "safe_mode=true") || !strings.Contains(out, "cpu_share") {
 		t.Fatalf("not in safe mode:\n%s", out)
+	}
+}
+
+func TestProgressHeadlineShowsCopiedAndVerified(t *testing.T) {
+	for _, c := range []struct {
+		v    copyjob.View
+		want string
+	}{
+		{copyjob.View{Files: 3, Copied: 2}, "Copying — 2 of 3 files copied, 0 verified"},
+		{copyjob.View{Files: 3, Verified: 1, Copied: 1}, "Copying — 2 of 3 files copied, 1 verified"},
+		{copyjob.View{Files: 3, Hashed: 2, Check: "none"}, "Copying — 2 of 3 files copied (not verified)"},
+		{copyjob.View{Files: 3, Verified: 1, Kind: "verify"}, "Verifying — 1 of 3 files checked"},
+	} {
+		if got := progressHeadline(&c.v); got != c.want {
+			t.Errorf("got %q, want %q", got, c.want)
+		}
 	}
 }

@@ -85,22 +85,22 @@ func alive(pid int) bool {
 	return len(f) > 2 && f[2] != "Z"
 }
 
-// The update item must not close the menu when pressed: it is a button inside
-// a view, and the refresh timer also runs while the menu is open, so the text
-// moves on to "Checking for updates…" or "Installing update…" in place.
-func TestUpdateItemKeepsMenuOpen(t *testing.T) {
+// The update item looks exactly like the other items (a plain menu item in
+// its own section, never a button inside a view, which drew grey and indented),
+// and the menu opens again after a click so the progress is seen in place.
+func TestUpdateItemLooksLikeOthersAndReopens(t *testing.T) {
 	s := string(script)
 	for _, want := range []string{
-		"upd.view = updView",
-		"buttonWithTitleTargetAction('Check for updates', target, 'updateAction:')",
+		"add('Open Shuttle', 'openPage:');\n  menu.addItem($.NSMenuItem.separatorItem);",
+		"add('Check for updates', 'updateAction:')",
+		"item.button.performClick($())",
 		"addTimerForMode(timer, $.NSRunLoopCommonModes)",
-		"updButton.title = title",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("menubar.js lacks %q", want)
 		}
 	}
-	if strings.Contains(s, "add('Check for updates', 'updateAction:')") {
-		t.Error("update is still a plain menu item, which closes the menu")
+	if strings.Contains(s, "upd.view") || strings.Contains(s, "NSButton") {
+		t.Error("update item is still a button inside a view")
 	}
 }

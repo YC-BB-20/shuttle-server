@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.16 — 12 November 2026
+
+- **Files get their real names as soon as they are copied.** A file is "clip.mov.shuttle-part" only while it is being written; the moment its copy is written and flushed it is "clip.mov", whichever check you chose, and the check follows. Shuttle's file list still says which files are verified. If a check fails, that copy loses the real name again, is copied once more, and if it still fails it is kept aside as "clip.mov.shuttle-failed-copy". Nothing is deleted, and Stop keeps copied files under their names (marked not verified).
+- **The separate Verify item is in the queue from the start,** right under its copy, saying "Starts when the copy above has finished" (or paused, if you chose that). It never runs beside its copy. Stopping the copy pauses its Verify item, so you can still check the files copied so far.
+- **The status line shows copied and verified:** "Copying — 2 of 3 files copied, 1 verified" (in the menu bar too).
+- **New copy: Start copy and Cancel are always visible;** only the options above them scroll.
+- **Menu bar: "Check for updates" looks like the other items,** in its own section. After a click the menu opens again by itself, so "Checking for updates…" shows in place.
+
 ## 0.2.15 — 12 November 2026
 
 - **Simpler proof choices in New copy: three boxes, each adding to the one above.** "Copy, hashing the source as it is read" (always on); "Verify the destination: read each copy back"; "Read the source again: catches a bad read from the card or cable". All three are ticked the first time; after that the form remembers your last choice. A line under the boxes says in plain words what the choice means. Copy only is the fastest, but nothing checks the copy, so it is not for cards you will erase.

@@ -109,7 +109,8 @@ type state struct {
 	CheckEnd      int64                 `json:"check_journal_end,omitempty"` // journal size when the check pass began
 	Checkpoints   map[string]Checkpoint `json:"checkpoints,omitempty"`
 	Finished      time.Time             `json:"finished,omitzero"`
-	VerifyJob     string                `json:"verify_job,omitempty"` // the Verify job queued when this copy finished
+	VerifyJob     string                `json:"verify_job,omitempty"` // the Verify job that follows this copy
+	After         string                `json:"after,omitempty"`      // a Verify job: the copy it waits for (added with it, v0.2.16)
 }
 
 // Job is one copy job.

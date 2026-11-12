@@ -384,11 +384,12 @@ func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int, hs 
 	return nil
 }
 
-// tempName is the hidden name a copy has until it is proven.
+// tempName is the name a copy has while it is being written.
 //
 // Visible, not hidden (since v0.2.13): a file being copied shows in Finder
-// as "clip.mov.shuttle-part" while it is written and checked, and gets its
-// real name only once it is proven, so it can never be mistaken for done.
+// as "clip.mov.shuttle-part" while it is written. Since v0.2.16 it gets its
+// real name as soon as it is written and flushed, before it is checked; a
+// copy that then fails its check loses the name again (unname).
 func tempName(final string) string {
 	dir, base := filepath.Split(final)
 	name := base + ".shuttle-part"

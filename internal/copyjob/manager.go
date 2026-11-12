@@ -176,6 +176,7 @@ func (m *Manager) Add(s Spec) (*Job, error) {
 	m.jobs = append(m.jobs, j)
 	m.mu.Unlock()
 	m.Log.Info("copy job added", "job", id, "source", src, "destination", dst, "hash", s.Hash, "s2", s.S2, "check", s.Check, "verify", s.Verify, "same_disk", j.st.SameVolume)
+	m.queueVerify(j) // its Verify item is in the queue from the start, under it
 	m.poke()
 	return j, nil
 }
@@ -241,9 +242,47 @@ func (m *Manager) choose(id, choice string, cause error) error {
 		// Paused, waiting or queued: nothing is running to finish the stop.
 		m.finishStopped(j)
 	}
+	if choice == "stopped" {
+		m.holdFollower(j)
+	}
 	m.Log.Info("owner changed a copy job", "job", id, "to", choice)
 	m.poke()
 	return nil
+}
+
+// unfinishedLocked: the job id exists and has not finished. m.mu is held.
+func (m *Manager) unfinishedLocked(id string) bool {
+	for _, o := range m.jobs {
+		if o.st.ID == id {
+			o.mu.Lock()
+			defer o.mu.Unlock()
+			return o.st.Phase != "done"
+		}
+	}
+	return false
+}
+
+// holdFollower pauses the Verify item of a copy the owner stopped, rather than
+// stopping it: resumed, it checks the files that copy finished.
+func (m *Manager) holdFollower(cj *Job) {
+	cj.mu.Lock()
+	id := cj.st.VerifyJob
+	cj.mu.Unlock()
+	if id == "" {
+		return
+	}
+	if f := m.find(id); f != nil {
+		f.mu.Lock()
+		change := f.st.Phase != "done" && f.st.Choice == "run"
+		if change {
+			f.st.Choice = "paused"
+		}
+		f.mu.Unlock()
+		if change {
+			f.save()
+			m.Log.Info("the Verify item of a stopped copy was paused", "job", id)
+		}
+	}
 }
 
 func (m *Manager) pick() *Job {
@@ -252,7 +291,11 @@ func (m *Manager) pick() *Job {
 	for _, j := range m.jobs {
 		j.mu.Lock()
 		ok := j.st.Choice == "run" && j.st.Phase != "done"
+		after := j.st.After
 		j.mu.Unlock()
+		if ok && after != "" {
+			ok = !m.unfinishedLocked(after) // a Verify item waits for its copy
+		}
 		if ok {
 			return j
 		}

@@ -43,6 +43,7 @@ type View struct {
 	Hashed     int       `json:"hashed,omitempty"`      // copy only: copied and hashed, not read back
 	Check      string    `json:"check,omitempty"`       // "none": copy only in this job
 	VerifyNext string    `json:"verify_next,omitempty"` // "run" or "paused": a Verify job follows this copy
+	After      string    `json:"after,omitempty"`       // a Verify job that starts when this copy has finished
 	VerifyJob  string    `json:"verify_job,omitempty"`
 	Skipped    int       `json:"skipped"`
 	SameVolume bool      `json:"same_volume"`
@@ -141,6 +142,13 @@ func (m *Manager) Views() []View {
 	for i := len(jobs) - 1; i >= 0; i-- {
 		j := jobs[i]
 		v, st, l := baseView(j)
+		if v.After != "" {
+			m.mu.Lock()
+			if !m.unfinishedLocked(v.After) {
+				v.After = "" // its copy has finished: nothing to wait for
+			}
+			m.mu.Unlock()
+		}
 		switch {
 		case v.State != "":
 		case st.Choice == "paused":
@@ -206,7 +214,7 @@ func baseView(j *Job) (View, state, live) {
 		Kind: st.Spec.Kind, VerifyFile: st.Spec.File,
 		Created: st.Created, Finished: st.Finished, Phase: st.Phase, Files: st.Files, Bytes: st.Bytes, Skipped: st.Skipped,
 		Verified: c.Verified, Identical: c.Identical, Failed: c.Failed, Strong: c.Strong, S2Warn: c.S2Warn, Copied: c.Copied, Hashed: c.Hashed,
-		Check: st.Spec.Check, VerifyNext: st.Spec.Verify, VerifyJob: st.VerifyJob,
+		Check: st.Spec.Check, VerifyNext: st.Spec.Verify, VerifyJob: st.VerifyJob, After: st.After,
 		Proven: c.BytesProven, SameVolume: st.SameVolume, Scanned: l.scanned, ScannedB: l.scannedBytes,
 		Progress: progress(st, c, l)}
 	if st.Phase == "done" && st.Choice == "stopped" {
@@ -443,7 +451,7 @@ var eventText = map[string]string{
 	"identical":  "Already at the destination; compared and identical, left untouched",
 	"failed":     "Failed",
 	"match":      "Verified again: the copy was read in full and matches the hash stored when it was copied",
-	"copied":     "Copied and hashed as it was read; the check (copy read back, source read again) comes in the second pass",
+	"copied":     "Copied and hashed as it was read, and given its real name; the check (copy read back, source read again) comes later",
 	"hashed":     "Copied and hashed as it was read, and given its real name; the copy was not read back",
 	"s2ok":       "Source read a second time: matches",
 	"s2changed":  "Source read a second time: the source had changed after the copy",

@@ -289,7 +289,7 @@ func Run(opts Options) (code int) {
 		case active != nil && active.Phase == "scan":
 			st.Headline, ok = fmt.Sprintf("Scanning the source — %d files so far", active.Scanned), true
 		case active != nil:
-			st.Headline, ok = fmt.Sprintf("Copying — %d of %d files verified", active.Verified+active.Identical, active.Files), true
+			st.Headline, ok = progressHeadline(active), true
 		default:
 			st.Headline, ok = idleHeadline, true
 		}
@@ -421,4 +421,17 @@ func Run(opts Options) (code int) {
 	}
 	log.Info("stopped", "after", time.Since(started).Round(time.Second).String())
 	return ExitOK
+}
+
+// progressHeadline is the status line for a running job, as in the menu bar:
+// for a copy, how many files are copied and how many of those are verified.
+func progressHeadline(v *copyjob.View) string {
+	if v.Kind == "verify" {
+		return fmt.Sprintf("Verifying — %d of %d files checked", v.Verified+v.Failed+v.Skipped, v.Files)
+	}
+	copied := v.Verified + v.Identical + v.Failed + v.Copied + v.Hashed
+	if v.Check == "none" {
+		return fmt.Sprintf("Copying — %d of %d files copied (not verified)", copied, v.Files)
+	}
+	return fmt.Sprintf("Copying — %d of %d files copied, %d verified", copied, v.Files, v.Verified+v.Identical)
 }
