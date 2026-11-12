@@ -1,0 +1,59 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CGO_ENABLED: "0"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - name: go vet (linux, darwin)
+        run: |
+          go vet ./...
+          GOOS=darwin GOARCH=arm64 go vet ./...
+          GOOS=darwin GOARCH=amd64 go vet ./...
+      - name: go test
+        run: go test ./...
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+          - { goos: linux, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags "-s -w -X github.com/YC-BB-20/shuttle-server/internal/version.Commit=${GITHUB_SHA::7}" -o dist/shuttle-server ./cmd/shuttle-server
+          # tar keeps the executable bit, which an artifact zip would lose
+          tar -czf shuttle-server-${GOOS}-${GOARCH}.tar.gz -C dist shuttle-server
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shuttle-server-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: shuttle-server-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz
+          retention-days: 90

@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Shuttle Server</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f5f5f7; --card:#fff; --fg:#1d1d1f; --mute:#6e6e73; --line:#d2d2d7;
+          --ok:#1f8a3b; --warn:#b25e00; --bad:#c62828; --accent:#0a64d8; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111; --card:#1c1c1e; --fg:#f5f5f7; --mute:#a1a1a6; --line:#38383a; } }
+  * { box-sizing: border-box; }
+  html, body { max-width:100%; overflow-x:hidden; overflow-x:clip; overscroll-behavior-x:none; margin:0; }
+  body { font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--fg);
+         padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 24px max(12px, env(safe-area-inset-left)); }
+  header, main { max-width: 760px; margin: 0 auto; }
+  header { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+  header > * { min-width:0; }
+  h1 { font-size:20px; margin:0; flex:1; }
+  .ver { color:var(--mute); font-size:14px; font-weight:400; }
+  button { font:inherit; border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:8px; padding:6px 12px; }
+  .live { font-size:13px; color:var(--mute); white-space:nowrap; }
+  .live::before { content:"●"; margin-right:4px; color:var(--mute); }
+  .live.on::before { color:var(--ok); }
+  .status { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:12px; font-weight:600; }
+  .status small { display:block; font-weight:400; color:var(--mute); margin-top:4px; }
+  .banner { border-radius:12px; padding:14px 16px; margin-bottom:12px; background:color-mix(in srgb, var(--bad) 14%, var(--card)); border:1px solid var(--bad); }
+  .banner b { color:var(--bad); }
+  .banner[hidden] { display:none; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px; }
+  .grid > * { min-width:0; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 16px; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--mute); margin:0 0 6px; }
+  .card p { margin:2px 0; overflow-wrap:anywhere; }
+  .bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin:6px 0 2px; }
+  .bar > i { display:block; height:100%; background:var(--accent); width:0; }
+  .warn { color:var(--warn); } .bad { color:var(--bad); } .mute { color:var(--mute); font-size:14px; }
+  .path { font-family: ui-monospace, Menlo, monospace; font-size:13px; overflow-wrap:anywhere; }
+  dialog { border:1px solid var(--line); border-radius:14px; background:var(--card); color:var(--fg); padding:0;
+           width:min(560px, calc(100vw - 24px)); max-height:min(80vh, 640px); margin:auto; }
+  dialog::backdrop { background:rgba(0,0,0,.4); }
+  dialog .head { display:flex; align-items:center; padding:12px 16px; border-bottom:1px solid var(--line); }
+  dialog .head h2 { flex:1; margin:0; font-size:17px; }
+  dialog .body { padding:12px 16px; overflow:auto; max-height:calc(min(80vh, 640px) - 56px); }
+  pre { white-space:pre-wrap; overflow-wrap:anywhere; font: 14px/1.45 ui-monospace, Menlo, monospace; margin:0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Shuttle Server <span class="ver" id="ver"></span></h1>
+  <span class="live" id="live">Connecting</span>
+  <button id="aboutBtn" type="button">About</button>
+</header>
+<main>
+  <div class="banner" id="safe" hidden><b>Safe mode.</b> <span id="safeReason"></span>
+    <p class="mute">Nothing runs. Fix the problem, then quit Shuttle Server and start it again with <span class="path">-clear-safe-mode</span>.</p></div>
+  <div class="status" id="headline">Loading…<small id="sub"></small></div>
+  <div class="grid">
+    <section class="card"><h2>Memory</h2><p id="mem"></p><div class="bar"><i id="memBar"></i></div><p class="mute" id="memNote"></p></section>
+    <section class="card"><h2>Buffer budget</h2><p id="buf"></p><div class="bar"><i id="bufBar"></i></div><p class="mute" id="bufNote"></p></section>
+    <section class="card"><h2>Free space</h2><p id="disk"></p><p class="mute" id="diskNote"></p></section>
+    <section class="card"><h2>Processor</h2><p id="cpu"></p><p class="mute" id="cpuNote"></p></section>
+    <section class="card"><h2>Open files</h2><p id="files"></p><p class="mute">Pages open: <span id="pages"></span></p></section>
+    <section class="card"><h2>Data folder</h2><p class="path" id="data"></p><p class="mute">Temp: <span class="path" id="temp"></span></p></section>
+  </div>
+</main>
+<dialog id="about">
+  <div class="head"><h2>About Shuttle Server</h2><button type="button" id="aboutClose">Close</button></div>
+  <div class="body"><p id="aboutVer"></p><pre id="changelog">Loading…</pre></div>
+</dialog>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const size = n => { if (!n) return "0 B"; const u = ["B","KB","MB","GB","TB"]; let i = Math.min(4, Math.floor(Math.log(n)/Math.log(1024))); return (n/1024**i).toFixed(i > 2 ? 1 : 0) + " " + u[i]; };
+const pct = (a, b) => b ? Math.min(100, a / b * 100) : 0;
+const ago = t => { const s = Math.round((Date.now() - new Date(t)) / 1000); if (s < 90) return s + " s"; if (s < 5400) return Math.round(s/60) + " min"; return (s/3600).toFixed(1) + " h"; };
+let latest = null, frame = 0;
+
+function render() {
+  frame = 0;
+  const s = latest; if (!s) return;
+  $("ver").textContent = "v" + s.version;
+  $("headline").firstChild.textContent = s.headline;
+  $("sub").textContent = "Running for " + ago(s.started_at) + " · " + s.jobs + " jobs" + (s.notes ? " · " + s.notes.join(" · ") : "");
+  $("safe").hidden = !s.safe_mode; $("safeReason").textContent = s.safe_mode_reason || "";
+  $("mem").textContent = size(s.memory.used) + " of " + size(s.memory.ceiling);
+  $("memBar").style.width = pct(s.memory.used, s.memory.ceiling) + "%";
+  $("memNote").textContent = s.memory.state === "ok" ? "Within the limit" : "Over the limit — starting nothing new";
+  $("memNote").className = s.memory.state === "ok" ? "mute" : "bad";
+  $("buf").textContent = size(s.buffers.used) + " in use of " + size(s.buffers.limit);
+  $("bufBar").style.width = pct(s.buffers.used, s.buffers.limit) + "%";
+  $("bufNote").textContent = s.buffers.waiting ? s.buffers.waiting + " waiting for memory buffers" : "All file data in memory comes from this pool";
+  if (s.disk.error) { $("disk").textContent = "Unknown"; $("diskNote").textContent = s.disk.error; }
+  else { $("disk").textContent = size(s.disk.free) + " free"; $("diskNote").textContent = "Floor " + size(s.disk.floor) + (s.disk.below_floor ? " — below the floor" : ""); }
+  $("diskNote").className = s.disk.below_floor ? "warn" : "mute";
+  $("cpu").textContent = s.cpu.procs + " of " + s.cpu.num_cpu + " cores";
+  $("cpuNote").textContent = s.cpu.nice_error ? "Priority not lowered: " + s.cpu.nice_error : "Lower priority (nice " + s.cpu.nice + ")";
+  $("files").textContent = "Own cap " + s.open_files.cap + " of " + s.open_files.limit;
+  $("pages").textContent = s.pages.open + " of " + s.pages.max;
+  $("data").textContent = s.data_dir; $("temp").textContent = s.temp_dir;
+}
+function show(s) { latest = s; if (!frame) frame = requestAnimationFrame(render); }
+function live(on, text) { $("live").className = on ? "live on" : "live"; $("live").textContent = text; }
+
+let es = null;
+function connect() {
+  if (es || document.hidden) return;
+  fetch("/api/status").then(r => r.json()).then(show).catch(() => {});
+  es = new EventSource("/api/events");
+  es.onopen = () => live(true, "Live");
+  es.onmessage = e => { try { show(JSON.parse(e.data)); } catch (_) {} };
+  es.onerror = () => live(false, "Reconnecting — is Shuttle Server running?");
+}
+function disconnect() { if (es) { es.close(); es = null; } live(false, "Paused"); }
+document.addEventListener("visibilitychange", () => document.hidden ? disconnect() : connect());
+connect();
+
+$("aboutBtn").onclick = () => {
+  $("about").showModal();
+  fetch("/api/about").then(r => r.json()).then(a => {
+    $("aboutVer").textContent = "Version " + a.version + " (" + a.commit + ")";
+    $("changelog").textContent = a.changelog;
+  }).catch(() => { $("changelog").textContent = "Could not load the changelog."; });
+};
+$("aboutClose").onclick = () => $("about").close();
+</script>
+</body>
+</html>

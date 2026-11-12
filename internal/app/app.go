@@ -1,0 +1,277 @@
+// Package app wires the pieces together and runs until asked to stop.
+package app
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"syscall"
+	"time"
+
+	shuttle "github.com/YC-BB-20/shuttle-server"
+	"github.com/YC-BB-20/shuttle-server/internal/config"
+	"github.com/YC-BB-20/shuttle-server/internal/events"
+	"github.com/YC-BB-20/shuttle-server/internal/fsx"
+	"github.com/YC-BB-20/shuttle-server/internal/limits"
+	"github.com/YC-BB-20/shuttle-server/internal/logx"
+	"github.com/YC-BB-20/shuttle-server/internal/safemode"
+	"github.com/YC-BB-20/shuttle-server/internal/server"
+	"github.com/YC-BB-20/shuttle-server/internal/sysinfo"
+	"github.com/YC-BB-20/shuttle-server/internal/version"
+)
+
+// Exit codes.
+const (
+	ExitOK      = 0
+	ExitStartup = 1
+	ExitPanic   = 2
+	ExitMemory  = 3
+)
+
+var errMemory = errors.New("memory stayed over the ceiling")
+
+// Options come from the command line.
+type Options struct {
+	DataDir       string
+	ClearSafeMode bool
+	Stdout        io.Writer
+	StableAfter   time.Duration // 0 = safemode.StableAfter
+}
+
+// Status is what the page shows. It never contains a secret.
+type Status struct {
+	Version    string             `json:"version"`
+	Commit     string             `json:"commit"`
+	StartedAt  time.Time          `json:"started_at"`
+	Now        time.Time          `json:"now"`
+	Headline   string             `json:"headline"`
+	SafeMode   bool               `json:"safe_mode"`
+	SafeReason string             `json:"safe_mode_reason,omitempty"`
+	Notes      []string           `json:"notes,omitempty"`
+	DataDir    string             `json:"data_dir"`
+	TempDir    string             `json:"temp_dir"`
+	Disk       Disk               `json:"disk"`
+	Memory     Memory             `json:"memory"`
+	Buffers    limits.BudgetStats `json:"buffers"`
+	CPU        limits.CPUResult   `json:"cpu"`
+	OpenFiles  OpenFiles          `json:"open_files"`
+	Pages      Pages              `json:"pages"`
+	Jobs       int                `json:"jobs"`
+}
+
+type Disk struct {
+	Free       uint64 `json:"free"`
+	Floor      uint64 `json:"floor"`
+	BelowFloor bool   `json:"below_floor"`
+	Error      string `json:"error,omitempty"`
+}
+
+type Memory struct {
+	Used    uint64          `json:"used"`
+	Ceiling uint64          `json:"ceiling"`
+	State   limits.MemState `json:"state"`
+}
+
+type OpenFiles struct {
+	Limit uint64 `json:"limit"`
+	Cap   int    `json:"cap"`
+}
+
+type Pages struct {
+	Open int `json:"open"`
+	Max  int `json:"max"`
+}
+
+// Run starts Shuttle Server and returns an exit code.
+func Run(opts Options) (code int) {
+	started := time.Now()
+	if opts.StableAfter == 0 {
+		opts.StableAfter = safemode.StableAfter
+	}
+	data, err := filepath.Abs(opts.DataDir)
+	if err != nil {
+		fmt.Fprintln(opts.Stdout, "Data folder:", err)
+		return ExitStartup
+	}
+	stateDir := filepath.Join(data, "state")
+	for _, d := range []string{data, stateDir, filepath.Join(data, "logs"), filepath.Join(data, "records"), filepath.Join(data, "temp.noindex")} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			fmt.Fprintln(opts.Stdout, "Could not create the data folder:", err)
+			return ExitStartup
+		}
+	}
+	log, closeLog, err := logx.Open(filepath.Join(data, "logs"), opts.Stdout, started)
+	if err != nil {
+		fmt.Fprintln(opts.Stdout, "Could not open the log:", err)
+		return ExitStartup
+	}
+	defer closeLog()
+
+	trackerPath := filepath.Join(stateDir, "startup.json")
+	if opts.ClearSafeMode {
+		if err := safemode.Reset(trackerPath); err != nil {
+			log.Error("could not clear safe mode", "err", err)
+		} else {
+			log.Info("safe mode cleared by the owner")
+		}
+	}
+	tr, safe, reason, err := safemode.Open(trackerPath, started)
+	if err != nil {
+		safe, reason = true, "Could not write to the state folder: "+err.Error()
+	}
+	var notes []string
+	if tr.Note != "" {
+		notes = append(notes, tr.Note)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			msg := fmt.Sprint(r)
+			tr.RecordError(msg, time.Now())
+			log.Error("crashed", "panic", msg)
+			code = ExitPanic
+		}
+	}()
+
+	cfgPath := filepath.Join(data, "config.json")
+	cfg, created, err := config.Load(cfgPath)
+	if err != nil {
+		msg := "The settings file config.json has a problem: " + err.Error()
+		tr.RecordError(msg, started)
+		safe, reason = true, msg
+		cfg = config.Defaults()
+	} else if created {
+		log.Info("wrote default settings", "file", cfgPath)
+	}
+	tempDir := cfg.TempDir
+	if tempDir == "" {
+		tempDir = filepath.Join(data, "temp.noindex")
+	}
+
+	// Resource limits (DESIGN.md section 18), applied before anything else runs.
+	ram := sysinfo.TotalRAM()
+	cpu := limits.ApplyCPU(cfg.CPUShare, cfg.Nice)
+	ceiling := cfg.MemoryCeilingBytes(ram)
+	limits.ApplyMemoryLimit(ceiling)
+	budget := limits.NewBudget(cfg.BufferBudgetBytes(ram))
+	fileLimit := sysinfo.OpenFileLimit()
+
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	sigCtx, stopSig := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stopSig()
+
+	wd := &limits.Watchdog{Ceiling: uint64(ceiling), Interval: 5 * time.Second, Grace: time.Minute, Read: limits.GoMemory,
+		OnOver: func(over bool) {
+			if over {
+				log.Warn("memory over the ceiling: starting nothing new, buffers halved")
+				budget.Shrink(budget.Stats().Total / 2)
+			} else {
+				log.Info("memory back under the ceiling")
+				budget.Restore()
+			}
+		},
+		OnCritical: func() {
+			log.Error("memory stayed over the ceiling for a minute: stopping cleanly")
+			cancel(errMemory)
+		}}
+	go wd.Run(ctx)
+
+	hub := events.NewHub(cfg.PageUpdatesPerS, cfg.MaxOpenPages)
+	go hub.Run(ctx)
+
+	status := func() any {
+		st := Status{Version: version.Version, Commit: version.Commit, StartedAt: started, Now: time.Now(),
+			SafeMode: safe, SafeReason: reason, Notes: notes, DataDir: data, TempDir: tempDir,
+			Buffers: budget.Stats(), CPU: cpu, OpenFiles: OpenFiles{fileLimit, cfg.OpenFiles(fileLimit)},
+			Pages: Pages{hub.Open(), hub.Max()}}
+		st.Memory.Used, st.Memory.State = wd.Status()
+		st.Memory.Ceiling = uint64(ceiling)
+		st.Disk.Floor = cfg.FloorBytes()
+		if free, err := fsx.FreeBytes(tempDir); err != nil {
+			st.Disk.Error = err.Error()
+		} else {
+			st.Disk.Free, st.Disk.BelowFloor = free, free < st.Disk.Floor
+		}
+		switch {
+		case safe:
+			st.Headline = "Safe mode — nothing runs until the problem is fixed"
+		case st.Memory.State != limits.MemOK:
+			st.Headline = "Using too much memory — starting nothing new"
+		case st.Disk.BelowFloor:
+			st.Headline = "Waiting for free space — the disk is below the floor"
+		case st.Buffers.Waiting > 0:
+			st.Headline = "Waiting for memory buffers"
+		default:
+			st.Headline = "Idle — this version does not move files yet"
+		}
+		return st
+	}
+	go func() {
+		t := time.NewTicker(time.Second)
+		defer t.Stop()
+		for {
+			if b, err := json.Marshal(status()); err == nil {
+				hub.Publish(b)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+			}
+		}
+	}()
+
+	srv := (&server.Server{Page: shuttle.IndexHTML, PageDir: cfg.PageDir, Hub: hub, Status: status,
+		About: func() any {
+			return map[string]string{"version": version.Version, "commit": version.Commit, "changelog": shuttle.Changelog}
+		}}).HTTP()
+	ln, err := net.Listen("tcp", cfg.Listen)
+	if err != nil {
+		tr.Forget() // not a crash: most likely already running
+		log.Error("could not open the page address — is Shuttle Server already running?", "listen", cfg.Listen, "err", err)
+		return ExitStartup
+	}
+	go srv.Serve(ln)
+
+	_, port, _ := net.SplitHostPort(cfg.Listen)
+	log.Info("Shuttle Server running", "version", version.String(), "page", "http://localhost:"+port,
+		"data", data, "safe_mode", safe, "cores", cpu.Procs, "nice", cpu.Nice,
+		"buffer_budget_mb", budget.Stats().Total>>20, "memory_ceiling_mb", ceiling>>20)
+	if safe {
+		log.Warn("safe mode", "reason", reason, "to_leave", "fix the problem, then start with -clear-safe-mode")
+	}
+	if cpu.NiceError != "" {
+		log.Warn("could not lower priority", "err", cpu.NiceError)
+	}
+
+	stable := time.NewTimer(opts.StableAfter)
+	defer stable.Stop()
+	for running := true; running; {
+		select {
+		case <-stable.C:
+			if !safe {
+				tr.Stable()
+			}
+		case <-sigCtx.Done():
+			running = false
+		}
+	}
+
+	shut, done := context.WithTimeout(context.Background(), 5*time.Second)
+	defer done()
+	srv.Shutdown(shut)
+	if errors.Is(context.Cause(ctx), errMemory) {
+		return ExitMemory
+	}
+	if !safe {
+		tr.Stable() // a clean quit is not a crash
+	}
+	log.Info("stopped", "after", time.Since(started).Round(time.Second).String())
+	return ExitOK
+}
