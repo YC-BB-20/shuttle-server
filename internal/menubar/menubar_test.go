@@ -19,7 +19,7 @@ func TestStatusFileAndHelperStoppedWithShuttle(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		Run(ctx, Options{Dir: dir, URL: "http://localhost:8470", Every: 50 * time.Millisecond,
-			Get:     func() Line { return Line{Level: "warn", Headline: "Waiting\nfor space", Version: "0.1.1"} },
+			Get:     func() Line { return Line{Level: "warn", Headline: "Waiting\nfor space", Version: "0.1.1", Update: "available", UpdateVersion: "0.2.1"} },
 			Log:     slog.New(slog.NewTextHandler(io.Discard, nil)),
 			Command: []string{"/bin/sh", "-c", "sleep 60 & echo $! > " + pidFile + "; wait"}})
 		close(done)
@@ -30,7 +30,7 @@ func TestStatusFileAndHelperStoppedWithShuttle(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := strings.Split(string(b), "\n")
-	if f[1] != "warn" || f[2] != "Waiting for space" || f[3] != "0.1.1" || f[4] != "http://localhost:8470" {
+	if f[1] != "warn" || f[2] != "Waiting for space" || f[3] != "0.1.1" || f[4] != "http://localhost:8470" || f[5] != "available" || f[6] != "0.2.1" {
 		t.Fatalf("status file %q", b)
 	}
 	pb, _ := os.ReadFile(pidFile)

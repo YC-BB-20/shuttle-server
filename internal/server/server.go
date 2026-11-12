@@ -2,6 +2,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/YC-BB-20/shuttle-server/internal/copyjob"
 	"github.com/YC-BB-20/shuttle-server/internal/events"
+	"github.com/YC-BB-20/shuttle-server/internal/update"
 )
 
 // Server holds what the handlers need.
@@ -23,6 +25,16 @@ type Server struct {
 	About   func() any
 	Jobs    Actions // nil in safe mode
 	Listen  string
+	Updates Updates // works in safe mode too
+	Restart func()
+}
+
+// Updates are the update commands.
+type Updates interface {
+	SetKey(key string) error
+	Check(ctx context.Context) (*update.Release, error)
+	Install(ctx context.Context, now bool) error
+	Rollback() error
 }
 
 // Actions are the commands the page may send about copy jobs.
@@ -44,6 +56,8 @@ func (s *Server) HTTP() *http.Server {
 	mux.HandleFunc("GET /api/browse", s.browse)
 	mux.HandleFunc("GET /api/jobs/{id}/problems", s.problems)
 	mux.HandleFunc("POST /api/jobs", s.command(s.addJob))
+	mux.HandleFunc("POST /api/restart", s.always(s.restart))
+	mux.HandleFunc("POST /api/update/{action}", s.always(s.updateAction))
 	mux.HandleFunc("POST /api/jobs/{id}/{action}", s.command(s.jobAction))
 	return &http.Server{
 		Handler:           localOnly(mux),

@@ -29,6 +29,9 @@ type Line struct {
 	Level    string // ok, warn or bad
 	Headline string
 	Version  string
+	// Update is none, nokey, busy, waiting or available.
+	Update        string
+	UpdateVersion string
 }
 
 // Options for Run. Command is the helper; empty means osascript.
@@ -57,7 +60,7 @@ func Run(ctx context.Context, o Options) {
 	status := StatusFile(o.Dir)
 	write := func() {
 		l := o.Get()
-		body := fmt.Sprintf("%d\n%s\n%s\n%s\n%s\n", time.Now().Unix(), l.Level, oneLine(l.Headline), l.Version, o.URL)
+		body := fmt.Sprintf("%d\n%s\n%s\n%s\n%s\n%s\n%s\n", time.Now().Unix(), l.Level, oneLine(l.Headline), l.Version, o.URL, l.Update, l.UpdateVersion)
 		// A display file, not state: rename keeps it whole, no flush needed.
 		tmp := status + ".tmp"
 		if os.WriteFile(tmp, []byte(body), 0o600) == nil {

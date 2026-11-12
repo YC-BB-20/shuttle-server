@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/YC-BB-20/shuttle-server/internal/copyjob"
 )
@@ -19,12 +21,21 @@ import (
 // cannot send without a preflight this server never approves, and an Origin
 // (when present) on this computer.
 func (s *Server) command(h func(http.ResponseWriter, *http.Request) (any, error)) http.HandlerFunc {
+	return s.guarded(h, true)
+}
+
+// always is command for actions that also work in safe mode.
+func (s *Server) always(h func(http.ResponseWriter, *http.Request) (any, error)) http.HandlerFunc {
+	return s.guarded(h, false)
+}
+
+func (s *Server) guarded(h func(http.ResponseWriter, *http.Request) (any, error), needJobs bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Shuttle") != "1" || !localOrigin(r.Header.Get("Origin")) {
 			http.Error(w, "refused", http.StatusForbidden)
 			return
 		}
-		if s.Jobs == nil {
+		if needJobs && s.Jobs == nil {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "Shuttle Server is in safe mode; nothing runs."})
 			return
 		}
@@ -152,3 +163,51 @@ func (s *Server) browse(w http.ResponseWriter, r *http.Request) {
 }
 
 func isDir(p string) bool { fi, err := os.Stat(p); return err == nil && fi.IsDir() }
+
+func (s *Server) restart(w http.ResponseWriter, r *http.Request) (any, error) {
+	if s.Restart == nil {
+		return nil, errors.New("restart is not available")
+	}
+	go s.Restart() // after this reply is sent
+	return map[string]bool{"ok": true}, nil
+}
+
+// updateAction: key, check, install, rollback. Long steps run in the
+// background; the page and the icon follow them through the status.
+func (s *Server) updateAction(w http.ResponseWriter, r *http.Request) (any, error) {
+	if s.Updates == nil {
+		return nil, errors.New("updates are not available")
+	}
+	var body struct {
+		Key string `json:"key"`
+		Now bool   `json:"now"`
+	}
+	json.NewDecoder(r.Body).Decode(&body)
+	bg := func(f func(context.Context)) {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+			defer cancel()
+			f(ctx)
+		}()
+	}
+	switch r.PathValue("action") {
+	case "key":
+		if err := s.Updates.SetKey(body.Key); err != nil {
+			return nil, err
+		}
+		if body.Key != "" {
+			bg(func(ctx context.Context) { s.Updates.Check(ctx) })
+		}
+	case "check":
+		bg(func(ctx context.Context) { s.Updates.Check(ctx) })
+	case "install":
+		bg(func(ctx context.Context) { s.Updates.Install(ctx, body.Now) })
+	case "rollback":
+		if err := s.Updates.Rollback(); err != nil {
+			return nil, err
+		}
+	default:
+		return nil, errors.New("unknown action")
+	}
+	return map[string]bool{"ok": true}, nil
+}

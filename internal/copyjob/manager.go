@@ -138,6 +138,13 @@ func (m *Manager) Add(s Spec) (*Job, error) {
 	return j, nil
 }
 
+// Busy reports whether a copy is running right now.
+func (m *Manager) Busy() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.running != nil
+}
+
 func (m *Manager) poke() {
 	select {
 	case m.wake <- struct{}{}:

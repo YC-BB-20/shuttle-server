@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/YC-BB-20/shuttle-server/internal/app"
@@ -46,7 +47,14 @@ func main() {
 		fmt.Println("Shuttle Server", version.String())
 		return
 	}
-	os.Exit(app.Run(app.Options{DataDir: *data, ClearSafeMode: *clear, Stdout: os.Stdout}))
+	code := app.Run(app.Options{DataDir: *data, ClearSafeMode: *clear, Stdout: os.Stdout})
+	if code == app.ExitRestart {
+		// Start again in place: same process, same arguments, new program.
+		err := syscall.Exec(app.RestartPath, os.Args, os.Environ())
+		fmt.Fprintln(os.Stderr, "Could not restart Shuttle Server:", err)
+		code = 1
+	}
+	os.Exit(code)
 }
 
 func hash(files []string) int {

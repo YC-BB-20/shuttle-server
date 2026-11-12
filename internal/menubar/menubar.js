@@ -13,7 +13,12 @@ function run(argv) {
   const menu = $.NSMenu.alloc.init;
   menu.autoenablesItems = false;
   let pageURL = 'http://localhost:8470';
-  let lastGood = Date.now(), lastLevel = '';
+  let lastGood = Date.now(), lastLevel = '', updateState = 'none';
+  // Commands go to Shuttle's own page server, with the header it requires.
+  function post(path, body) {
+    $.NSTask.launchedTaskWithLaunchPathArguments('/usr/bin/curl', $(['-s', '-m', '10', '-o', '/dev/null', '-X', 'POST',
+      '-H', 'X-Shuttle: 1', '-H', 'Content-Type: application/json', '-d', body, pageURL + path]));
+  }
 
   ObjC.registerSubclass({
     name: 'ShuttleMenuTarget',
@@ -24,6 +29,14 @@ function run(argv) {
       } },
       'quitServer:': { types: ['void', ['id']], implementation: function () {
         $.NSTask.launchedTaskWithLaunchPathArguments('/bin/kill', $(['-INT', serverPid]));
+      } },
+      'restartServer:': { types: ['void', ['id']], implementation: function () {
+        post('/api/restart', '{}');
+      } },
+      'updateAction:': { types: ['void', ['id']], implementation: function () {
+        if (updateState === 'available') post('/api/update/install', '{}');
+        else if (updateState === 'nokey') $.NSWorkspace.sharedWorkspace.openURL($.NSURL.URLWithString(pageURL + '/#updates'));
+        else post('/api/update/check', '{}');
       } },
     },
   });
@@ -39,6 +52,9 @@ function run(argv) {
   const line = add('', null);
   menu.addItem($.NSMenuItem.separatorItem);
   add('Open Shuttle page', 'openPage:');
+  const upd = add('Check for updates', 'updateAction:');
+  menu.addItem($.NSMenuItem.separatorItem);
+  add('Restart Shuttle Server', 'restartServer:');
   add('Quit Shuttle Server', 'quitServer:');
   item.menu = menu;
 
@@ -66,7 +82,7 @@ function run(argv) {
     const s = $.NSString.stringWithContentsOfFileEncodingError(statusPath, $.NSUTF8StringEncoding, $());
     const now = Date.now();
     if (!s.isNil()) {
-      // Lines: unix time, level, headline, version, page URL
+      // Lines: unix time, level, headline, version, page URL, update state, update version
       const f = s.js.split('\n');
       if (now / 1000 - Number(f[0]) < 15) {
         lastGood = now;
@@ -75,6 +91,17 @@ function run(argv) {
         line.title = f[2];
         item.button.toolTip = 'Shuttle Server: ' + f[2];
         if (f[4]) pageURL = f[4];
+        updateState = f[5] || 'none';
+        const titles = {
+          none: ['Check for updates', true],
+          nokey: ['Set up updates…', true],
+          busy: ['Updating…', false],
+          waiting: ['Update installs when the copy finishes', false],
+          available: ['Install update ' + (f[6] || ''), true],
+        };
+        const t = titles[updateState] || titles.none;
+        upd.title = t[0];
+        upd.enabled = t[1];
       }
     }
     if (now - lastGood > 15000) app.terminate($()); // the server is gone

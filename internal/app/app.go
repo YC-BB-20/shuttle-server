@@ -26,6 +26,7 @@ import (
 	"github.com/YC-BB-20/shuttle-server/internal/safemode"
 	"github.com/YC-BB-20/shuttle-server/internal/server"
 	"github.com/YC-BB-20/shuttle-server/internal/sysinfo"
+	"github.com/YC-BB-20/shuttle-server/internal/update"
 	"github.com/YC-BB-20/shuttle-server/internal/version"
 )
 
@@ -35,11 +36,18 @@ const (
 	ExitStartup = 1
 	ExitPanic   = 2
 	ExitMemory  = 3
+	ExitRestart = 4 // main starts the program again in place
 )
 
 const idleHeadline = "Idle — no copy running"
 
-var errMemory = errors.New("memory stayed over the ceiling")
+var (
+	errMemory  = errors.New("memory stayed over the ceiling")
+	errRestart = errors.New("restart requested")
+)
+
+// RestartPath is the program to start again when Run returns ExitRestart.
+var RestartPath string
 
 // Options come from the command line.
 type Options struct {
@@ -68,6 +76,7 @@ type Status struct {
 	CPU        limits.CPUResult   `json:"cpu"`
 	OpenFiles  OpenFiles          `json:"open_files"`
 	Pages      Pages              `json:"pages"`
+	Update     update.State       `json:"update"`
 	Jobs       []copyjob.View     `json:"jobs"`
 }
 
@@ -189,6 +198,7 @@ func Run(opts Options) (code int) {
 	go wd.Run(ctx)
 
 	var jobs *copyjob.Manager
+	jobsDone := make(chan struct{})
 	disks := diskio.NewRegistry(1, 60*time.Second)
 	if !safe {
 		jobs = &copyjob.Manager{Dir: filepath.Join(stateDir, "jobs"), Budget: budget, Disks: disks,
@@ -198,9 +208,31 @@ func Run(opts Options) (code int) {
 			jobs = nil
 		} else {
 			go disks.Run(ctx)
-			go jobs.Run(ctx)
+			go func() { jobs.Run(ctx); close(jobsDone) }()
 		}
 	}
+
+	if jobs == nil {
+		close(jobsDone)
+	}
+
+	// Restart and updates work in safe mode too: a bad release is undone from there.
+	restartCh := make(chan struct{}, 1)
+	restart := func() {
+		select {
+		case restartCh <- struct{}{}:
+		default:
+		}
+	}
+	binPath, _ := os.Executable()
+	if p, err := filepath.EvalSymlinks(binPath); err == nil {
+		binPath = p
+	}
+	updater := &update.Updater{Repo: cfg.UpdateRepo, KeyPath: filepath.Join(data, "secrets", "github-update-key"),
+		BinPath: binPath, Version: version.Version, Commit: version.Commit, Log: log, Restart: restart,
+		CopyBusy: func() bool { return jobs != nil && jobs.Busy() }}
+	updater.Init()
+	go updater.Watch(ctx, 6*time.Hour)
 
 	hub := events.NewHub(cfg.PageUpdatesPerS, cfg.MaxOpenPages)
 	go hub.Run(ctx)
@@ -221,6 +253,7 @@ func Run(opts Options) (code int) {
 		if jobs != nil {
 			st.Jobs = jobs.Views()
 		}
+		st.Update = updater.State()
 		var active *copyjob.View
 		for i := range st.Jobs {
 			if v := &st.Jobs[i]; v.State == "running" || v.State == "waiting" {
@@ -276,9 +309,11 @@ func Run(opts Options) (code int) {
 		actions = jobs
 	}
 	srv := (&server.Server{Page: shuttle.IndexHTML, PageDir: cfg.PageDir, Hub: hub, Status: status, Jobs: actions, Listen: cfg.Listen,
+		Updates: updater, Restart: restart,
 		About: func() any {
 			return map[string]string{"version": version.Version, "commit": version.Commit, "changelog": shuttle.Changelog}
 		}}).HTTP()
+	srv.BaseContext = func(net.Listener) context.Context { return ctx } // open pages end when Shuttle stops
 	ln, err := net.Listen("tcp", cfg.Listen)
 	if err != nil {
 		tr.Forget() // not a crash: most likely already running
@@ -296,7 +331,18 @@ func Run(opts Options) (code int) {
 			menubar.Run(ctx, menubar.Options{Dir: filepath.Join(data, "temp.noindex"), URL: pageURL, Log: log,
 				Get: func() menubar.Line {
 					s := snapshot()
-					return menubar.Line{Level: s.Level, Headline: s.Headline, Version: s.Version}
+					l := menubar.Line{Level: s.Level, Headline: s.Headline, Version: s.Version, Update: "none"}
+					switch u := s.Update; {
+					case !u.KeySet:
+						l.Update = "nokey"
+					case u.Busy != "":
+						l.Update = "busy"
+					case u.Waiting:
+						l.Update = "waiting"
+					case u.Available != nil:
+						l.Update, l.UpdateVersion = "available", u.Available.Version
+					}
+					return l
 				}})
 		}()
 	} else {
@@ -322,14 +368,32 @@ func Run(opts Options) (code int) {
 			}
 		case <-sigCtx.Done():
 			running = false
+		case <-restartCh:
+			log.Info("restarting")
+			cancel(errRestart)
+			running = false
 		}
 	}
 
+	// Stop in order: copies save their place, then the page, then the icon.
+	cancel(context.Cause(ctx))
+	select {
+	case <-jobsDone:
+	case <-time.After(20 * time.Second):
+		log.Warn("a copy did not stop within 20 seconds; it will be re-checked on the next start")
+	}
 	shut, done := context.WithTimeout(context.Background(), 5*time.Second)
 	defer done()
 	srv.Shutdown(shut)
-	cancel(context.Cause(ctx)) // stops the menu bar icon; keeps the reason
 	<-menuDone
+	if errors.Is(context.Cause(ctx), errRestart) {
+		if !safe {
+			tr.Stable()
+		}
+		log.Info("stopped for restart", "after", time.Since(started).Round(time.Second).String())
+		RestartPath = binPath
+		return ExitRestart
+	}
 	if errors.Is(context.Cause(ctx), errMemory) {
 		return ExitMemory
 	}

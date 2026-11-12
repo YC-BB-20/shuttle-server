@@ -56,6 +56,8 @@
   .job .counts { font-size:14px; color:var(--mute); }
   .job .btns { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
   .bar.ok > i { background:var(--ok); }
+  #updates h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--mute); margin:0 0 6px; }
+  #updates p { overflow-wrap:anywhere; }
   label { display:block; margin:10px 0 4px; font-weight:600; }
   .row { display:flex; gap:8px; }
   .row > input { flex:1; min-width:0; }
@@ -88,6 +90,19 @@
     <section class="card"><h2>Open files</h2><p id="files"></p><p class="mute">Pages open: <span id="pages"></span></p></section>
     <section class="card"><h2>Data folder</h2><p class="path" id="data"></p><p class="mute">Temp: <span class="path" id="temp"></span></p></section>
   </div>
+  <section class="card" id="updates" style="margin-top:12px">
+    <h2>Updates</h2>
+    <p id="updLine">…</p>
+    <p class="mute" id="updNote"></p>
+    <div class="btns" id="updBtns" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"></div>
+    <div id="keyBox" hidden>
+      <label for="keyIn">GitHub access key (read-only, for this repository only)</label>
+      <div class="row"><input type="text" id="keyIn" autocomplete="off" spellcheck="false" placeholder="github_pat_…"><button type="button" class="primary" id="keySave">Save</button></div>
+      <p class="mute">Stored only on this Mac, in a file only you can read. It is sent only to GitHub and never shown again.</p>
+      <p class="err" id="keyErr"></p>
+    </div>
+    <p class="mute path" id="undo"></p>
+  </section>
   <div class="jobs-head"><h2>Copies</h2><button class="primary" type="button" id="newBtn">New copy</button></div>
   <div id="jobs"><p class="mute" id="noJobs">No copies yet. Press New copy to copy a card or folder to another disk, with every file proven.</p></div>
 </main>
@@ -160,6 +175,7 @@ function render() {
   $("pages").textContent = s.pages.open + " of " + s.pages.max;
   $("data").textContent = s.data_dir; $("temp").textContent = s.temp_dir;
   renderJobs(s.jobs || []);
+  if (s.update) renderUpdate(s.update, s);
 }
 function show(s) { latest = s; if (!frame) frame = requestAnimationFrame(render); }
 function live(on, text) { $("live").className = on ? "live on" : "live"; $("live").textContent = text; }
@@ -283,6 +299,46 @@ function card(v) {
   else { q(".btns").querySelectorAll("button").forEach((b, i) => b.onclick = btns[i].onclick); }
   return c;
 }
+let updKey = "";
+function renderUpdate(u, s) {
+  const running = (s.jobs || []).some(j => j.state === "running");
+  let line, note = "";
+  if (!u.key_set) { line = "Updates are not set up yet."; note = "Add a GitHub access key once; after that, updates are one click here or in the menu bar."; }
+  else if (u.busy) line = { checking: "Checking for updates…", downloading: "Downloading the update…", installing: "Installing — Shuttle restarts in a moment…" }[u.busy] || u.busy;
+  else if (u.waiting_for_copy) line = "Update " + (u.available ? u.available.version : "") + " installs when the running copy finishes.";
+  else if (u.available) line = "Update available: " + u.available.version + " (" + u.available.commit + ") — " + u.available.title;
+  else line = "Up to date: version " + s.version + " (" + s.commit + ").";
+  if (u.error) note = u.error;
+  else if (u.last_check) note = note || "Last checked " + ago(u.last_check) + " ago.";
+  $("updLine").textContent = line; $("updNote").textContent = note;
+  $("updNote").className = u.error ? "err" : "mute";
+  $("keyBox").hidden = u.key_set && !$("keyBox").dataset.open;
+  $("undo").textContent = u.undo ? "To undo the last update by hand: " + u.undo : "";
+  const btns = [];
+  const btn = (t, f, cls) => { const b = document.createElement("button"); b.type = "button"; b.textContent = t; b.onclick = f; if (cls) b.className = cls; btns.push(b); };
+  if (u.key_set && !u.busy) {
+    if (u.available && !u.waiting_for_copy) btn("Install " + u.available.version, async () => {
+      let now = false;
+      if (running) { if (!await confirmBox("A copy is running", "Install now? The copy pauses where it is and continues after the restart. Or choose Keep copying, and the update installs when the copy finishes.", "Install now")) { post("/api/update/install", { now: false }); return; } now = true; }
+      post("/api/update/install", { now }).catch(e => alert(e.message));
+    }, "primary");
+    btn("Check now", () => post("/api/update/check").catch(e => alert(e.message)));
+    btn("Change key", () => { $("keyBox").dataset.open = "1"; $("keyBox").hidden = false; });
+  }
+  if (u.backup && !u.busy) btn("Go back to the previous version", async () => {
+    if (await confirmBox("Go back?", "Shuttle restarts with the previous version. Copies pause and continue after.", "Go back")) post("/api/update/rollback").catch(e => alert(e.message));
+  });
+  btn("Restart Shuttle", async () => {
+    if (!running || await confirmBox("Restart now?", "The running copy pauses where it is and continues after the restart.", "Restart")) post("/api/restart").catch(e => alert(e.message));
+  });
+  const key = btns.map(b => b.textContent).join("|") + running;
+  if (updKey !== key) { updKey = key; $("updBtns").replaceChildren(...btns); }
+}
+$("keySave").onclick = () => {
+  $("keyErr").textContent = "";
+  post("/api/update/key", { key: $("keyIn").value }).then(() => { $("keyIn").value = ""; delete $("keyBox").dataset.open; })
+    .catch(e => $("keyErr").textContent = e.message);
+};
 function renderJobs(list) {
   $("noJobs").hidden = list.length > 0;
   const want = list.map(card);

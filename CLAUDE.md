@@ -19,7 +19,7 @@ The design lives in the claude.ai project (`GOALS.md`, `DESIGN.md`, `COMPATIBILI
 | --- | --- |
 | `cmd/shuttle-server/` | `main`: flags `-data`, `-clear-safe-mode`, `-version`; commands `hash`, `install-launcher`, `soak` |
 | `embed.go`, `web/index.html`, `CHANGELOG.md` | Built-in page and the changelog shown in About |
-| `internal/app` | Wires everything; `Run` returns an exit code (0 ok, 1 start-up, 2 panic, 3 memory) |
+| `internal/app` | Wires everything; `Run` returns an exit code (0 ok, 1 start-up, 2 panic, 3 memory, 4 restart: `main` then `exec`s `RestartPath`) |
 | `internal/config` | Host config `config.json`; 0 means "automatic for this machine" |
 | `internal/limits` | Buffer budget, memory watchdog, CPU share and priority |
 | `internal/safemode` | Start-up crash counter (3 within 5 min → safe mode) |
@@ -29,6 +29,7 @@ The design lives in the claude.ai project (`GOALS.md`, `DESIGN.md`, `COMPATIBILI
 | `internal/diskio` | All user-disk I/O: read-only opens, cache bypass, chunk retries, per-disk limit and stall timer, volume ids, `VolumeMounted` |
 | `internal/location` | The source boundary (section 17): today only `Folder` |
 | `internal/copyjob` | Copy jobs: scan → manifest, S1/copy/D1 pipeline, S2, journal with grouped flush, checkpoints, manager and views |
+| `internal/update` | One-click updates from the newest green CI run (GitHub Actions API, key in `secrets/github-update-key`, 0600, never logged); backups in `bin/backups`; rollback |
 | `internal/launcher` | Writes `~/Applications/Shuttle Server.app` |
 | `internal/soak` | Long-run resource test |
 | `internal/fsx` | Atomic writes, free space |
@@ -37,7 +38,7 @@ The design lives in the claude.ai project (`GOALS.md`, `DESIGN.md`, `COMPATIBILI
 | `internal/logx` | `logs/YYYY-MM/shuttle.log`, appended, never trimmed |
 | `internal/version` | `Version` constant; CI sets `Commit` |
 
-Data folder (default `~/Shuttle-Server-Data`): `config.json`, `state/` (`startup.json`, `jobs/<id>/` with `job.json`, `manifest.jsonl`, `journal.log`, `skipped.jsonl`), `logs/`, `records/`, `temp.noindex/` (the `.noindex` suffix keeps Spotlight out).
+Data folder (default `~/Shuttle-Server-Data`): `config.json`, `state/` (`startup.json`, `jobs/<id>/` with `job.json`, `manifest.jsonl`, `journal.log`, `skipped.jsonl`), `logs/`, `records/`, `secrets/` (never backed up, never logged), `temp.noindex/` (the `.noindex` suffix keeps Spotlight out).
 
 ## Commands
 
