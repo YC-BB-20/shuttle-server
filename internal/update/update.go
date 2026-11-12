@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -189,40 +190,75 @@ func (u *Updater) fail(err error) error {
 	return err
 }
 
+type run struct {
+	ID         int64     `json:"id"`
+	HeadSHA    string    `json:"head_sha"`
+	Created    time.Time `json:"created_at"`
+	HeadCommit struct {
+		Message string `json:"message"`
+	} `json:"head_commit"`
+}
+
+func (r run) commit() string {
+	if len(r.HeadSHA) > 7 {
+		return r.HeadSHA[:7]
+	}
+	return r.HeadSHA
+}
+
+func (r run) title() string { return strings.SplitN(r.HeadCommit.Message, "\n", 2)[0] }
+
+func versionOf(title string) string {
+	if m := versionInTitle.FindStringSubmatch(title); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
+// greenRuns lists the newest successful builds of main, newest first.
+func (u *Updater) greenRuns(ctx context.Context, n int) ([]run, error) {
+	var runs struct {
+		Runs []run `json:"workflow_runs"`
+	}
+	if _, err := u.get(ctx, fmt.Sprintf("%s/repos/%s/actions/runs?branch=main&status=success&event=push&per_page=%d", u.API, u.Repo, n), &runs); err != nil {
+		return nil, err
+	}
+	return runs.Runs, nil
+}
+
 // Check looks for a newer green build.
 func (u *Updater) Check(ctx context.Context) (*Release, error) {
 	u.setBusy("checking")
-	var runs struct {
-		Runs []struct {
-			ID         int64     `json:"id"`
-			HeadSHA    string    `json:"head_sha"`
-			Created    time.Time `json:"created_at"`
-			HeadCommit struct {
-				Message string `json:"message"`
-			} `json:"head_commit"`
-		} `json:"workflow_runs"`
-	}
-	if _, err := u.get(ctx, fmt.Sprintf("%s/repos/%s/actions/runs?branch=main&status=success&event=push&per_page=5", u.API, u.Repo), &runs); err != nil {
+	runs, err := u.greenRuns(ctx, 5)
+	if err != nil {
 		return nil, u.fail(err)
 	}
 	u.mu.Lock()
 	u.st.LastCheck, u.st.Error, u.st.Busy = time.Now(), "", ""
 	u.mu.Unlock()
-	if len(runs.Runs) == 0 {
+	if len(runs) == 0 {
 		return nil, u.fail(errors.New("no finished builds found"))
 	}
-	r := runs.Runs[0]
-	commit := r.HeadSHA
-	if len(commit) > 7 {
-		commit = commit[:7]
-	}
-	title := strings.SplitN(r.HeadCommit.Message, "\n", 2)[0]
-	if commit == u.Commit {
+	r := runs[0]
+	if r.commit() == u.Commit {
 		u.mu.Lock()
 		u.st.Available = nil
 		u.mu.Unlock()
 		return nil, nil
 	}
+	rel, err := u.releaseOf(ctx, r)
+	if err != nil {
+		return nil, u.fail(err)
+	}
+	u.mu.Lock()
+	u.st.Available = rel
+	u.mu.Unlock()
+	u.Log.Info("update available", "version", rel.Version, "commit", rel.Commit)
+	return rel, nil
+}
+
+// releaseOf finds the download for this computer in one build.
+func (u *Updater) releaseOf(ctx context.Context, r run) (*Release, error) {
 	var arts struct {
 		Artifacts []struct {
 			ID      int64  `json:"id"`
@@ -232,26 +268,123 @@ func (u *Updater) Check(ctx context.Context) (*Release, error) {
 		} `json:"artifacts"`
 	}
 	if _, err := u.get(ctx, fmt.Sprintf("%s/repos/%s/actions/runs/%d/artifacts", u.API, u.Repo, r.ID), &arts); err != nil {
-		return nil, u.fail(err)
+		return nil, err
 	}
 	want := "shuttle-server-" + runtime.GOOS + "-" + runtime.GOARCH
-	rel := &Release{Commit: commit, Title: title, Date: r.Created, RunID: r.ID}
-	if m := versionInTitle.FindStringSubmatch(title); m != nil {
-		rel.Version = m[1]
-	}
+	rel := &Release{Commit: r.commit(), Title: r.title(), Date: r.Created, RunID: r.ID, Version: versionOf(r.title())}
 	for _, a := range arts.Artifacts {
 		if a.Name == want && !a.Expired {
 			rel.ArtID, rel.ZipURL = a.ID, a.URL
 		}
 	}
 	if rel.ZipURL == "" {
-		return nil, u.fail(fmt.Errorf("the newest build has no download for this computer (%s)", want))
+		return nil, fmt.Errorf("build %s has no download for this computer (%s); GitHub keeps downloads for 90 days", rel.Commit, want)
+	}
+	return rel, nil
+}
+
+// Choice is one version in the history list.
+type Choice struct {
+	Version   string    `json:"version"`
+	Commit    string    `json:"commit"`
+	Title     string    `json:"title,omitempty"`
+	Date      time.Time `json:"date,omitzero"`
+	Installed bool      `json:"installed"` // running now
+	Kept      bool      `json:"kept"`      // a copy is kept on this computer
+	OnGitHub  bool      `json:"on_github"` // a green build that can be downloaded
+}
+
+// History lists the newest green builds and every version kept on this
+// computer, newest first. Without a key, or offline, it lists the kept ones.
+func (u *Updater) History(ctx context.Context) ([]Choice, string) {
+	kept := u.kept()
+	var out []Choice
+	seen := map[string]bool{}
+	note := ""
+	if runs, err := u.greenRuns(ctx, 30); err != nil {
+		note = err.Error()
+	} else {
+		for _, r := range runs {
+			c := r.commit()
+			if seen[c] {
+				continue
+			}
+			seen[c] = true
+			_, k := kept[c]
+			out = append(out, Choice{Version: versionOf(r.title()), Commit: c, Title: r.title(), Date: r.Created,
+				Installed: c == u.Commit, Kept: k, OnGitHub: true})
+		}
+	}
+	for c, k := range kept {
+		if !seen[c] {
+			out = append(out, Choice{Version: k.version, Commit: c, Date: k.date, Installed: c == u.Commit, Kept: true})
+		}
+	}
+	if !seen[u.Commit] && kept[u.Commit].path == "" {
+		out = append(out, Choice{Version: u.Version, Commit: u.Commit, Installed: true})
+	}
+	sort.SliceStable(out, func(a, b int) bool { return out[a].Date.After(out[b].Date) })
+	return out, note
+}
+
+type keptBin struct {
+	path, version string
+	date          time.Time
+}
+
+// kept lists bin/backups by commit. Names are shuttle-server-VERSION-COMMIT.
+func (u *Updater) kept() map[string]keptBin {
+	dir := filepath.Join(filepath.Dir(u.BinPath), "backups")
+	ents, _ := os.ReadDir(dir)
+	out := map[string]keptBin{}
+	for _, e := range ents {
+		parts := strings.Split(strings.TrimPrefix(e.Name(), "shuttle-server-"), "-")
+		fi, err := e.Info()
+		if len(parts) != 2 || err != nil || !fi.Mode().IsRegular() {
+			continue
+		}
+		// A backup's own time may be reset by Rollback; the version number orders it well enough.
+		out[parts[1]] = keptBin{path: filepath.Join(dir, e.Name()), version: parts[0], date: fi.ModTime()}
+	}
+	return out
+}
+
+// InstallCommit installs one chosen version, from the copy kept on this
+// computer if there is one, otherwise downloaded from its green build. The
+// same checks apply as for an update: it must start and name its commit, and
+// the version replaced is kept.
+func (u *Updater) InstallCommit(ctx context.Context, commit string) error {
+	if commit == u.Commit {
+		return errors.New("that version is already running")
 	}
 	u.mu.Lock()
-	u.st.Available = rel
+	busy := u.st.Busy
 	u.mu.Unlock()
-	u.Log.Info("update available", "version", rel.Version, "commit", rel.Commit)
-	return rel, nil
+	if busy != "" {
+		return errors.New("an update step is already running")
+	}
+	if k, ok := u.kept()[commit]; ok {
+		bin, err := os.ReadFile(k.path)
+		if err != nil {
+			return u.fail(err)
+		}
+		return u.put(ctx, &Release{Version: k.version, Commit: commit}, bin)
+	}
+	u.setBusy("checking")
+	runs, err := u.greenRuns(ctx, 30)
+	if err != nil {
+		return u.fail(err)
+	}
+	for _, r := range runs {
+		if r.commit() == commit {
+			rel, err := u.releaseOf(ctx, r)
+			if err != nil {
+				return u.fail(err)
+			}
+			return u.download(ctx, rel)
+		}
+	}
+	return u.fail(fmt.Errorf("version %s is not among the recent green builds", commit))
 }
 
 // Install downloads, checks and swaps in the available release, then asks
@@ -284,7 +417,10 @@ func (u *Updater) Install(ctx context.Context, now bool) error {
 	u.mu.Lock()
 	u.st.Waiting = false
 	u.mu.Unlock()
+	return u.download(ctx, rel)
+}
 
+func (u *Updater) download(ctx context.Context, rel *Release) error {
 	u.setBusy("downloading")
 	res, err := u.get(ctx, rel.ZipURL, nil)
 	if err != nil {
@@ -299,7 +435,11 @@ func (u *Updater) Install(ctx context.Context, now bool) error {
 	if err != nil {
 		return u.fail(err)
 	}
+	return u.put(ctx, rel, bin)
+}
 
+// put checks the new program, keeps the current one, swaps and restarts.
+func (u *Updater) put(ctx context.Context, rel *Release, bin []byte) error {
 	u.setBusy("installing")
 	dir := filepath.Dir(u.BinPath)
 	next := filepath.Join(dir, ".shuttle-server.new")
@@ -312,7 +452,7 @@ func (u *Updater) Install(ctx context.Context, now bool) error {
 	cancel()
 	if err != nil || !strings.Contains(string(out), rel.Commit) {
 		os.Remove(next) // our own download
-		return u.fail(fmt.Errorf("the downloaded version did not start correctly (%s); nothing was changed", strings.TrimSpace(string(out))))
+		return u.fail(fmt.Errorf("the new version did not start correctly (%s); nothing was changed", strings.TrimSpace(string(out))))
 	}
 	// Keep the current program. Backups are never deleted automatically.
 	cur, err := os.ReadFile(u.BinPath)

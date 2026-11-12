@@ -36,6 +36,8 @@ type Updates interface {
 	Check(ctx context.Context) (*update.Release, error)
 	Install(ctx context.Context, now bool) error
 	Rollback() error
+	History(ctx context.Context) ([]update.Choice, string)
+	InstallCommit(ctx context.Context, commit string) error
 }
 
 // Actions are the commands the page may send about copy jobs.
@@ -59,6 +61,7 @@ func (s *Server) HTTP() *http.Server {
 	mux.HandleFunc("POST /api/jobs", s.command(s.addJob))
 	mux.HandleFunc("POST /api/restart", s.always(s.restart))
 	mux.HandleFunc("POST /api/quit", s.always(s.quit))
+	mux.HandleFunc("GET /api/update/history", s.history)
 	mux.HandleFunc("POST /api/update/{action}", s.always(s.updateAction))
 	mux.HandleFunc("POST /api/jobs/{id}/{action}", s.command(s.jobAction))
 	return &http.Server{

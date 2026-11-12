@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.5 — 12 November 2026
+
+- **Settings tab.** The page now has Status and Settings at the top. Settings holds the data folder, updates (with Restart and Quit), and the new version history. When an update is available or an update step is running, Status shows a one-line note with a button to Settings.
+- **Version history.** Lists the recent green builds and every version kept on this Mac. Any of them can be installed with one click. It is checked exactly like an update: it must start and name its build before it replaces anything, and the version it replaces is kept. Versions kept on this Mac install without downloading, and are listed even without the GitHub key or a connection.
+- The five status cards (memory, buffers, free space, processor, open files) sit in one row. On a phone the row scrolls sideways by itself; the page does not.
+
 ## 0.2.4 — 12 November 2026
 
 - Fixed: **Stop did nothing** after its two questions. The second question was answered "no" by the first one closing a moment late. Each question now waits for the one before to close.

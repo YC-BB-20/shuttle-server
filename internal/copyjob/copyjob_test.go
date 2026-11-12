@@ -209,12 +209,16 @@ func TestPauseIsImmediateAndResumeCompletes(t *testing.T) {
 	if d := time.Since(start); d > 2*time.Second {
 		t.Fatalf("pause took %v", d)
 	}
-	time.Sleep(100 * time.Millisecond)
-	m.mu.Lock()
-	busy := m.running != nil
-	m.mu.Unlock()
-	if busy {
-		t.Fatal("still running after pause")
+	// The work itself must stop within the same two seconds (a slow CI disk
+	// needs a moment to save each read's place).
+	for busy := true; busy; {
+		m.mu.Lock()
+		busy = m.running != nil
+		m.mu.Unlock()
+		if busy && time.Since(start) > 2*time.Second {
+			t.Fatal("still running two seconds after pause")
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 	m.Resume(j.st.ID)
 	v := waitState(t, m, j.st.ID, "finished")

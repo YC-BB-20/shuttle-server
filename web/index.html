@@ -12,7 +12,7 @@
   html, body { max-width:100%; overflow-x:hidden; overflow-x:clip; overscroll-behavior-x:none; margin:0; }
   body { font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--fg);
          padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 24px max(12px, env(safe-area-inset-left)); }
-  header, main { max-width: 760px; margin: 0 auto; }
+  header, main { max-width: 960px; margin: 0 auto; }
   header { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
   header > * { min-width:0; }
   h1 { font-size:20px; margin:0; flex:1; }
@@ -26,8 +26,25 @@
   .banner { border-radius:12px; padding:14px 16px; margin-bottom:12px; background:color-mix(in srgb, var(--bad) 14%, var(--card)); border:1px solid var(--bad); }
   .banner b { color:var(--bad); }
   .banner[hidden] { display:none; }
-  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px; }
+  .grid { display:grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap:10px; }
   .grid > * { min-width:0; }
+  .grid .card { padding:10px 12px; }
+  .grid .card p { font-size:15px; }
+  .grid .card .mute { font-size:13px; }
+  /* On a phone the five cards stay on one line and the row scrolls by itself; the page never does. */
+  @media (max-width: 640px) { .grid { grid-template-columns: repeat(5, 150px); overflow-x:auto; padding-bottom:4px; } }
+  @media (max-width: 640px) { header { flex-wrap:wrap; } .tabs { order:3; width:100%; } .tabs button { flex:1; } }
+  .tabs { display:flex; gap:4px; background:var(--line); border-radius:9px; padding:2px; }
+  .tabs button { border:0; background:transparent; padding:4px 12px; border-radius:7px; }
+  .tabs button[aria-selected=true] { background:var(--card); font-weight:600; }
+  [hidden] { display:none !important; }
+  .settings > section { margin-bottom:12px; }
+  .vers { border:1px solid var(--line); border-radius:8px; max-height:50vh; overflow:auto; margin-top:8px; }
+  .vers .v { display:flex; gap:8px; align-items:center; padding:8px 10px; border-bottom:1px solid var(--line); }
+  .vers .v:last-child { border-bottom:0; }
+  .vers .v > div { flex:1; min-width:0; }
+  .vers .v .t { overflow-wrap:anywhere; font-size:14px; color:var(--mute); }
+  .hint { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 16px; }
   .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--mute); margin:0 0 6px; }
   .card p { margin:2px 0; overflow-wrap:anywhere; }
@@ -76,21 +93,28 @@
 <header>
   <h1>Shuttle Server <span class="ver" id="ver"></span></h1>
   <span class="live" id="live">Connecting</span>
+  <nav class="tabs" role="tablist"><button type="button" role="tab" id="tabStatusBtn" aria-selected="true">Status</button><button type="button" role="tab" id="tabSettingsBtn" aria-selected="false">Settings</button></nav>
   <button id="aboutBtn" type="button">About</button>
 </header>
 <main>
   <div class="banner" id="safe" hidden><b>Safe mode.</b> <span id="safeReason"></span>
     <p class="mute">Nothing runs. Fix the problem, then quit Shuttle Server and start it again with <span class="path">-clear-safe-mode</span>.</p></div>
+  <div id="tabStatus">
   <div class="status" id="headline">Loading…<small id="sub"></small></div>
+  <p class="hint" id="updHint" hidden><span id="updHintText"></span><button type="button" id="updHintBtn">Open Settings</button></p>
   <div class="grid">
     <section class="card"><h2>Memory</h2><p id="mem"></p><div class="bar"><i id="memBar"></i></div><p class="mute" id="memNote"></p></section>
     <section class="card"><h2>Buffer budget</h2><p id="buf"></p><div class="bar"><i id="bufBar"></i></div><p class="mute" id="bufNote"></p></section>
     <section class="card"><h2>Free space</h2><p id="disk"></p><p class="mute" id="diskNote"></p></section>
     <section class="card"><h2>Processor</h2><p id="cpu"></p><p class="mute" id="cpuNote"></p></section>
     <section class="card"><h2>Open files</h2><p id="files"></p><p class="mute">Pages open: <span id="pages"></span></p></section>
-    <section class="card"><h2>Data folder</h2><p class="path" id="data"></p><p class="mute">Temp: <span class="path" id="temp"></span></p></section>
   </div>
-  <section class="card" id="updates" style="margin-top:12px">
+  <div class="jobs-head"><h2>Copies</h2><button class="primary" type="button" id="newBtn">New copy</button></div>
+  <div id="jobs"><p class="mute" id="noJobs">No copies yet. Press New copy to copy a card or folder to another disk, with every file proven.</p></div>
+  </div>
+  <div id="tabSettings" class="settings" hidden>
+  <section class="card"><h2>Data folder</h2><p class="path" id="data"></p><p class="mute">Temp: <span class="path" id="temp"></span></p></section>
+  <section class="card" id="updates">
     <h2>Updates</h2>
     <p id="updLine">…</p>
     <p class="mute" id="updNote"></p>
@@ -103,8 +127,14 @@
     </div>
     <p class="mute path" id="undo"></p>
   </section>
-  <div class="jobs-head"><h2>Copies</h2><button class="primary" type="button" id="newBtn">New copy</button></div>
-  <div id="jobs"><p class="mute" id="noJobs">No copies yet. Press New copy to copy a card or folder to another disk, with every file proven.</p></div>
+  <section class="card" id="history">
+    <h2>Version history</h2>
+    <p class="mute">Any recent green build, or any version kept on this Mac, can be installed. It is checked the same way as an update, and the version it replaces is kept. Copies pause and continue after the restart; an older version carries on with them in its own way, and nothing already proven is lost.</p>
+    <div class="btns" style="display:flex;gap:8px;margin-top:8px"><button type="button" id="histLoad">Refresh list</button></div>
+    <p class="mute" id="histNote"></p>
+    <div class="vers" id="histList"></div>
+  </section>
+  </div>
 </main>
 <dialog id="newDlg">
   <div class="head"><h2>New copy</h2><button type="button" data-close>Cancel</button></div>
@@ -178,6 +208,48 @@ function render() {
   renderJobs(s.jobs || []);
   if (s.update) renderUpdate(s.update, s);
 }
+function showTab(name) {
+  const settings = name === "settings";
+  $("tabStatus").hidden = settings; $("tabSettings").hidden = !settings;
+  $("tabStatusBtn").setAttribute("aria-selected", !settings); $("tabSettingsBtn").setAttribute("aria-selected", settings);
+  if (location.hash !== (settings ? "#settings" : "")) history.replaceState(null, "", settings ? "#settings" : location.pathname);
+  if (settings && !$("histList").childElementCount) loadHistory();
+}
+$("tabStatusBtn").onclick = () => showTab("status");
+$("tabSettingsBtn").onclick = () => showTab("settings");
+$("updHintBtn").onclick = () => showTab("settings");
+showTab(location.hash === "#settings" ? "settings" : "status");
+
+function loadHistory() {
+  $("histNote").textContent = "Loading…"; $("histNote").className = "mute";
+  fetch("/api/update/history").then(r => r.json()).then(h => {
+    $("histNote").textContent = h.note ? "Only versions kept on this Mac are listed: " + h.note : "";
+    $("histNote").className = h.note ? "warn" : "mute";
+    $("histList").replaceChildren(...(h.versions || []).map(v => {
+      const row = document.createElement("div"); row.className = "v";
+      const d = document.createElement("div");
+      const b = document.createElement("b"); b.textContent = (v.version ? "v" + v.version : "Unnamed build") + " · " + v.commit;
+      const t = document.createElement("div"); t.className = "t";
+      t.textContent = [v.title, v.date ? new Date(v.date).toLocaleDateString() : "", v.kept ? "kept on this Mac" : ""].filter(Boolean).join(" · ");
+      d.append(b, t); row.append(d);
+      if (v.installed) { const c = document.createElement("span"); c.className = "chip running"; c.textContent = "Running now"; row.append(c); }
+      else {
+        const btn = document.createElement("button"); btn.type = "button"; btn.textContent = "Install";
+        btn.onclick = async () => {
+          const running = ((latest && latest.jobs) || []).some(j => j.state === "running");
+          if (!await confirmBox("Install " + (v.version ? "v" + v.version : v.commit) + "?",
+              "Shuttle checks that it starts, keeps the version running now, and restarts with it." + (running ? " The running copy pauses where it is and continues after." : ""), "Install")) return;
+          post("/api/update/choose", { commit: v.commit }).catch(e => alert(e.message));
+        };
+        row.append(btn);
+      }
+      return row;
+    }));
+    if (!(h.versions || []).length) $("histNote").textContent = h.note || "No versions to show.";
+  }).catch(() => { $("histNote").textContent = "Could not load the list."; $("histNote").className = "err"; });
+}
+$("histLoad").onclick = loadHistory;
+
 function show(s) { latest = s; if (!frame) frame = requestAnimationFrame(render); }
 function live(on, text) { $("live").className = on ? "live on" : "live"; $("live").textContent = text; }
 
@@ -316,6 +388,8 @@ function renderUpdate(u, s) {
   if (u.error) note = u.error;
   else if (u.last_check) note = note || "Last checked " + ago(u.last_check) + " ago.";
   $("updLine").textContent = line; $("updNote").textContent = note;
+  const hint = u.busy ? line : (u.available && !u.waiting_for_copy) ? "Update " + u.available.version + " is available." : u.error ? "Updates: " + u.error : "";
+  $("updHint").hidden = !hint; $("updHintText").textContent = hint;
   $("updNote").className = u.error ? "err" : "mute";
   $("keyBox").hidden = u.key_set && !$("keyBox").dataset.open;
   $("undo").textContent = u.undo ? "To undo the last update by hand: " + u.undo : "";

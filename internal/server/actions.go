@@ -179,8 +179,9 @@ func (s *Server) updateAction(w http.ResponseWriter, r *http.Request) (any, erro
 		return nil, errors.New("updates are not available")
 	}
 	var body struct {
-		Key string `json:"key"`
-		Now bool   `json:"now"`
+		Key    string `json:"key"`
+		Now    bool   `json:"now"`
+		Commit string `json:"commit"`
 	}
 	json.NewDecoder(r.Body).Decode(&body)
 	bg := func(f func(context.Context)) {
@@ -202,6 +203,8 @@ func (s *Server) updateAction(w http.ResponseWriter, r *http.Request) (any, erro
 		bg(func(ctx context.Context) { s.Updates.Check(ctx) })
 	case "install":
 		bg(func(ctx context.Context) { s.Updates.Install(ctx, body.Now) })
+	case "choose": // a version picked from the history
+		bg(func(ctx context.Context) { s.Updates.InstallCommit(ctx, body.Commit) })
 	case "rollback":
 		if err := s.Updates.Rollback(); err != nil {
 			return nil, err
@@ -210,6 +213,20 @@ func (s *Server) updateAction(w http.ResponseWriter, r *http.Request) (any, erro
 		return nil, errors.New("unknown action")
 	}
 	return map[string]bool{"ok": true}, nil
+}
+
+// history lists the versions that can be installed: recent green builds
+// and every version kept on this computer.
+func (s *Server) history(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.Updates == nil {
+		json.NewEncoder(w).Encode(map[string]any{"versions": []any{}, "note": "updates are not available"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
+	defer cancel()
+	v, note := s.Updates.History(ctx)
+	json.NewEncoder(w).Encode(map[string]any{"versions": v, "note": note})
 }
 
 func (s *Server) quit(w http.ResponseWriter, r *http.Request) (any, error) {

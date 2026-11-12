@@ -180,3 +180,59 @@ func TestRollback(t *testing.T) {
 		t.Fatal("the version rolled back from was not kept")
 	}
 }
+
+// The history lists green builds and kept versions; any of them can be
+// installed, a kept one without downloading, each checked like an update.
+func TestHistoryAndInstallAChosenVersion(t *testing.T) {
+	var saw string
+	gh := fakeGitHub(t, "abcdef1234567", "#!/bin/sh\necho 'Shuttle Server 0.2.1 (abcdef1)'\n", &saw)
+	defer gh.Close()
+	u, restarted := newUpdater(t, gh.URL)
+	backups := filepath.Join(filepath.Dir(u.BinPath), "backups")
+	os.MkdirAll(backups, 0o755)
+	os.WriteFile(filepath.Join(backups, "shuttle-server-0.1.1-1111111"), []byte("#!/bin/sh\necho 'Shuttle Server 0.1.1 (1111111)'\n"), 0o755)
+
+	// No key: kept versions and the running one are still listed.
+	h, note := u.History(context.Background())
+	if note == "" || len(h) != 2 {
+		t.Fatalf("without a key: %+v %q", h, note)
+	}
+	u.SetKey(goodKey)
+	h, note = u.History(context.Background())
+	byCommit := map[string]Choice{}
+	for _, c := range h {
+		byCommit[c.Commit] = c
+	}
+	if note != "" || !byCommit["abcdef1"].OnGitHub || !byCommit["1111111"].Kept || !byCommit["d67a650"].Installed {
+		t.Fatalf("history %+v %q", h, note)
+	}
+	if err := u.InstallCommit(context.Background(), "d67a650"); err == nil {
+		t.Fatal("installing the running version should be refused")
+	}
+
+	// A kept version: no download, and the running one is kept in turn.
+	gh.Close()
+	if err := u.InstallCommit(context.Background(), "1111111"); err != nil || !*restarted {
+		t.Fatalf("kept version: %v restarted=%v", err, *restarted)
+	}
+	if b, _ := os.ReadFile(u.BinPath); !strings.Contains(string(b), "0.1.1") {
+		t.Fatal("chosen version not in place")
+	}
+	if _, err := os.Stat(filepath.Join(backups, "shuttle-server-0.2.0-d67a650")); err != nil {
+		t.Fatal("the replaced version was not kept")
+	}
+}
+
+func TestChosenVersionMustStartAndNameItsCommit(t *testing.T) {
+	var saw string
+	gh := fakeGitHub(t, "abcdef1234567", "#!/bin/sh\necho 'something else'\n", &saw)
+	defer gh.Close()
+	u, restarted := newUpdater(t, gh.URL)
+	u.SetKey(goodKey)
+	if err := u.InstallCommit(context.Background(), "abcdef1"); err == nil || *restarted {
+		t.Fatalf("a build that does not name its commit was installed: %v", err)
+	}
+	if b, _ := os.ReadFile(u.BinPath); string(b) != "#!/bin/sh\necho old\n" {
+		t.Fatal("the running version was changed")
+	}
+}
