@@ -14,6 +14,9 @@ function run(argv) {
   menu.autoenablesItems = false;
   let pageURL = 'http://localhost:8470';
   let lastGood = Date.now(), lastLevel = '', updateState = 'none';
+  // What the owner just pressed, shown at once until the server's state moves:
+  // { kind: 'check' or 'install', from: state when pressed, at: time }.
+  let pending = null;
   // Commands go to Shuttle's own page server, with the header it requires.
   function post(path, body) {
     $.NSTask.launchedTaskWithLaunchPathArguments('/usr/bin/curl', $(['-s', '-m', '10', '-o', '/dev/null', '-X', 'POST',
@@ -34,9 +37,16 @@ function run(argv) {
         post('/api/restart', '{}');
       } },
       'updateAction:': { types: ['void', ['id']], implementation: function () {
-        if (updateState === 'available') post('/api/update/install', '{}');
-        else if (updateState === 'nokey') $.NSWorkspace.sharedWorkspace.openURL($.NSURL.URLWithString(pageURL + '/#updates'));
-        else post('/api/update/check', '{}');
+        if (updateState === 'available') {
+          pending = { kind: 'install', from: updateState, at: Date.now() };
+          showUpdate('Installing update…', false);
+          post('/api/update/install', '{}');
+        } else if (updateState === 'nokey') $.NSWorkspace.sharedWorkspace.openURL($.NSURL.URLWithString(pageURL + '/#updates'));
+        else {
+          pending = { kind: 'check', from: updateState, at: Date.now() };
+          showUpdate('Checking for updates…', false);
+          post('/api/update/check', '{}');
+        }
       } },
     },
   });
@@ -78,6 +88,8 @@ function run(argv) {
     }
   }
 
+  function showUpdate(title, enabled) { upd.title = title; upd.enabled = enabled; }
+
   function refresh() {
     const s = $.NSString.stringWithContentsOfFileEncodingError(statusPath, $.NSUTF8StringEncoding, $());
     const now = Date.now();
@@ -95,13 +107,26 @@ function run(argv) {
         const titles = {
           none: ['Check for updates', true],
           nokey: ['Set up updates…', true],
-          busy: ['Updating…', false],
+          checking: ['Checking for updates…', false],
+          downloading: ['Downloading update…', false],
+          installing: ['Installing update…', false],
+          failed: ['Update did not work — open Shuttle for why; try again', true],
           waiting: ['Update installs when the copy finishes', false],
           available: ['Install update ' + (f[6] || ''), true],
         };
         const t = titles[updateState] || titles.none;
-        upd.title = t[0];
-        upd.enabled = t[1];
+        const age = pending ? now - pending.at : 0;
+        const working = updateState === 'checking' || updateState === 'downloading' || updateState === 'installing';
+        if (pending && !working && pending.kind === 'check' && updateState === pending.from && age < 4000) {
+          showUpdate('Checking for updates…', false); // pressed; the server has not picked it up yet
+        } else if (pending && !working && pending.kind === 'check' && updateState === 'none' && age < 20000) {
+          showUpdate('Shuttle is up to date', false); // the check found nothing newer
+        } else if (pending && !working && pending.kind === 'install' && updateState === 'available' && age < 60000) {
+          showUpdate('Installing update…', false);
+        } else {
+          if (!working) pending = null;
+          showUpdate(t[0], t[1]);
+        }
       }
     }
     if (now - lastGood > 15000) app.terminate($()); // the server is gone

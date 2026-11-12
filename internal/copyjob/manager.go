@@ -78,6 +78,10 @@ func inside(child, parent string) bool {
 
 // Add checks a request and queues it.
 func (m *Manager) Add(s Spec) (*Job, error) {
+	if s.Kind == KindVerify {
+		return m.addVerify(s)
+	}
+	s.Kind, s.File, s.From = "", "", nil
 	src, err := filepath.Abs(strings.TrimSpace(s.Source))
 	if err != nil {
 		return nil, err
@@ -466,7 +470,12 @@ func MissingReason(which, src, dst string) string {
 }
 
 func (m *Manager) waitMissing(ctx context.Context, j *Job, which string) {
-	m.rest(ctx, j, MissingReason(which, j.st.Spec.Source, j.st.Spec.Dest), which)
+	reason := MissingReason(which, j.st.Spec.Source, j.st.Spec.Dest)
+	if j.st.Spec.isVerify() {
+		which = "destination"
+		reason = strings.Replace(MissingReason(which, "", j.st.Spec.Dest), "the copy continues", "the check continues", 1)
+	}
+	m.rest(ctx, j, reason, which)
 }
 
 // wait shows why a job is resting, then lets the queue try again. Waiting

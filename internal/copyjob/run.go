@@ -22,6 +22,7 @@ type entry struct {
 	S int64  `json:"s"`
 	M int64  `json:"m"`
 	O uint32 `json:"o"`
+	H string `json:"h,omitempty"` // Verify jobs: the stored hash to compare with
 }
 
 // waitErr is a problem shared by every file — a disk gone, no space, too
@@ -616,6 +617,9 @@ func (j *Job) s2Phase(ctx context.Context, e env, jr *Journal) error {
 
 // run carries the job forward from wherever it stands.
 func (j *Job) run(ctx context.Context, e env, accepting func() bool) error {
+	if j.st.Spec.isVerify() {
+		return j.runVerify(ctx, e, accepting)
+	}
 	if j.st.Phase == "scan" {
 		if err := j.scan(ctx, j.source()); err != nil {
 			return err

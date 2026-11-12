@@ -110,6 +110,7 @@
   .kv { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:4px 12px; margin:0 0 12px; font-size:14px; }
   .kv dt { color:var(--mute); }
   .kv dd { margin:0; overflow-wrap:anywhere; }
+  .hrow { margin:0 0 10px; min-width:0; overflow-wrap:anywhere; } .hrow .mute { font-size:13px; }
   .hash { font-family: ui-monospace, Menlo, monospace; font-size:13px; }
   .match { color:var(--ok); } .nomatch { color:var(--bad); }
   .story { list-style:none; padding:0; margin:0 0 12px; font-size:14px; }
@@ -197,7 +198,7 @@
     </div>
   </div>
   <p class="hint" id="updHint" hidden><span id="updHintText"></span><button type="button" id="updHintBtn">Open Settings</button></p>
-  <div class="jobs-head"><h2>Queue</h2><button class="primary" type="button" id="newBtn">New copy</button></div>
+  <div class="jobs-head"><h2>Queue</h2><div class="row"><button type="button" id="verBtn" title="Read a copied folder or file again and compare it with the hashes stored when it was copied">Verify…</button><button class="primary" type="button" id="newBtn">New copy</button></div></div>
   <p class="mute" id="noJobs">Nothing in the queue. Press New copy to copy a card, a folder or some files to another disk, with every file verified.</p>
   <div class="jobs" id="jobs"></div>
   <div class="jobs-head"><h2>History</h2></div>
@@ -396,7 +397,7 @@ const rate = n => n > 0 ? size(Math.round(n)) + "/s" : "";
 // pickers start where you were.
 $("newBtn").onclick = () => {
   $("newErr").textContent = "";
-  const last = ((latest && latest.jobs) || []).concat(olderViews).reduce((a, v) => !a || v.created > a.created ? v : a, null);
+  const last = ((latest && latest.jobs) || []).concat(olderViews).filter(v => v.kind !== "verify").reduce((a, v) => !a || v.created > a.created ? v : a, null);
   if (last && !$("src").value && !$("dst").value) {
     $("src").value = last.source; $("dst").value = last.dest;
     $(last.hash === "later" ? "pfLater" : last.hash === "first" ? (last.s2 === "skip" ? "pfQuick" : "pfFirst") : "pfCopy").checked = true;
@@ -425,20 +426,34 @@ $("src").oninput = () => setOnly([]);
 document.querySelectorAll("[data-pick]").forEach(b => b.onclick = () => {
   pickFor = b.dataset.pick;
   $("pickTitle").textContent = pickFor === "src" ? "Choose what to copy" : "Choose where to copy to";
+  openPicker();
+});
+// Verify: pick a folder (Use this folder) or tap a file; it is read again in
+// full and compared with the hashes stored when Shuttle copied it.
+$("verBtn").onclick = () => {
+  pickFor = "ver"; $("pickTitle").textContent = "Choose what to verify"; chosen = new Set();
+  const last = ((latest && latest.jobs) || []).concat(olderViews).filter(v => v.kind !== "verify").reduce((a, v) => !a || v.created > a.created ? v : a, null);
+  browse(last ? last.dest : "", true); $("pickDlg").showModal();
+};
+function verify(path) {
+  return post("/api/jobs", { kind: "verify", source: path });
+}
+function openPicker() {
   const start = $(pickFor).value || "";
   chosen = new Set(pickFor === "src" && start === srcOnlyAt ? srcOnly : []);
   browse(start, true); $("pickDlg").showModal();
-});
+}
 const kindIcon = { home: "🏠", internal: "💻", disk: "💽", server: "🌐" };
 function useLabel() {
   $("pickUse").textContent = chosen.size ? "Use " + chosen.size + " chosen" : "Use this folder";
-  $("pickHint").textContent = pickFor !== "src" ? "Open the folder to copy into, then press Use this folder." :
+  $("pickHint").textContent = pickFor === "ver" ? "Open a folder Shuttle copied to and press Use this folder, or tap one file to verify only that file." :
+    pickFor !== "src" ? "Open the folder to copy into, then press Use this folder." :
     chosen.size ? chosen.size + " chosen in this folder. Opening another folder clears the choice." :
     "Tick files or folders to copy only those, or press Use this folder to copy all of it.";
 }
 function browse(path, keep) {
   if (!keep) chosen = new Set();
-  fetch("/api/browse?path=" + encodeURIComponent(path) + (pickFor === "src" ? "&files=1" : "")).then(r => r.json()).then(d => {
+  fetch("/api/browse?path=" + encodeURIComponent(path) + (pickFor !== "dst" ? "&files=1" : "")).then(r => r.json()).then(d => {
     pickAt = d.path;
     $("pickErr").textContent = d.error || d.note || (d.truncated ? "Only the first 2000 items are shown." : "");
     $("places").replaceChildren(...d.places.map(p => {
@@ -462,6 +477,11 @@ function browse(path, keep) {
         row.append(cb);
         if (f.file) { const l = el("label", "", "📄 " + f.name); l.onclick = () => { cb.checked = !cb.checked; cb.onchange(); }; row.append(l, el("span", "sz", size(f.size))); return row; }
       }
+      if (f.file && pickFor === "ver") {
+        const b = el("button", "", "📄 " + f.name); b.type = "button";
+        b.onclick = () => verify(f.path).then(() => $("pickDlg").close()).catch(e => $("pickErr").textContent = e.message);
+        row.append(b, el("span", "sz", size(f.size))); return row;
+      }
       if (f.file) return row;
       const b = el("button", "", "📁 " + f.name); b.type = "button"; b.onclick = () => browse(f.path); row.append(b, el("span", "sz", "›"));
       return row;
@@ -472,6 +492,7 @@ function browse(path, keep) {
   }).catch(() => { $("pickErr").textContent = "Could not reach Shuttle Server."; });
 }
 $("pickUse").onclick = () => {
+  if (pickFor === "ver") { verify(pickAt).then(() => $("pickDlg").close()).catch(e => $("pickErr").textContent = e.message); return; }
   $(pickFor).value = pickAt;
   if (pickFor === "src") setOnly([...chosen], pickAt);
   $("pickDlg").close();
@@ -536,9 +557,10 @@ function card(v) {
   const old = v.state === "finished" || v.state === "stopped";
   const problems = v.failed || v.s2_warnings;
   c.classList.toggle("old", old);
-  q(".s").textContent = base(v.source) + (v.only ? " (" + v.only + " chosen)" : ""); q(".s").title = v.source;
-  q(".d").textContent = base(v.dest); q(".d").title = v.dest;
-  q(".from").textContent = "From " + v.source; q(".to").textContent = "To " + v.dest;
+  const ver = v.kind === "verify", place = ver && v.verify_file ? v.dest + "/" + v.verify_file : v.dest;
+  q(".s").textContent = ver ? "Verify" : base(v.source) + (v.only ? " (" + v.only + " chosen)" : ""); q(".s").title = ver ? "Read again and compared with the stored hashes" : v.source;
+  q(".d").textContent = base(place); q(".d").title = place;
+  q(".from").textContent = ver ? "Checks " + place : "From " + v.source; q(".to").textContent = ver ? "" : "To " + v.dest;
   // Icon: what state it is in, at a glance.
   const ico = q(".ico");
   const [sym, tone] = v.missing ? ["!", "bad"] : v.state === "running" ? ["⇅", ""] : v.state === "waiting" ? ["…", "warn"] :
@@ -553,28 +575,34 @@ function card(v) {
   const proven = v.verified + v.identical;
   let sub = "", subCls = "sub";
   if (v.state === "waiting") { sub = v.reason; subCls += v.missing ? " bad" : " warn"; }
+  else if (v.state === "running" && scanning && ver) sub = "Reading the stored hashes — " + v.scanned + " files so far";
   else if (v.state === "running" && scanning) sub = "Scanning the source — " + v.scanned + " files, " + size(v.scanned_bytes) + " so far";
   else if (v.state === "running") sub = [pc, size((v.progress || 0) * v.bytes) + " of " + size(v.bytes), v.eta_seconds ? left(v.eta_seconds) : "working out the time left", rate(v.rate)].filter(Boolean).join(" · ");
   else if (v.state === "paused") sub = pc + " · Paused by you";
-  else if (v.state === "queued") sub = "Waiting for the copy before it to finish";
+  else if (v.state === "queued") sub = "Waiting for the job before it to finish";
   else if (v.state === "finished") { sub = (v.finished ? when(v.finished) + " · " : "") + took(v.created, v.finished) + " · " + size(v.bytes) +
       (secs(v.created, v.finished) >= 1 && v.bytes ? " · " + rate(v.bytes / secs(v.created, v.finished)) + " average" : "") +
-      (problems ? " · " + (v.failed ? v.failed + " failed" : "") + (v.failed && v.s2_warnings ? ", " : "") + (v.s2_warnings ? v.s2_warnings + " source warnings" : "") : " · " + proven + " files verified");
+      (ver ? " · " + (v.failed ? v.verified + " match, " + v.failed + " do not" : v.verified + (v.verified === 1 ? " file matches" : " files match")) :
+      problems ? " · " + (v.failed ? v.failed + " failed" : "") + (v.failed && v.s2_warnings ? ", " : "") + (v.s2_warnings ? v.s2_warnings + " source warnings" : "") : " · " + proven + " files verified");
     if (problems) subCls += " warn"; }
-  else sub = (v.finished ? when(v.finished) + " · " : "") + "Stopped by you · " + proven + " files verified and kept";
+  else sub = (v.finished ? when(v.finished) + " · " : "") + "Stopped by you · " + proven + (ver ? " files checked and matching" : " files verified and kept");
   q(".sub").textContent = sub; q(".sub").className = subCls;
   // Details, shown when the row is open.
   let line = "";
   if (v.state === "running" && !scanning) line = "Now: " + v.file + " — " + v.stage + (v.file_size ? ", " + size(v.file_done) + " of " + size(v.file_size) : "");
+  else if (v.state === "finished" && ver) line = v.failed ? "Some files do not match the stored hashes — see the files marked Error. Nothing was changed." :
+      "Every file read in full matches the hash stored when it was copied." + (v.skipped ? " " + v.skipped + " files had no stored hash (never verified by the copy) and were not checked." : "");
   else if (v.state === "finished") line = problems ? "Finished with problems — see the files marked Error." : "Finished. Every file is verified" + (v.s2 === "now" ? " twice (source read again)." : ".");
   else if (v.state === "paused") line = "Paused by you. Resume continues exactly where it stopped.";
   else if (!old && v.state !== "running") line = "Added " + when(v.created);
+  if (ver && !old) line += (line ? " · " : "") + "Read in full and compared with the hashes stored when it was copied. Nothing is changed.";
   q(".line").textContent = line;
   q(".bar.file").hidden = v.state !== "running" || scanning;
   q(".bar.file > i").style.width = v.state === "running" ? pct(v.file_done, v.file_size) + "%" : "0%";
   q(".speed").textContent = v.state !== "running" || scanning ? "" :
     [rate(v.rate) && "Speed " + rate(v.rate), rate(v.source_rate) && "source disk reading " + rate(v.source_rate), rate(v.dest_rate) && "destination disk " + rate(v.dest_rate)].filter(Boolean).join(" · ") || "Measuring speed…";
-  q(".counts").textContent = "Verified " + proven + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
+  q(".counts").textContent = ver ? "Matching " + v.verified + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
+    (v.failed ? " · do not match: " + v.failed : "") + (v.skipped ? " · no stored hash: " + v.skipped : "") : "Verified " + proven + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
     (v.copied ? " · copied, check to come: " + v.copied : "") +
     (v.identical ? " · " + v.identical + " were already there" : "") + (v.s2 === "now" ? " · read twice: " + v.strong : "") +
     (v.failed ? " · failed: " + v.failed : "") + (v.s2_warnings ? " · source warnings: " + v.s2_warnings : "") + (v.skipped ? " · not copied (links etc.): " + v.skipped : "");
@@ -586,6 +614,8 @@ function card(v) {
   if (v.state === "paused") btn(acts, "▶", () => post("/api/jobs/" + v.id + "/resume").catch(e => alert(e.message)), "primary", "Resume");
   if (!old) btn(acts, "✕", () => stopJob(v), "", "Stop…");
   if (problems) btn(btns, "Show problems", () => showProblems(v.id));
+  if (old && !ver) btn(btns, "Verify again", () => verify(v.dest).catch(e => alert(e.message)));
+  if (old && ver) btn(btns, "Verify again", () => verify(place).catch(e => alert(e.message)));
   const key = acts.map(b => b.title).join("|") + "/" + btns.map(b => b.textContent).join("|");
   if (fv[v.id]) { const was = fv[v.id].v.state; fv[v.id].v = v; if (was !== v.state) loadFiles(fv[v.id], false, true); }
   if (c.dataset.btns !== key) { c.dataset.btns = key; q(".acts").replaceChildren(...acts); q(".detail .btns").replaceChildren(...btns); }
@@ -713,8 +743,10 @@ const fileChip = { proven: "ok", strong: "ok", failed: "bad", warning: "waiting"
 function toggleFiles(v, c) {
   if (fv[v.id]) { fv[v.id].box.remove(); delete fv[v.id]; return; }
   const box = el("div", "files");
-  const f = fv[v.id] = { v, box, filter: v.failed || v.s2_warnings ? "problems" : "all", rows: [], next: -1, busy: false };
-  const bar = el("div", "filters");
+  // One file: no filters, the one row says it all.
+  const one = v.files <= 1;
+  const f = fv[v.id] = { v, box, filter: !one && (v.failed || v.s2_warnings) ? "problems" : "all", rows: [], next: -1, busy: false };
+  const bar = el("div", "filters"); bar.hidden = one;
   [["all", "All"], ["todo", "In progress"], ["done", "Verified"], ["problems", "Error"]].forEach(([k, t]) => {
     const b = el("button", "", t + " "); b.type = "button"; b.dataset.f = k; b.append(el("span", "n", ""));
     b.onclick = () => { f.filter = k; loadFiles(f, false); }; bar.append(b);
@@ -753,7 +785,8 @@ function drawFiles(f, note) {
   f.box.querySelector(".files > button").hidden = f.next < 0;
 }
 // File info: what the file is, where it went, its hashes and its story.
-const hashName = { c: "Read for the copy (C)", s1: "Source, read on its own (S1)", d1: "Copy, read back (D1)", s2: "Source, read again (S2)" };
+const hashName = { c: "Source — full read, as it was copied", s1: "Source — full read, before the copy", d1: "Destination — full read of the copy", s2: "Source — second full read after the copy (safety check)" };
+const verifyHashName = { c: "Stored when it was copied", d1: "Destination — full read now" };
 function kv(pairs) {
   const dl = el("dl", "kv");
   pairs.filter(p => p[1] !== "" && p[1] != null).forEach(([k, v]) => { dl.append(el("dt", "", k)); const d = el("dd"); if (v instanceof Node) d.append(v); else d.textContent = v; dl.append(d); });
@@ -778,16 +811,19 @@ function loadInfo() {
       ["Size", size(fi.size) + " (" + fi.size.toLocaleString() + " bytes)"], ["Modified", new Date(fi.mtime).toLocaleString()],
       ["State", state], ["Proof", fi.proof], ["Problem", fi.why || ""]]));
     const dest = fi.dest_exists ? (fi.dest_size === fi.size ? "there, same size" : "there, but " + size(fi.dest_size) + " — not the same size") : "not there yet";
-    body.push(el("h3", "", "Where"), kv([["From", el("span", "path", fi.source)], ["To", el("span", "path", fi.dest)], ["At the destination", dest]]));
-    const hs = Object.entries(hashName).filter(([k]) => fi.hash[k]);
+    body.push(el("h3", "", "Where"), kv(fi.kind === "verify" ? [["File", el("span", "path", fi.dest)], ["At the destination", dest]] :
+      [["From", el("span", "path", fi.source)], ["To", el("span", "path", fi.dest)], ["At the destination", dest]]));
+    const hs = Object.entries(fi.kind === "verify" ? verifyHashName : hashName).filter(([k]) => fi.hash[k]);
     if (hs.length) {
       const ref = fi.hash.c || fi.hash.s1;
-      body.push(el("h3", "", "Hashes (XXH128)"), kv(hs.map(([k, label]) => {
-        const v = el("span"); v.append(el("span", "hash", fi.hash[k]));
-        if (ref && k !== "c" && !(k === "s1" && !fi.hash.c)) v.append(el("span", fi.hash[k] === ref ? "match" : "nomatch", fi.hash[k] === ref ? "  ✓ matches" : "  ✗ differs"));
-        return [label, v];
-      })));
-    } else body.push(el("h3", "", "Hashes (XXH128)"), el("p", "mute", "None yet: hashes are made as the file is copied and read back."));
+      body.push(el("h3", "", "Fingerprints (XXH128 hashes)"), el("p", "mute", fi.kind === "verify" ? "The copy was read again in full; its fingerprint must equal the one stored when it was copied." :
+        "Each line is a separate full read of the file. All must be the same for the copy to count as verified."),
+        ...hs.map(([k, label]) => {
+          const d = el("div", "hrow"); d.append(el("div", "mute", label)); const v = el("div"); v.append(el("span", "hash", fi.hash[k]));
+          if (ref && k !== "c" && !(k === "s1" && !fi.hash.c)) v.append(el("span", fi.hash[k] === ref ? "match" : "nomatch", fi.hash[k] === ref ? "  ✓ same as the first" : "  ✗ differs"));
+          d.append(v); return d;
+        }));
+    } else body.push(el("h3", "", "Fingerprints (XXH128 hashes)"), el("p", "mute", "None yet: hashes are made as the file is copied and read back."));
     const story = el("ol", "story");
     (fi.events || []).forEach(e => {
       const li = el("li"); li.append(el("div", "mute", new Date(e.time).toLocaleString() + (e.ms ? " · took " + (e.ms < 1000 ? e.ms + " ms" : (e.ms / 1000).toFixed(1) + " s") : "") +

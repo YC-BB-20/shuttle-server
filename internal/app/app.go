@@ -350,11 +350,13 @@ func Run(opts Options) (code int) {
 					case !u.KeySet:
 						l.Update = "nokey"
 					case u.Busy != "":
-						l.Update = "busy"
+						l.Update = u.Busy // checking, downloading, installing
 					case u.Waiting:
 						l.Update = "waiting"
 					case u.Available != nil:
 						l.Update, l.UpdateVersion = "available", u.Available.Version
+					case u.Error != "":
+						l.Update = "failed"
 					}
 					return l
 				}})

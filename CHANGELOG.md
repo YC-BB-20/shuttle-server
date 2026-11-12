@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.9 — 12 November 2026
+
+- **Verify, any time.** The new Verify… button (next to New copy) checks any folder or single file Shuttle copied to: open the folder and press Use this folder, or tap one file. Each file is read again in full and compared with the hash stored when it was copied. It is its own item in the queue, with pause, resume and stop, and waits by itself if the disk is unplugged. It only reads: nothing is changed, renamed or deleted.
+- **Verify again** on every finished copy and verify in History.
+- **Clear reasons when a file does not match:** "missing", "wrong size" or "differs". A difference is read a second time before it is believed. Files the copy never verified are counted as "no stored hash", not checked.
+- **File info is easier to read.** The hashes are now "fingerprints", each line says which full read it came from (the source as it was copied, the destination copy, the source read again after the copy as a safety check), and each one says "same as the first" or "differs".
+- **A copy with one file shows no filters,** just the file.
+- **Menu bar:** pressing Check for updates shows "Checking for updates…", then "Shuttle is up to date" or the update found; pressing Install shows "Installing update…" (and "Downloading update…" while it downloads). A failed check or install says so.
+
 ## 0.2.8 — 12 November 2026
 
 - **A missing disk is an error you can see.** If the source or destination disk is unplugged (or its folder disappears) during a copy, the top of the page turns red and names it: "Source disk not connected: CARD_A001". The copy waits, no file is marked failed, and it carries on by itself once the disk is back. The menu bar icon turns red too. Shuttle now notices within about two seconds, even between files.

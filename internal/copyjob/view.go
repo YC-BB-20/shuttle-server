@@ -17,6 +17,8 @@ type View struct {
 	S2         string    `json:"s2"`
 	Hash       string    `json:"hash"`
 	Only       int       `json:"only,omitempty"` // how many files and folders were picked one by one; 0 means the whole folder
+	Kind       string    `json:"kind,omitempty"` // "verify" for a Verify job
+	VerifyFile string    `json:"verify_file,omitempty"`
 	Created    time.Time `json:"created"`
 	Finished   time.Time `json:"finished,omitzero"`
 	State      string    `json:"state"` // running, waiting, paused, queued, finished, stopped
@@ -72,6 +74,9 @@ func progress(st state, c counts, l live) float64 {
 		return float64(c.Verified+c.Identical+c.Failed) / float64(st.Files)
 	}
 	size, done := float64(l.size), float64(l.done)
+	if st.Spec.isVerify() {
+		return min(1, (float64(c.BytesProven+c.BytesFailed)+done)/float64(st.Bytes))
+	}
 	has := func(p string) bool { return strings.HasPrefix(l.stage, p) }
 	var part float64
 	if st.Spec.checkLater() {
@@ -173,6 +178,7 @@ func baseView(j *Job) (View, state, live) {
 	st, c, l := j.st, j.c, j.live
 	j.mu.Unlock()
 	v := View{ID: st.ID, Source: st.Spec.Source, Dest: st.Spec.Dest, S2: st.Spec.S2, Hash: st.Spec.Hash, Only: len(st.Spec.Only),
+		Kind: st.Spec.Kind, VerifyFile: st.Spec.File,
 		Created: st.Created, Finished: st.Finished, Phase: st.Phase, Files: st.Files, Bytes: st.Bytes, Skipped: st.Skipped,
 		Verified: c.Verified, Identical: c.Identical, Failed: c.Failed, Strong: c.Strong, S2Warn: c.S2Warn, Copied: c.Copied,
 		Proven: c.BytesProven, SameVolume: st.SameVolume, Scanned: l.scanned, ScannedB: l.scannedBytes,
@@ -391,6 +397,7 @@ type FileInfo struct {
 	DestExists bool      `json:"dest_exists"`
 	DestSize   int64     `json:"dest_size,omitempty"`
 	Proof      string    `json:"proof"`
+	Kind       string    `json:"kind,omitempty"` // "verify" when the file belongs to a Verify job
 	Hash       Hashes    `json:"hash"`
 	Events     []Event   `json:"events"`
 }
@@ -403,6 +410,7 @@ var eventText = map[string]string{
 	"verified":   "Copied and verified: the copy read back matches the source",
 	"identical":  "Already at the destination; compared and identical, left untouched",
 	"failed":     "Failed",
+	"match":      "Verified again: the copy was read in full and matches the hash stored when it was copied",
 	"copied":     "Copied and hashed as it was read; the check (copy read back, source read again) comes in the second pass",
 	"s2ok":       "Source read a second time: matches",
 	"s2changed":  "Source read a second time: the source had changed after the copy",
@@ -480,6 +488,18 @@ func (m *Manager) FileInfo(id string, i int) (FileInfo, error) {
 		}
 		return true
 	})
+	fi.Kind = spec.Kind
+	if spec.isVerify() {
+		switch fi.Status {
+		case "proven":
+			fi.Proof = "Verified again: the copy read in full matches the hash stored when it was copied"
+		case "failed":
+			fi.Proof = "Does not match: see the problem below"
+		default:
+			fi.Proof = "Not checked yet"
+		}
+		return fi, nil
+	}
 	switch fi.Status {
 	case "strong":
 		fi.Proof = "Strong: two separate reads of the source match what the destination holds"

@@ -29,7 +29,7 @@ type Line struct {
 	Level    string // ok, warn or bad
 	Headline string
 	Version  string
-	// Update is none, nokey, busy, waiting or available.
+	// Update is none, nokey, checking, downloading, installing, waiting, available or failed.
 	Update        string
 	UpdateVersion string
 }

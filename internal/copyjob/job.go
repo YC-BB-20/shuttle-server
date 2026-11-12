@@ -42,6 +42,12 @@ type Spec struct {
 	// Only lists the chosen files and folders inside Source, by name; empty
 	// means the whole folder.
 	Only []string `json:"only,omitempty"`
+	// Verify jobs (added in 0.2.9): Kind "verify", Source and Dest are the
+	// folder checked, File one file in it (empty: the whole folder), From the
+	// copy jobs whose stored hashes it compares with, oldest first.
+	Kind string   `json:"kind,omitempty"`
+	File string   `json:"file,omitempty"`
+	From []string `json:"from,omitempty"`
 }
 
 // MaxOnly bounds how many files and folders can be picked one by one.
@@ -82,7 +88,7 @@ type state struct {
 	Spec          Spec                  `json:"spec"`
 	Created       time.Time             `json:"created"`
 	Choice        string                `json:"choice"` // run, paused, stopped: the owner's choice
-	Phase         string                `json:"phase"`  // scan, copy, check (copy-then-check only), s2, done
+	Phase         string                `json:"phase"`  // scan, copy, check (copy-then-check only), s2, done; a Verify job: scan, verify, done
 	Files         int                   `json:"files"`
 	Bytes         int64                 `json:"bytes"`
 	Skipped       int                   `json:"skipped"`
@@ -111,6 +117,7 @@ type Job struct {
 type counts struct {
 	Verified, Identical, Failed, Strong, S2Warn int
 	BytesProven                                 int64
+	BytesFailed                                 int64 // Verify jobs: bytes of files that did not match, for the bar
 	Copied                                      int   // copy-then-check: copied, waiting for the check pass
 	BytesCopied                                 int64 // copy-then-check: bytes through the copy pass
 }
@@ -170,7 +177,7 @@ func (j *Job) apply(r Rec) {
 		}
 		j.status[r.I] = stCopied
 		j.c.Copied++
-	case "verified", "identical":
+	case "verified", "identical", "match": // match: a Verify job read the copy again and it matches
 		if unproven {
 			j.c.BytesProven += r.N
 			if j.st.Spec.checkLater() && j.status[r.I] != stCopied {
@@ -196,6 +203,9 @@ func (j *Job) apply(r Rec) {
 	case "failed":
 		j.status[r.I] = stFailed
 		j.c.Failed++
+		if j.st.Spec.isVerify() {
+			j.c.BytesFailed += r.N
+		}
 	case "s2ok":
 		j.status[r.I] = stStrong
 		j.c.Strong++

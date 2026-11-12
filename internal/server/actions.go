@@ -71,7 +71,10 @@ func (s *Server) addJob(w http.ResponseWriter, r *http.Request) (any, error) {
 	if err := json.NewDecoder(r.Body).Decode(&spec); err != nil {
 		return nil, errors.New("could not read the request")
 	}
-	if spec.Source == "" || spec.Dest == "" {
+	if spec.Kind == copyjob.KindVerify && spec.Source == "" {
+		return nil, errors.New("choose a folder or file to verify")
+	}
+	if spec.Kind != copyjob.KindVerify && (spec.Source == "" || spec.Dest == "") {
 		return nil, errors.New("choose a source folder and a destination folder")
 	}
 	if _, err := s.Jobs.Add(spec); err != nil {
