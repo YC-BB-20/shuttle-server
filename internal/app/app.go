@@ -16,6 +16,8 @@ import (
 
 	shuttle "github.com/YC-BB-20/shuttle-server"
 	"github.com/YC-BB-20/shuttle-server/internal/config"
+	"github.com/YC-BB-20/shuttle-server/internal/copyjob"
+	"github.com/YC-BB-20/shuttle-server/internal/diskio"
 	"github.com/YC-BB-20/shuttle-server/internal/events"
 	"github.com/YC-BB-20/shuttle-server/internal/fsx"
 	"github.com/YC-BB-20/shuttle-server/internal/limits"
@@ -35,7 +37,7 @@ const (
 	ExitMemory  = 3
 )
 
-const idleHeadline = "Idle — this version does not move files yet"
+const idleHeadline = "Idle — no copy running"
 
 var errMemory = errors.New("memory stayed over the ceiling")
 
@@ -66,7 +68,7 @@ type Status struct {
 	CPU        limits.CPUResult   `json:"cpu"`
 	OpenFiles  OpenFiles          `json:"open_files"`
 	Pages      Pages              `json:"pages"`
-	Jobs       int                `json:"jobs"`
+	Jobs       []copyjob.View     `json:"jobs"`
 }
 
 type Disk struct {
@@ -186,6 +188,20 @@ func Run(opts Options) (code int) {
 		}}
 	go wd.Run(ctx)
 
+	var jobs *copyjob.Manager
+	disks := diskio.NewRegistry(1, 60*time.Second)
+	if !safe {
+		jobs = &copyjob.Manager{Dir: filepath.Join(stateDir, "jobs"), Budget: budget, Disks: disks,
+			Accepting: wd.AcceptingNewWork, Log: log}
+		if err := jobs.Load(); err != nil {
+			log.Error("could not read the copy jobs", "err", err)
+			jobs = nil
+		} else {
+			go disks.Run(ctx)
+			go jobs.Run(ctx)
+		}
+	}
+
 	hub := events.NewHub(cfg.PageUpdatesPerS, cfg.MaxOpenPages)
 	go hub.Run(ctx)
 
@@ -202,23 +218,39 @@ func Run(opts Options) (code int) {
 		} else {
 			st.Disk.Free, st.Disk.BelowFloor = free, free < st.Disk.Floor
 		}
+		if jobs != nil {
+			st.Jobs = jobs.Views()
+		}
+		var active *copyjob.View
+		for i := range st.Jobs {
+			if v := &st.Jobs[i]; v.State == "running" || v.State == "waiting" {
+				active = v
+			}
+		}
+		ok := false
 		switch {
 		case safe:
 			st.Headline = "Safe mode — nothing runs until the problem is fixed"
 		case st.Memory.State != limits.MemOK:
 			st.Headline = "Using too much memory — starting nothing new"
+		case active != nil && active.State == "waiting":
+			st.Headline = active.Reason
 		case st.Disk.BelowFloor:
-			st.Headline = "Waiting for free space — the disk is below the floor"
+			st.Headline = "The internal disk is below the free-space floor"
 		case st.Buffers.Waiting > 0:
 			st.Headline = "Waiting for memory buffers"
+		case active != nil && active.Phase == "scan":
+			st.Headline, ok = fmt.Sprintf("Scanning the source — %d files so far", active.Scanned), true
+		case active != nil:
+			st.Headline, ok = fmt.Sprintf("Copying — %d of %d files proven", active.Verified+active.Identical, active.Files), true
 		default:
-			st.Headline = idleHeadline
+			st.Headline, ok = idleHeadline, true
 		}
 		st.Level = "warn"
 		switch {
 		case safe:
 			st.Level = "bad"
-		case st.Headline == idleHeadline:
+		case ok:
 			st.Level = "ok"
 		}
 		return st
@@ -239,7 +271,11 @@ func Run(opts Options) (code int) {
 		}
 	}()
 
-	srv := (&server.Server{Page: shuttle.IndexHTML, PageDir: cfg.PageDir, Hub: hub, Status: status,
+	var actions server.Actions
+	if jobs != nil {
+		actions = jobs
+	}
+	srv := (&server.Server{Page: shuttle.IndexHTML, PageDir: cfg.PageDir, Hub: hub, Status: status, Jobs: actions, Listen: cfg.Listen,
 		About: func() any {
 			return map[string]string{"version": version.Version, "commit": version.Commit, "changelog": shuttle.Changelog}
 		}}).HTTP()

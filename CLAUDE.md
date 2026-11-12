@@ -17,7 +17,7 @@ The design lives in the claude.ai project (`GOALS.md`, `DESIGN.md`, `COMPATIBILI
 
 | Path | What |
 | --- | --- |
-| `cmd/shuttle-server/` | `main`: flags `-data`, `-clear-safe-mode`, `-version` |
+| `cmd/shuttle-server/` | `main`: flags `-data`, `-clear-safe-mode`, `-version`; commands `hash`, `install-launcher`, `soak` |
 | `embed.go`, `web/index.html`, `CHANGELOG.md` | Built-in page and the changelog shown in About |
 | `internal/app` | Wires everything; `Run` returns an exit code (0 ok, 1 start-up, 2 panic, 3 memory) |
 | `internal/config` | Host config `config.json`; 0 means "automatic for this machine" |
@@ -25,20 +25,27 @@ The design lives in the claude.ai project (`GOALS.md`, `DESIGN.md`, `COMPATIBILI
 | `internal/safemode` | Start-up crash counter (3 within 5 min → safe mode) |
 | `internal/events` | Coalesced server-sent updates, slow pages dropped |
 | `internal/server` | HTTP handlers, localhost Host check, timeouts |
+| `internal/xxh3` | XXH128 in plain Go, saveable state; `testdata/` holds the official vectors |
+| `internal/diskio` | All user-disk I/O: read-only opens, cache bypass, chunk retries, per-disk limit and stall timer, volume ids, `VolumeMounted` |
+| `internal/location` | The source boundary (section 17): today only `Folder` |
+| `internal/copyjob` | Copy jobs: scan → manifest, S1/copy/D1 pipeline, S2, journal with grouped flush, checkpoints, manager and views |
+| `internal/launcher` | Writes `~/Applications/Shuttle Server.app` |
+| `internal/soak` | Long-run resource test |
 | `internal/fsx` | Atomic writes, free space |
 | `internal/sysinfo` | Total RAM, open-file limit |
 | `internal/menubar` | macOS menu bar icon: `menubar.js` run by `osascript`, fed by a status file in `temp.noindex`, own process group |
 | `internal/logx` | `logs/YYYY-MM/shuttle.log`, appended, never trimmed |
 | `internal/version` | `Version` constant; CI sets `Commit` |
 
-Data folder (default `~/Shuttle-Server-Data`): `config.json`, `state/`, `logs/`, `records/`, `temp.noindex/` (the `.noindex` suffix keeps Spotlight out).
+Data folder (default `~/Shuttle-Server-Data`): `config.json`, `state/` (`startup.json`, `jobs/<id>/` with `job.json`, `manifest.jsonl`, `journal.log`, `skipped.jsonl`), `logs/`, `records/`, `temp.noindex/` (the `.noindex` suffix keeps Spotlight out).
 
 ## Commands
 
 ```sh
 gofmt -l .                         # must print nothing
 go vet ./... && GOOS=darwin GOARCH=arm64 go vet ./...
-go test ./...
+go test ./...                      # includes a 13 s soak; -short skips it
+CGO_ENABLED=1 go test -race ./internal/...   # locally, when touching concurrency
 go run ./cmd/shuttle-server -data /tmp/ssdata   # page at http://localhost:8470
 ```
 

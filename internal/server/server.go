@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/YC-BB-20/shuttle-server/internal/copyjob"
 	"github.com/YC-BB-20/shuttle-server/internal/events"
 )
 
@@ -20,6 +21,17 @@ type Server struct {
 	Hub     *events.Hub
 	Status  func() any
 	About   func() any
+	Jobs    Actions // nil in safe mode
+	Listen  string
+}
+
+// Actions are the commands the page may send about copy jobs.
+type Actions interface {
+	Add(copyjob.Spec) (*copyjob.Job, error)
+	Pause(id string) error
+	Resume(id string) error
+	Stop(id string) error
+	Problems(id string, limit int) []copyjob.Problem
 }
 
 // HTTP returns an http.Server with a timeout on every request.
@@ -29,6 +41,10 @@ func (s *Server) HTTP() *http.Server {
 	mux.HandleFunc("GET /api/status", s.json(s.Status))
 	mux.HandleFunc("GET /api/about", s.json(s.About))
 	mux.HandleFunc("GET /api/events", s.events)
+	mux.HandleFunc("GET /api/browse", s.browse)
+	mux.HandleFunc("GET /api/jobs/{id}/problems", s.problems)
+	mux.HandleFunc("POST /api/jobs", s.command(s.addJob))
+	mux.HandleFunc("POST /api/jobs/{id}/{action}", s.command(s.jobAction))
 	return &http.Server{
 		Handler:           localOnly(mux),
 		ReadHeaderTimeout: 5 * time.Second,

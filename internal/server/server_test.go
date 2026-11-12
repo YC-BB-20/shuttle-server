@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -70,4 +72,41 @@ func TestEventsStream(t *testing.T) {
 		}
 	}
 	t.Fatal("no event received")
+}
+
+func TestCommandsNeedTheShuttleHeader(t *testing.T) {
+	s, _ := newTest()
+	h := s.HTTP().Handler
+	for _, c := range []struct {
+		hdr, origin string
+		want        int
+	}{{"", "", http.StatusForbidden}, {"1", "https://evil.example", http.StatusForbidden}, {"1", "http://localhost:8470", http.StatusConflict}} {
+		req := httptest.NewRequest("POST", "/api/jobs", strings.NewReader(`{}`))
+		req.Host = "localhost:8470"
+		if c.hdr != "" {
+			req.Header.Set("X-Shuttle", c.hdr)
+		}
+		if c.origin != "" {
+			req.Header.Set("Origin", c.origin)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != c.want { // StatusConflict: accepted, but no job manager in this test (safe mode)
+			t.Errorf("%+v: got %d", c, rec.Code)
+		}
+	}
+}
+
+func TestBrowseListsFolders(t *testing.T) {
+	s, _ := newTest()
+	dir := t.TempDir()
+	os.MkdirAll(dir+"/Card A", 0o700)
+	os.MkdirAll(dir+"/.hidden", 0o700)
+	req := httptest.NewRequest("GET", "/api/browse?path="+url.QueryEscape(dir), nil)
+	req.Host = "localhost"
+	rec := httptest.NewRecorder()
+	s.HTTP().Handler.ServeHTTP(rec, req)
+	if !strings.Contains(rec.Body.String(), "Card A") || strings.Contains(rec.Body.String(), ".hidden") {
+		t.Fatal(rec.Body.String())
+	}
 }

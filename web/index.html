@@ -41,6 +41,32 @@
   dialog .head { display:flex; align-items:center; padding:12px 16px; border-bottom:1px solid var(--line); }
   dialog .head h2 { flex:1; margin:0; font-size:17px; }
   dialog .body { padding:12px 16px; overflow:auto; max-height:calc(min(80vh, 640px) - 56px); }
+  .jobs-head { display:flex; align-items:center; gap:12px; margin:18px 0 8px; }
+  .jobs-head h2 { flex:1; margin:0; font-size:17px; }
+  .primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .job { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 16px; margin-bottom:12px; }
+  .job .top { display:flex; gap:8px; align-items:flex-start; }
+  .job .top > div { flex:1; min-width:0; }
+  .job .route { font-weight:600; overflow-wrap:anywhere; }
+  .chip { font-size:12px; border-radius:10px; padding:2px 8px; white-space:nowrap; border:1px solid var(--line); }
+  .chip.running { color:var(--ok); border-color:var(--ok); }
+  .chip.waiting, .chip.paused { color:var(--warn); border-color:var(--warn); }
+  .chip.bad { color:var(--bad); border-color:var(--bad); }
+  .job .line { margin:6px 0 2px; overflow-wrap:anywhere; }
+  .job .counts { font-size:14px; color:var(--mute); }
+  .job .btns { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .bar.ok > i { background:var(--ok); }
+  label { display:block; margin:10px 0 4px; font-weight:600; }
+  .row { display:flex; gap:8px; }
+  .row > input { flex:1; min-width:0; }
+  input[type=text] { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--fg); }
+  .opt { display:flex; gap:8px; align-items:flex-start; font-weight:400; margin:6px 0; }
+  .err { color:var(--bad); min-height:1.2em; }
+  .list { border:1px solid var(--line); border-radius:8px; max-height:45vh; overflow:auto; }
+  .list button { display:block; width:100%; text-align:left; border:0; border-bottom:1px solid var(--line); border-radius:0; overflow-wrap:anywhere; }
+  .places { display:flex; gap:6px; overflow-x:auto; margin-bottom:8px; }
+  .places button { white-space:nowrap; }
+  .foot { display:flex; gap:8px; justify-content:flex-end; padding:12px 16px; border-top:1px solid var(--line); }
   pre { white-space:pre-wrap; overflow-wrap:anywhere; font: 14px/1.45 ui-monospace, Menlo, monospace; margin:0; }
 </style>
 </head>
@@ -62,7 +88,43 @@
     <section class="card"><h2>Open files</h2><p id="files"></p><p class="mute">Pages open: <span id="pages"></span></p></section>
     <section class="card"><h2>Data folder</h2><p class="path" id="data"></p><p class="mute">Temp: <span class="path" id="temp"></span></p></section>
   </div>
+  <div class="jobs-head"><h2>Copies</h2><button class="primary" type="button" id="newBtn">New copy</button></div>
+  <div id="jobs"><p class="mute" id="noJobs">No copies yet. Press New copy to copy a card or folder to another disk, with every file proven.</p></div>
 </main>
+<dialog id="newDlg">
+  <div class="head"><h2>New copy</h2><button type="button" data-close>Cancel</button></div>
+  <div class="body">
+    <label for="src">Copy from (source)</label>
+    <div class="row"><input type="text" id="src" placeholder="/Volumes/CARD_A001"><button type="button" data-pick="src">Choose…</button></div>
+    <label for="dst">Copy to (a new or existing folder on the destination)</label>
+    <div class="row"><input type="text" id="dst" placeholder="/Volumes/BACKUP_1/Day 01/A001"><button type="button" data-pick="dst">Choose…</button></div>
+    <label>Proof</label>
+    <div class="opt"><input type="radio" name="s2" id="s2now" value="now" checked><span>Read the source again at the end (strongest; the source is read three times)</span></div>
+    <div class="opt"><input type="radio" name="s2" id="s2skip" value="skip"><span>Skip the second source read (faster; the copy is still read back and compared)</span></div>
+    <p class="mute">The source is only read, never changed. Files already at the destination are compared, never replaced.</p>
+    <p class="err" id="newErr"></p>
+  </div>
+  <div class="foot"><button type="button" data-close>Cancel</button><button type="button" class="primary" id="startBtn">Start copy</button></div>
+</dialog>
+<dialog id="pickDlg">
+  <div class="head"><h2>Choose a folder</h2><button type="button" data-close>Cancel</button></div>
+  <div class="body">
+    <div class="places" id="places"></div>
+    <p class="path" id="pickPath"></p>
+    <div class="list" id="pickList"></div>
+    <p class="err" id="pickErr"></p>
+  </div>
+  <div class="foot"><button type="button" id="pickUp">Up one level</button><button type="button" class="primary" id="pickUse">Use this folder</button></div>
+</dialog>
+<dialog id="confirmDlg">
+  <div class="head"><h2 id="confirmTitle"></h2></div>
+  <div class="body"><p id="confirmText"></p></div>
+  <div class="foot"><button type="button" data-close>Keep copying</button><button type="button" class="primary" id="confirmYes"></button></div>
+</dialog>
+<dialog id="probDlg">
+  <div class="head"><h2>Files that need attention</h2><button type="button" data-close>Close</button></div>
+  <div class="body" id="probList"></div>
+</dialog>
 <dialog id="about">
   <div class="head"><h2>About Shuttle Server</h2><button type="button" id="aboutClose">Close</button></div>
   <div class="body"><p id="aboutVer"></p><pre id="changelog">Loading…</pre></div>
@@ -80,7 +142,7 @@ function render() {
   const s = latest; if (!s) return;
   $("ver").textContent = "v" + s.version;
   $("headline").firstChild.textContent = s.headline;
-  $("sub").textContent = "Running for " + ago(s.started_at) + " · " + s.jobs + " jobs" + (s.notes ? " · " + s.notes.join(" · ") : "");
+  $("sub").textContent = "Running for " + ago(s.started_at) + (s.notes ? " · " + s.notes.join(" · ") : "");
   $("safe").hidden = !s.safe_mode; $("safeReason").textContent = s.safe_mode_reason || "";
   $("mem").textContent = size(s.memory.used) + " of " + size(s.memory.ceiling);
   $("memBar").style.width = pct(s.memory.used, s.memory.ceiling) + "%";
@@ -97,6 +159,7 @@ function render() {
   $("files").textContent = "Own cap " + s.open_files.cap + " of " + s.open_files.limit;
   $("pages").textContent = s.pages.open + " of " + s.pages.max;
   $("data").textContent = s.data_dir; $("temp").textContent = s.temp_dir;
+  renderJobs(s.jobs || []);
 }
 function show(s) { latest = s; if (!frame) frame = requestAnimationFrame(render); }
 function live(on, text) { $("live").className = on ? "live on" : "live"; $("live").textContent = text; }
@@ -122,6 +185,111 @@ $("aboutBtn").onclick = () => {
   }).catch(() => { $("changelog").textContent = "Could not load the changelog."; });
 };
 $("aboutClose").onclick = () => $("about").close();
+document.querySelectorAll("[data-close]").forEach(b => b.onclick = () => b.closest("dialog").close());
+
+function post(url, body) {
+  return fetch(url, { method: "POST", headers: { "X-Shuttle": "1", "Content-Type": "application/json" }, body: JSON.stringify(body || {}) })
+    .then(r => r.json().then(j => { if (!r.ok) throw new Error(j.error || "Something went wrong"); return j; }));
+}
+const rate = n => n > 0 ? size(n) + "/s" : "";
+
+// New copy
+$("newBtn").onclick = () => { $("newErr").textContent = ""; $("newDlg").showModal(); };
+$("startBtn").onclick = () => {
+  $("newErr").textContent = "";
+  post("/api/jobs", { source: $("src").value, dest: $("dst").value, s2: $("s2skip").checked ? "skip" : "now" })
+    .then(() => { $("newDlg").close(); $("src").value = ""; $("dst").value = ""; })
+    .catch(e => $("newErr").textContent = e.message);
+};
+
+// Folder picker
+let pickFor = "", pickAt = "";
+document.querySelectorAll("[data-pick]").forEach(b => b.onclick = () => { pickFor = b.dataset.pick; browse($(pickFor).value || ""); $("pickDlg").showModal(); });
+function browse(path) {
+  fetch("/api/browse?path=" + encodeURIComponent(path)).then(r => r.json()).then(d => {
+    pickAt = d.path; $("pickPath").textContent = d.path; $("pickErr").textContent = d.error || (d.truncated ? "Only the first 1000 folders are shown." : "");
+    $("places").replaceChildren(...d.places.map(p => { const b = document.createElement("button"); b.type = "button"; b.textContent = p.name; b.onclick = () => browse(p.path); return b; }));
+    $("pickList").replaceChildren(...d.folders.map(f => { const b = document.createElement("button"); b.type = "button"; b.textContent = "📁 " + f.name; b.onclick = () => browse(f.path); return b; }));
+    $("pickUp").onclick = () => browse(d.parent);
+  });
+}
+$("pickUse").onclick = () => { $(pickFor).value = pickAt; $("pickDlg").close(); };
+
+// Confirmations
+function confirmBox(title, text, yes) {
+  return new Promise(res => {
+    $("confirmTitle").textContent = title; $("confirmText").textContent = text; $("confirmYes").textContent = yes;
+    $("confirmYes").onclick = () => { $("confirmDlg").close(); res(true); };
+    $("confirmDlg").onclose = () => res(false);
+    $("confirmDlg").showModal();
+  });
+}
+async function stopJob(v) {
+  const proven = v.verified + v.identical;
+  if (!await confirmBox("Stop this copy?", proven + " files (" + size(v.bytes_proven) + ") are copied and proven and will stay. " +
+      (v.files - proven - v.failed) + " files have not been copied yet. The file being copied now is discarded.", "Stop")) return;
+  if (!await confirmBox("Really stop?", "A stopped copy cannot be resumed; you can start a new one, which skips files already there after comparing them.", "Yes, stop")) return;
+  post("/api/jobs/" + v.id + "/stop").catch(e => alert(e.message));
+}
+function showProblems(id) {
+  $("probList").textContent = "Loading…"; $("probDlg").showModal();
+  fetch("/api/jobs/" + id + "/problems").then(r => r.json()).then(list => {
+    $("probList").replaceChildren(...list.map(p => { const d = document.createElement("p"); d.innerHTML = "<b></b><br><span class='mute'></span>";
+      d.firstChild.textContent = p.path; d.lastChild.textContent = p.why; d.style.overflowWrap = "anywhere"; return d; }));
+    if (!list.length) $("probList").textContent = "Nothing to show.";
+  });
+}
+
+// Job cards, updated in place
+const cards = {};
+const stateText = { running: "Running", waiting: "Waiting", paused: "Paused", queued: "Queued", finished: "Finished", stopped: "Stopped" };
+function card(v) {
+  let c = cards[v.id];
+  if (!c) {
+    c = document.createElement("section"); c.className = "job";
+    c.innerHTML = '<div class="top"><div><div class="route"></div><div class="mute path dest"></div></div><span class="chip"></span></div>' +
+      '<p class="line"></p><div class="bar ok"><i></i></div><div class="bar"><i></i></div><p class="counts"></p><p class="warn same" hidden>Source and destination are on the same disk: this copy does not protect against that disk failing.</p><div class="btns"></div>';
+    cards[v.id] = c;
+  }
+  const q = sel => c.querySelector(sel);
+  q(".route").textContent = v.source; q(".dest").textContent = "→ " + v.dest;
+  const chip = q(".chip"); chip.textContent = stateText[v.state] || v.state;
+  chip.className = "chip " + ((v.state === "finished" && (v.failed || v.s2_warnings)) ? "bad" : v.state);
+  let line = "";
+  if (v.state === "running" && v.phase === "scan") line = "Scanning the source — " + v.scanned + " files, " + size(v.scanned_bytes) + " so far";
+  else if (v.state === "running") line = v.stage + ": " + v.file + (v.file_size ? " — " + size(v.file_done) + " of " + size(v.file_size) : "") +
+    (rate(v.source_rate) ? " · source " + rate(v.source_rate) : "") + (rate(v.dest_rate) ? " · destination " + rate(v.dest_rate) : "");
+  else if (v.state === "waiting") line = v.reason;
+  else if (v.state === "paused") line = "Paused by you. Resume continues exactly where it stopped.";
+  else if (v.state === "queued") line = "Waiting for the copy before it to finish.";
+  else if (v.state === "finished") line = (v.failed || v.s2_warnings) ? "Finished with problems — see below." : "Finished. Every file is proven" + (v.s2 === "now" ? " twice (source read again)." : ".");
+  else line = "Stopped by you. Files already proven were kept.";
+  q(".line").textContent = line;
+  q(".bar.ok > i").style.width = pct(v.bytes_proven, v.bytes) + "%";
+  q(".bar:not(.ok) > i").style.width = v.state === "running" ? pct(v.file_done, v.file_size) + "%" : "0%";
+  const proven = v.verified + v.identical;
+  q(".counts").textContent = "Proven " + proven + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
+    (v.identical ? " · " + v.identical + " were already there" : "") + (v.s2 === "now" ? " · read twice: " + v.strong : "") +
+    (v.failed ? " · failed: " + v.failed : "") + (v.s2_warnings ? " · source warnings: " + v.s2_warnings : "") + (v.skipped ? " · not copied (links etc.): " + v.skipped : "");
+  q(".same").hidden = !v.same_volume;
+  const btns = [];
+  const btn = (t, f, cls) => { const b = document.createElement("button"); b.type = "button"; b.textContent = t; b.onclick = f; if (cls) b.className = cls; btns.push(b); };
+  if (v.state === "running" || v.state === "waiting" || v.state === "queued") btn("Pause", () => post("/api/jobs/" + v.id + "/pause").catch(e => alert(e.message)));
+  if (v.state === "paused") btn("Resume", () => post("/api/jobs/" + v.id + "/resume").catch(e => alert(e.message)), "primary");
+  if (!["finished", "stopped"].includes(v.state)) btn("Stop…", () => stopJob(v));
+  if (v.failed || v.s2_warnings) btn("Show problems", () => showProblems(v.id));
+  const key = btns.map(b => b.textContent).join("|");
+  if (c.dataset.btns !== key) { c.dataset.btns = key; q(".btns").replaceChildren(...btns); }
+  else { q(".btns").querySelectorAll("button").forEach((b, i) => b.onclick = btns[i].onclick); }
+  return c;
+}
+function renderJobs(list) {
+  $("noJobs").hidden = list.length > 0;
+  const want = list.map(card);
+  const box = $("jobs");
+  want.forEach((c, i) => { if (box.children[i + 1] !== c) box.insertBefore(c, box.children[i + 1] || null); });
+  while (box.children.length > want.length + 1) box.lastChild.remove();
+}
 </script>
 </body>
 </html>
