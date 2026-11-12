@@ -211,3 +211,11 @@ func (s *Server) updateAction(w http.ResponseWriter, r *http.Request) (any, erro
 	}
 	return map[string]bool{"ok": true}, nil
 }
+
+func (s *Server) quit(w http.ResponseWriter, r *http.Request) (any, error) {
+	if s.Quit == nil {
+		return nil, errors.New("quit is not available")
+	}
+	go s.Quit() // after this reply is sent
+	return map[string]bool{"ok": true}, nil
+}

@@ -27,6 +27,7 @@ type Server struct {
 	Listen  string
 	Updates Updates // works in safe mode too
 	Restart func()
+	Quit    func()
 }
 
 // Updates are the update commands.
@@ -57,6 +58,7 @@ func (s *Server) HTTP() *http.Server {
 	mux.HandleFunc("GET /api/jobs/{id}/problems", s.problems)
 	mux.HandleFunc("POST /api/jobs", s.command(s.addJob))
 	mux.HandleFunc("POST /api/restart", s.always(s.restart))
+	mux.HandleFunc("POST /api/quit", s.always(s.quit))
 	mux.HandleFunc("POST /api/update/{action}", s.always(s.updateAction))
 	mux.HandleFunc("POST /api/jobs/{id}/{action}", s.command(s.jobAction))
 	return &http.Server{

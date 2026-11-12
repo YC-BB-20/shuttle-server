@@ -39,7 +39,10 @@ if [ ! -x "$BIN" ]; then
   /usr/bin/osascript -e 'display alert "Shuttle Server" message "The program is missing from '"$BIN"'."'
   exit 1
 fi
-cd "$HOME" && /usr/bin/nohup "$BIN" -data "$DATA" >/dev/null 2>&1 &
+# Not nohup: on macOS nohup moves the program out of the login session, and
+# then its menu bar icon cannot be shown. Started from this app there is no
+# terminal to hang up, so a plain background start is enough.
+cd "$HOME" && "$BIN" -data "$DATA" </dev/null >/dev/null 2>&1 &
 for i in 1 2 3 4 5 6 7 8 9 10; do
   sleep 0.5
   /usr/bin/curl -s -m 1 -o /dev/null "http://127.0.0.1:%s/api/status" && break
@@ -47,16 +50,42 @@ done
 /usr/bin/open "$PAGE"
 `
 
+// AppPath is where the launcher lives.
+func AppPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, "Applications", "Shuttle Server.app")
+}
+
+// Refresh rewrites an existing launcher if its script is out of date, so a
+// fix to the launcher arrives with an update. It never creates one.
+func Refresh(bin, data, port string) (bool, error) {
+	if runtime.GOOS != "darwin" {
+		return false, nil
+	}
+	cur, err := os.ReadFile(filepath.Join(AppPath(), "Contents", "MacOS", "launch"))
+	if err != nil {
+		return false, nil
+	}
+	if string(cur) == scriptFor(bin, data, port) {
+		return false, nil
+	}
+	_, err = installAt(AppPath(), bin, data, port)
+	return err == nil, err
+}
+
+func scriptFor(bin, data, port string) string {
+	return fmt.Sprintf(script, bin, data, "http://localhost:"+port, port, port)
+}
+
 // Install writes the app and returns its path.
 func Install(bin, data, port string) (string, error) {
 	if runtime.GOOS != "darwin" {
 		return "", errors.New("the launcher is for macOS")
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	app := filepath.Join(home, "Applications", "Shuttle Server.app")
+	return installAt(AppPath(), bin, data, port)
+}
+
+func installAt(app, bin, data, port string) (string, error) {
 	macos := filepath.Join(app, "Contents", "MacOS")
 	if err := os.MkdirAll(macos, 0o755); err != nil {
 		return "", err
@@ -64,9 +93,7 @@ func Install(bin, data, port string) (string, error) {
 	if err := os.WriteFile(filepath.Join(app, "Contents", "Info.plist"), []byte(plist), 0o644); err != nil {
 		return "", err
 	}
-	page := "http://localhost:" + port
-	s := fmt.Sprintf(script, bin, data, page, port, port)
-	if err := os.WriteFile(filepath.Join(macos, "launch"), []byte(s), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(macos, "launch"), []byte(scriptFor(bin, data, port)), 0o755); err != nil {
 		return "", err
 	}
 	return app, nil

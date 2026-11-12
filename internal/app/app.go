@@ -20,6 +20,7 @@ import (
 	"github.com/YC-BB-20/shuttle-server/internal/diskio"
 	"github.com/YC-BB-20/shuttle-server/internal/events"
 	"github.com/YC-BB-20/shuttle-server/internal/fsx"
+	"github.com/YC-BB-20/shuttle-server/internal/launcher"
 	"github.com/YC-BB-20/shuttle-server/internal/limits"
 	"github.com/YC-BB-20/shuttle-server/internal/logx"
 	"github.com/YC-BB-20/shuttle-server/internal/menubar"
@@ -217,7 +218,13 @@ func Run(opts Options) (code int) {
 	}
 
 	// Restart and updates work in safe mode too: a bad release is undone from there.
-	restartCh := make(chan struct{}, 1)
+	restartCh, quitCh := make(chan struct{}, 1), make(chan struct{}, 1)
+	quit := func() {
+		select {
+		case quitCh <- struct{}{}:
+		default:
+		}
+	}
 	restart := func() {
 		select {
 		case restartCh <- struct{}{}:
@@ -233,6 +240,13 @@ func Run(opts Options) (code int) {
 		CopyBusy: func() bool { return jobs != nil && jobs.Busy() }}
 	updater.Init()
 	go updater.Watch(ctx, 6*time.Hour)
+	if _, port, err := net.SplitHostPort(cfg.Listen); err == nil {
+		if done, err := launcher.Refresh(binPath, data, port); done {
+			log.Info("updated the Shuttle Server app in Applications")
+		} else if err != nil {
+			log.Warn("could not update the Shuttle Server app in Applications", "err", err)
+		}
+	}
 
 	hub := events.NewHub(cfg.PageUpdatesPerS, cfg.MaxOpenPages)
 	go hub.Run(ctx)
@@ -309,7 +323,7 @@ func Run(opts Options) (code int) {
 		actions = jobs
 	}
 	srv := (&server.Server{Page: shuttle.IndexHTML, PageDir: cfg.PageDir, Hub: hub, Status: status, Jobs: actions, Listen: cfg.Listen,
-		Updates: updater, Restart: restart,
+		Updates: updater, Restart: restart, Quit: quit,
 		About: func() any {
 			return map[string]string{"version": version.Version, "commit": version.Commit, "changelog": shuttle.Changelog}
 		}}).HTTP()
@@ -367,6 +381,9 @@ func Run(opts Options) (code int) {
 				tr.Stable()
 			}
 		case <-sigCtx.Done():
+			running = false
+		case <-quitCh:
+			log.Info("quit from the page")
 			running = false
 		case <-restartCh:
 			log.Info("restarting")

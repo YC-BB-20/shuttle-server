@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2 — 12 November 2026
+
+- Fixed: the menu bar icon did not appear when Shuttle was started from the Shuttle Server app. The app started it with `nohup`, which on macOS moves a program out of your login session, where it cannot show icons. The app now starts it normally, and Shuttle rewrites the app in Applications by itself when the app is out of date, so this fix arrives with the update.
+- **Quit Shuttle** button on the page, next to Restart, for when the menu bar is not available.
+
 ## 0.2.1 — 12 November 2026
 
 - **One-click updates.** The menu bar icon and the page's Updates card check GitHub for the newest green build, download it, make sure it starts and reports the right commit, keep the current version as a backup, swap the new one in and restart. If a copy is running, the update waits until it finishes (or installs now if you choose; the copy pauses and continues). Checks run every six hours.

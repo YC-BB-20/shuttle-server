@@ -331,6 +331,10 @@ function renderUpdate(u, s) {
   btn("Restart Shuttle", async () => {
     if (!running || await confirmBox("Restart now?", "The running copy pauses where it is and continues after the restart.", "Restart")) post("/api/restart").catch(e => alert(e.message));
   });
+  btn("Quit Shuttle", async () => {
+    if (await confirmBox("Quit Shuttle Server?", (running ? "The running copy pauses where it is and continues next time. " : "") +
+        "This page stops working until you start Shuttle again (Cmd-Space, then Shuttle Server).", "Quit")) post("/api/quit").catch(e => alert(e.message));
+  });
   const key = btns.map(b => b.textContent).join("|") + running;
   if (updKey !== key) { updKey = key; $("updBtns").replaceChildren(...btns); }
 }
