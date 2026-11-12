@@ -19,7 +19,9 @@ func TestStatusFileAndHelperStoppedWithShuttle(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		Run(ctx, Options{Dir: dir, URL: "http://localhost:8470", Every: 50 * time.Millisecond,
-			Get:     func() Line { return Line{Level: "warn", Headline: "Waiting\nfor space", Version: "0.1.1", Update: "available", UpdateVersion: "0.2.1"} },
+			Get: func() Line {
+				return Line{Level: "warn", Headline: "Waiting\nfor space", Version: "0.1.1", Update: "available", UpdateVersion: "0.2.1"}
+			},
 			Log:     slog.New(slog.NewTextHandler(io.Discard, nil)),
 			Command: []string{"/bin/sh", "-c", "sleep 60 & echo $! > " + pidFile + "; wait"}})
 		close(done)
