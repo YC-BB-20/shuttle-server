@@ -375,6 +375,11 @@ func TestHashWhileCopyingReadsSourceTwice(t *testing.T) {
 		if v.Hash != mode || v.Strong != len(files) || v.Verified != len(files) || v.Failed != 0 {
 			t.Fatalf("%s: %+v", mode, v)
 		}
+		// Copy speed counts the copy pass alone: every byte written once, and
+		// only the copying time, with no copy pass left running.
+		if cb, cns := j.copyClock(time.Now()); cb != total || cns <= 0 || j.copySince.Load() != 0 {
+			t.Fatalf("%s: copy clock %d bytes, %d ns, want %d bytes", mode, cb, cns, total)
+		}
 		if got := j.srcBytes.Load(); got != reads*total {
 			t.Fatalf("%s: source bytes read %d, want %d (%d reads)", mode, got, reads*total, reads)
 		}

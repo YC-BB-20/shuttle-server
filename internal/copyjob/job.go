@@ -112,6 +112,19 @@ type Job struct {
 	live   live
 
 	srcBytes, dstBytes atomic.Int64 // for speed
+	// Copy speed: bytes written by the copy pass and the time spent in it, so
+	// the copy's own speed is not mixed with the read-back and re-read.
+	copyBytes, copyNs, copySince atomic.Int64 // copySince: unix ns the current copy pass began, 0 if none
+}
+
+// copyClock is the bytes written by copy passes and the time spent in them,
+// including the copy pass running now.
+func (j *Job) copyClock(now time.Time) (int64, int64) {
+	ns := j.copyNs.Load()
+	if s := j.copySince.Load(); s != 0 {
+		ns += now.UnixNano() - s
+	}
+	return j.copyBytes.Load(), ns
 }
 
 type counts struct {

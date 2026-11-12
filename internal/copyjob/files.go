@@ -162,6 +162,9 @@ func (j *Job) hashFileOpt(ctx context.Context, e env, d *diskio.Disk, path strin
 // partial copy from its checkpoint (with the hasher's saved state), and
 // flushes to the drive at the end, so the read-back reads what the drive holds.
 func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int, hs *xxh3.Hasher) error {
+	start := time.Now()
+	j.copySince.Store(start.UnixNano())
+	defer func() { j.copySince.Store(0); j.copyNs.Add(int64(time.Since(start))) }()
 	size, mtime, err := statSM(src)
 	if err != nil {
 		if j.gone(e.src, true) {
@@ -315,6 +318,7 @@ func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int, hs 
 			} else {
 				written += int64(c.n)
 				j.dstBytes.Add(int64(c.n))
+				j.copyBytes.Add(int64(c.n))
 				j.setLive(func(l *live) { l.done = written })
 			}
 		}

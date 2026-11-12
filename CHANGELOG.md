@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.12 — 12 November 2026
+
+- **Copy speed, in big type.** The progress panel and a running copy's details now show the speed of the copy itself ("Copy speed 379 MB/s"), counting only the time spent copying, instead of an average over copying and checking. The source and destination disk readings are unchanged.
+- **File counts:** "Copied X of N · Checked X of N · Completed X of N". Copied: the copy pass is done. Checked: the copy has been read back and the source read again. Completed: passed its check and has its real name; files already at the destination that were compared and match count too.
+- Time left still counts the checking, so it stays honest.
+
 ## 0.2.11 — 12 November 2026
 
 - **Menu bar: the menu stays open when you press Check for updates or Install update.** The item changes in place to "Checking for updates…", "Downloading update…" or "Installing update…", then to "Shuttle is up to date", the update found, or what went wrong, while you watch. "Set up updates…" still closes the menu, since it opens Shuttle.

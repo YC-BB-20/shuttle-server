@@ -72,6 +72,9 @@
   .chip.bad { color:var(--bad); border-color:var(--bad); }
   .job .line { margin:6px 0 2px; overflow-wrap:anywhere; }
   .job .counts { font-size:14px; color:var(--mute); }
+  .cspeed { font-size:22px; font-weight:600; margin:4px 0 2px; font-variant-numeric:tabular-nums; }
+  .cspeed small { font-size:14px; font-weight:400; color:var(--mute); }
+  .fcounts { font-size:14px; margin:0 0 6px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
   .job .btns { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
   .bar.ok > i { background:var(--ok); }
   #updates h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--mute); margin:0 0 6px; }
@@ -148,6 +151,7 @@
   .mlines { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:4px 12px; font-weight:400; font-size:14px; }
   .mlines dt { color:var(--mute); } .mlines dd { margin:0; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
   .mlines .bar { height:4px; margin:3px 0 0; }
+  .mlines dd.big { font-size:22px; font-weight:600; line-height:1.1; }
   .status.alarm { border-color:var(--bad); }
   .status.alarm > span:first-child { color:var(--bad); }
   /* Queue and History: one list each, the same rows, like the Files app. */
@@ -541,7 +545,7 @@ function card(v) {
     c = document.createElement("section"); c.className = "job";
     c.innerHTML = '<div class="r"><span class="ico"></span><div class="m"><div class="route"><span class="s"></span><span class="arr">→</span><span class="d"></span></div>' +
       '<div class="bar"><i></i></div><div class="sub"></div></div><div class="acts"></div></div>' +
-      '<div class="detail"><p class="path from"></p><p class="path to"></p><p class="line"></p><div class="bar file"><i></i></div><p class="speed mute"></p>' +
+      '<div class="detail"><p class="path from"></p><p class="path to"></p><p class="line"></p><div class="bar file"><i></i></div><p class="cspeed" hidden></p><p class="speed mute"></p><p class="fcounts" hidden></p>' +
       '<p class="counts mute"></p><p class="warn same" hidden>Source and destination are on the same disk: this copy does not protect against that disk failing.</p><div class="btns"></div></div>';
     cards[v.id] = c;
     // Tapping a copy opens its details and files; tapping it again closes them.
@@ -577,7 +581,7 @@ function card(v) {
   if (v.state === "waiting") { sub = v.reason; subCls += v.missing ? " bad" : " warn"; }
   else if (v.state === "running" && scanning && ver) sub = "Reading the stored hashes — " + v.scanned + " files so far";
   else if (v.state === "running" && scanning) sub = "Scanning the source — " + v.scanned + " files, " + size(v.scanned_bytes) + " so far";
-  else if (v.state === "running") sub = [pc, size((v.progress || 0) * v.bytes) + " of " + size(v.bytes), v.eta_seconds ? left(v.eta_seconds) : "working out the time left", rate(v.rate)].filter(Boolean).join(" · ");
+  else if (v.state === "running") sub = [pc, size((v.progress || 0) * v.bytes) + " of " + size(v.bytes), v.eta_seconds ? left(v.eta_seconds) : "working out the time left", ver ? rate(v.rate) : rate(v.copy_rate) && "copy speed " + rate(v.copy_rate)].filter(Boolean).join(" · ");
   else if (v.state === "paused") sub = pc + " · Paused by you";
   else if (v.state === "queued") sub = "Waiting for the job before it to finish";
   else if (v.state === "finished") { sub = (v.finished ? when(v.finished) + " · " : "") + took(v.created, v.finished) + " · " + size(v.bytes) +
@@ -599,8 +603,13 @@ function card(v) {
   q(".line").textContent = line;
   q(".bar.file").hidden = v.state !== "running" || scanning;
   q(".bar.file > i").style.width = v.state === "running" ? pct(v.file_done, v.file_size) + "%" : "0%";
-  q(".speed").textContent = v.state !== "running" || scanning ? "" :
-    [rate(v.rate) && "Speed " + rate(v.rate), rate(v.source_rate) && "source disk reading " + rate(v.source_rate), rate(v.dest_rate) && "destination disk " + rate(v.dest_rate)].filter(Boolean).join(" · ") || "Measuring speed…";
+  const live = v.state === "running" && !scanning;
+  q(".cspeed").hidden = !live || ver;
+  if (live && !ver) { q(".cspeed").replaceChildren(el("small", "", "Copy speed "), document.createTextNode(rate(v.copy_rate) || "measuring…")); }
+  q(".speed").textContent = !live ? "" :
+    [ver && rate(v.rate) && "Speed " + rate(v.rate), rate(v.source_rate) && "source disk reading " + rate(v.source_rate), rate(v.dest_rate) && "destination disk " + rate(v.dest_rate)].filter(Boolean).join(" · ") || (ver ? "Measuring speed…" : "");
+  q(".fcounts").hidden = ver || old || scanning;
+  if (!ver && !old && !scanning) q(".fcounts").textContent = fileCounts(v);
   q(".counts").textContent = ver ? "Matching " + v.verified + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
     (v.failed ? " · do not match: " + v.failed : "") + (v.skipped ? " · no stored hash: " + v.skipped : "") : "Verified " + proven + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
     (v.copied ? " · copied, check to come: " + v.copied : "") +
@@ -625,6 +634,15 @@ function card(v) {
   }
   return c;
 }
+// Copied / Checked / Completed for a copy. Completed: passed its check and has
+// its real name (files already there that match count too). Checked: the
+// read-back and the source re-read are done. Copied: the copy pass is done.
+function fileCounts(v) {
+  const completed = v.verified + v.identical, checked = completed + v.failed;
+  const copyDone = /^Reading back|^Reading the source again/.test(v.stage || "") ? 1 : 0;
+  const copied = Math.min(v.files, checked + (v.copied || 0) + copyDone);
+  return "Copied " + copied + " of " + v.files + " · Checked " + checked + " of " + v.files + " · Completed " + completed + " of " + v.files;
+}
 // The panel on top: the whole queue, the copy running now and its file,
 // each with the time left.
 function renderMonitor(list) {
@@ -642,11 +660,15 @@ function renderMonitor(list) {
     qleft ? left(qleft) + " for the whole queue" : run && run.state === "running" ? "working out the time left" : ""].filter(Boolean).join(" · ");
   $("monBar").style.width = p + "%";
   $("monBar").style.background = run && run.missing ? "var(--bad)" : run && run.state === "running" ? "var(--accent)" : "var(--mute)";
-  const rows = [["Queue", active.length + (active.length === 1 ? " copy" : " copies") + (run && run.state === "running" && rate(run.rate) ? " · " + rate(run.rate) : "")]];
+  const rows = [["Queue", active.length + (active.length === 1 ? " copy" : " copies") + ""]];
   if (run) {
     const rp = Math.round((run.progress || 0) * 100);
     rows.push(["This copy", base(run.source) + " → " + base(run.dest) + " · " + (run.phase === "scan" ? "scanning, " + run.scanned + " files so far" :
       rp + "% · " + (run.state === "waiting" ? (run.missing ? "waiting for the disk" : "waiting") : run.eta_seconds ? left(run.eta_seconds) : "working out the time left")), run.phase === "scan" ? null : rp]);
+    if (run.state === "running" && run.phase !== "scan" && run.kind !== "verify") {
+      rows.push(["Copy speed", rate(run.copy_rate) || "measuring…", null, "big"]);
+      rows.push(["Files", fileCounts(run)]);
+    }
     if (run.state === "running" && run.file && run.phase !== "scan") {
       const pr = passRate(run), fl = pr > 0 ? (run.file_size - run.file_done) / pr : 0;
       rows.push(["This file", base(run.file) + " · " + run.stage.replace(/ \(.*\)$/, "") + " · " + size(run.file_done) + " of " + size(run.file_size) +
@@ -654,9 +676,9 @@ function renderMonitor(list) {
     }
   }
   const dl = $("monLines"); dl.replaceChildren();
-  rows.forEach(([k, t, bar]) => {
+  rows.forEach(([k, t, bar, cls]) => {
     dl.append(el("dt", "", k));
-    const d = el("dd", "", t);
+    const d = el("dd", cls || "", t);
     if (bar != null) { const b = el("div", "bar"), i = el("i"); i.style.width = bar + "%"; i.style.background = $("monBar").style.background; b.append(i); d.append(b); }
     dl.append(d);
   });

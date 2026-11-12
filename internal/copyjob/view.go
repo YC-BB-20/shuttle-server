@@ -46,6 +46,7 @@ type View struct {
 	DstRate    int64     `json:"dest_rate"`
 	Progress   float64   `json:"progress"`              // 0 to 1, all reads and writes the job needs
 	Rate       int64     `json:"rate,omitempty"`        // overall bytes of the job finished per second, smoothed
+	CopyRate   int64     `json:"copy_rate,omitempty"`   // speed of the copy pass alone, while it runs
 	ETA        int64     `json:"eta_seconds,omitempty"` // time left, when it can be estimated
 }
 
@@ -55,6 +56,8 @@ type rateMemo struct {
 	sr, dr   int64
 	work     float64 // progress in bytes at t
 	rate     float64 // smoothed
+	cb, cns  int64   // copy-pass bytes and time at t
+	crate    float64 // copy-pass speed, smoothed
 }
 
 // progress is how far a job is, 0 to 1, counting the passes it makes: with
@@ -138,6 +141,7 @@ func (m *Manager) Views() []View {
 			r := memo[j]
 			if r == nil {
 				r = &rateMemo{t: now, src: j.srcBytes.Load(), dst: j.dstBytes.Load(), work: v.Progress * float64(st.Bytes)}
+				r.cb, r.cns = j.copyClock(now)
 				memo[j] = r
 			}
 			work := v.Progress * float64(st.Bytes)
@@ -149,9 +153,20 @@ func (m *Manager) Views() []View {
 				} else {
 					r.rate = 0.85*r.rate + 0.15*w // smooth: big files finish in jumps
 				}
+				// Copy speed counts only time spent copying; keep the last value
+				// while the job is reading back or re-reading.
+				if cb, cns := j.copyClock(now); cns-r.cns >= int64(200*time.Millisecond) {
+					w := float64(cb-r.cb) / (float64(cns-r.cns) / 1e9)
+					if r.crate == 0 || dt > 10 {
+						r.crate = w
+					} else {
+						r.crate = 0.7*r.crate + 0.3*w
+					}
+					r.cb, r.cns = cb, cns
+				}
 				r.t, r.src, r.dst, r.work = now, s, d, work
 			}
-			v.SrcRate, v.DstRate, v.Rate = r.sr, r.dr, int64(r.rate)
+			v.SrcRate, v.DstRate, v.Rate, v.CopyRate = r.sr, r.dr, int64(r.rate), int64(r.crate)
 			if r.rate > 0 && st.Phase != "scan" {
 				v.ETA = int64((1 - v.Progress) * float64(st.Bytes) / r.rate)
 			}
