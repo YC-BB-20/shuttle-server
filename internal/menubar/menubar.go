@@ -42,6 +42,16 @@ type Options struct {
 	Log     *slog.Logger
 	Command []string
 	Every   time.Duration
+	// ForgiveAfter: a helper that ran at least this long before quitting does
+	// not count towards giving up (default 30 s).
+	ForgiveAfter time.Duration
+}
+
+func (o Options) forgiveAfter() time.Duration {
+	if o.ForgiveAfter > 0 {
+		return o.ForgiveAfter
+	}
+	return 30 * time.Second
 }
 
 // Supported is true where the icon can be shown.
@@ -83,8 +93,10 @@ func Run(ctx context.Context, o Options) {
 	var cur *exec.Cmd
 	var mu sync.Mutex
 	var starts []time.Time
+	var startedAt time.Time
 	start := func() {
 		now := time.Now()
+		startedAt = now
 		var recent []time.Time
 		for _, t := range starts {
 			if now.Sub(t) < 10*time.Minute {
@@ -133,6 +145,11 @@ func Run(ctx context.Context, o Options) {
 			cur = nil
 			mu.Unlock()
 			o.Log.Warn("menu bar icon exited; restarting it", "detail", why)
+			// Only quick exits count towards giving up: an icon that ran for a
+			// while (hours, across sleeps) and then quit is simply restarted.
+			if time.Since(startedAt) >= o.forgiveAfter() {
+				starts = nil
+			}
 			start()
 		}
 	}

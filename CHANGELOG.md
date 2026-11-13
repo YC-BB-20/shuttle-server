@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.23 — 13 November 2026
+
+- **The menu bar icon no longer disappears after the Mac sleeps.** On waking, the icon could think Shuttle had gone and quit; three sleeps within ten minutes made Shuttle stop restarting it until Shuttle itself was restarted. The icon now quits only when Shuttle has really stopped, and an icon that ran for a while before quitting is always started again.
+
 ## 0.2.22 — 13 November 2026
 
 - **System files can be left out.** A new "System files" card in Settings: "Don't copy system files" (on by default) leaves out .DS_Store, .Spotlight-V100, .Trashes, .fseventsd, .TemporaryItems, .DocumentRevisions-V100, Thumbs.db and desktop.ini. Finder rewrites .DS_Store whenever a folder is opened, so a copy of one could never stay verified. A second switch, "Also leave out ._ files" (off by default), leaves out the "._" files macOS makes on non-Mac disks. Left-out files are counted on the copy ("system files left out: N"), never hidden. The choice applies to new copies and new verifies, so a Verify of an older copy now passes over a .DS_Store that Finder changed. The New copy window says which rule is on.

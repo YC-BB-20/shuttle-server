@@ -113,3 +113,28 @@ func TestUpdateItemStaysOpenAndLooksLikeOthers(t *testing.T) {
 		t.Error("update item closes and reopens the menu, or is a button")
 	}
 }
+
+// An icon that ran a while before quitting (as after the Mac sleeps) is
+// restarted every time; Shuttle does not give up on it.
+func TestLongRunningHelperNeverGivenUp(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer cancel()
+	var log strings.Builder
+	Run(ctx, Options{Dir: t.TempDir(), Every: 20 * time.Millisecond, ForgiveAfter: 50 * time.Millisecond,
+		Get:     func() Line { return Line{Level: "ok"} },
+		Log:     slog.New(slog.NewTextHandler(&log, nil)),
+		Command: []string{"/bin/sh", "-c", "sleep 0.1"}})
+	if strings.Contains(log.String(), "failing three times") || strings.Count(log.String(), "restarting") < 5 {
+		t.Fatalf("log:\n%s", log.String())
+	}
+}
+
+// The helper quits only when Shuttle's process is gone, not merely when the
+// status file is old (it is, for a moment, after the Mac wakes).
+func TestHelperChecksServerBeforeQuitting(t *testing.T) {
+	for _, want := range []string{"if (serverAlive()) lastGood = now;", "t.setArguments($(['-0', serverPid]));"} {
+		if !strings.Contains(string(script), want) {
+			t.Errorf("menubar.js lacks %q", want)
+		}
+	}
+}

@@ -156,6 +156,19 @@ function run(argv) {
     paintUpd();
   }
 
+  // kill -0 only asks whether the process exists; it sends nothing.
+  function serverAlive() {
+    try {
+      const t = $.NSTask.alloc.init;
+      t.setLaunchPath('/bin/kill');
+      t.setArguments($(['-0', serverPid]));
+      t.setStandardError($.NSFileHandle.fileHandleWithNullDevice);
+      t.launch;
+      t.waitUntilExit;
+      return t.terminationStatus === 0;
+    } catch (e) { return false; }
+  }
+
   function refresh() {
     const s = $.NSString.stringWithContentsOfFileEncodingError(statusPath, $.NSUTF8StringEncoding, $());
     const now = Date.now();
@@ -195,7 +208,13 @@ function run(argv) {
         }
       }
     }
-    if (now - lastGood > 15000) app.terminate($()); // the server is gone
+    // A stale status file is not proof the server is gone: after the Mac
+    // wakes, this timer can fire before Shuttle writes again. Quit only when
+    // Shuttle's process no longer exists.
+    if (now - lastGood > 15000) {
+      if (serverAlive()) lastGood = now;
+      else app.terminate($()); // the server is gone
+    }
   }
 
   setIcon('ok');
