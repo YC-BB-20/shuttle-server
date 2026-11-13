@@ -943,7 +943,7 @@ function loadInfo() {
           const d = el("div", "hrow"); d.append(el("div", "mute", label)); const v = el("div"); v.append(el("span", "hash", fi.hash[k]));
           if (ref && k !== "c" && !(k === "s1" && !fi.hash.c)) v.append(el("span", fi.hash[k] === ref ? "match" : "nomatch", fi.hash[k] === ref ? "  ✓ same as the first" : "  ✗ differs"));
           d.append(v);
-          const side = k === "d1" ? "dest" : fi.kind === "verify" ? "" : "source";
+          const side = k === "d1" ? "dest" : fi.kind === "verify" ? (k === "s2" ? "source" : "") : "source";
           if (side) d.append(againButton(fi, side));
           return d;
         }),

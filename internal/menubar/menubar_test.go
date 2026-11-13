@@ -85,22 +85,27 @@ func alive(pid int) bool {
 	return len(f) > 2 && f[2] != "Z"
 }
 
-// The update item looks exactly like the other items (a plain menu item in
-// its own section, never a button inside a view, which drew grey and indented),
-// and the menu opens again after a click so the progress is seen in place.
-func TestUpdateItemLooksLikeOthersAndReopens(t *testing.T) {
+// The update item stays open on a click and changes its text in place: it is
+// a self-drawn view (a plain item always closes the menu), drawn with the
+// menu's own font, colours and highlight, never a button, which drew grey and
+// indented. The menu is never closed and reopened.
+func TestUpdateItemStaysOpenAndLooksLikeOthers(t *testing.T) {
 	s := string(script)
 	for _, want := range []string{
 		"add('Open Shuttle', 'openPage:');\n  menu.addItem($.NSMenuItem.separatorItem);",
-		"add('Check for updates', 'updateAction:')",
-		"item.button.performClick($())",
+		"upd.view = updView",
+		"'mouseUp:'",
+		"menuFontOfSize(0)",
+		"selectedMenuItemTextColor",
+		"'menu:willHighlightItem:'",
+		"menu.delegate = target",
 		"addTimerForMode(timer, $.NSRunLoopCommonModes)",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("menubar.js lacks %q", want)
 		}
 	}
-	if strings.Contains(s, "upd.view") || strings.Contains(s, "NSButton") {
-		t.Error("update item is still a button inside a view")
+	if strings.Contains(s, "performClick") || strings.Contains(s, "NSButton") {
+		t.Error("update item closes and reopens the menu, or is a button")
 	}
 }

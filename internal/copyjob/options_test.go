@@ -217,3 +217,34 @@ func TestVerifyItemShownFromStartAndWaitsForCopy(t *testing.T) {
 		}
 	}
 }
+
+// "Read the source again" works in a Verify item that reads the source, and is
+// refused in one that checks the copy only.
+func TestVerifyItemRecheckSource(t *testing.T) {
+	m, _, v, _ := copyThenVerifyItem(t, "now", false)
+	if err := m.AskRecheck(v.ID, 0, "source"); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		fi, err := m.FileInfo(v.ID, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(fi.Rechecks) == 1 && len(fi.RecheckNow) == 0 {
+			r := fi.Rechecks[0]
+			if r.Which != "source" || r.Error != "" || r.Changed || r.Hash == "" || r.Hash != fi.Hash.S2 {
+				t.Fatalf("recheck %+v, hashes %+v", r, fi.Hash)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("recheck not done: %+v %+v", fi.Rechecks, fi.RecheckNow)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	m2, _, v2, _ := copyThenVerifyItem(t, "skip", false)
+	if m2.AskRecheck(v2.ID, 0, "source") == nil {
+		t.Fatal("source recheck accepted in a copy-only Verify item")
+	}
+}

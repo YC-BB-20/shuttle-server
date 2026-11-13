@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.19 — 13 November 2026
+
+- **The menu bar menu stays open when you click "Check for updates" or "Install update".** Only the item's text changes ("Checking for updates…", "Installing update…"); the menu no longer closes and opens again.
+- **File info of a Verify item that reads the source has a "Read the source again" button** under the source's fingerprint, like "Read the copy again".
+
 ## 0.2.18 — 13 November 2026
 
 - **Stopping a copy stops its Verify item too.** It had read nothing yet, so nothing is lost.

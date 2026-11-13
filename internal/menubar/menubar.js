@@ -23,8 +23,25 @@ function run(argv) {
       '-H', 'X-Shuttle: 1', '-H', 'Content-Type: application/json', '-d', body, pageURL + path]));
   }
 
+  function updateClicked() {
+    if (!updEnabled) return;
+    if (updateState === 'available') {
+      pending = { kind: 'install', from: updateState, at: Date.now() };
+      showUpdate('Installing update…', false);
+      post('/api/update/install', '{}');
+    } else if (updateState === 'nokey') {
+      menu.cancelTracking;
+      $.NSWorkspace.sharedWorkspace.openURL($.NSURL.URLWithString(pageURL + '/#updates'));
+    } else {
+      pending = { kind: 'check', from: updateState, at: Date.now() };
+      showUpdate('Checking for updates…', false);
+      post('/api/update/check', '{}');
+    }
+  }
+
   ObjC.registerSubclass({
     name: 'ShuttleMenuTarget',
+    protocols: ['NSMenuDelegate'],
     methods: {
       'tick:': { types: ['void', ['id']], implementation: function () { refresh(); } },
       'openPage:': { types: ['void', ['id']], implementation: function () {
@@ -36,23 +53,13 @@ function run(argv) {
       'restartServer:': { types: ['void', ['id']], implementation: function () {
         post('/api/restart', '{}');
       } },
-      'reopen:': { types: ['void', ['id']], implementation: function () { item.button.performClick($()); } },
-      'updateAction:': { types: ['void', ['id']], implementation: function () {
-        if (updateState === 'available') {
-          pending = { kind: 'install', from: updateState, at: Date.now() };
-          showUpdate('Installing update…', false);
-          post('/api/update/install', '{}');
-          reopenMenu();
-        } else if (updateState === 'nokey') {
-          $.NSWorkspace.sharedWorkspace.openURL($.NSURL.URLWithString(pageURL + '/#updates'));
-        }
-        else {
-          pending = { kind: 'check', from: updateState, at: Date.now() };
-          showUpdate('Checking for updates…', false);
-          post('/api/update/check', '{}');
-          reopenMenu();
-        }
+      'updateAction:': { types: ['void', ['id']], implementation: function () { updateClicked(); } },
+      // The update item draws its own highlight, so it follows the menu's.
+      'menu:willHighlightItem:': { types: ['void', ['id', 'id']], implementation: function (m, mi) {
+        updHot = !mi.isNil() && mi.isEqual(upd);
+        paintUpd();
       } },
+      'menuDidClose:': { types: ['void', ['id']], implementation: function () { updHot = false; paintUpd(); } },
     },
   });
   const target = $.ShuttleMenuTarget.alloc.init;
@@ -68,11 +75,53 @@ function run(argv) {
   menu.addItem($.NSMenuItem.separatorItem);
   add('Open Shuttle', 'openPage:');
   menu.addItem($.NSMenuItem.separatorItem);
-  // The update item is an ordinary menu item, in its own section, so it looks
-  // exactly like the others. A click closes the menu as any item does; the menu
-  // then opens again by itself so "Checking for updates…" or "Installing
-  // update…" is seen in place.
-  const upd = add('Check for updates', 'updateAction:');
+  // The update item, in its own section. A plain menu item always closes the
+  // menu when clicked, so this one draws itself: a click changes its text in
+  // place ("Checking for updates…") and the menu stays open. It draws the menu's
+  // own font, text colour and rounded highlight, so it looks like the others
+  // (not a button, which drew grey and indented).
+  let updEnabled = true, updHot = false;
+  const UPD_H = 22, UPD_TEXT_X = 14, UPD_INSET = 5; // native item metrics
+  ObjC.registerSubclass({
+    name: 'ShuttleUpdateView',
+    superclass: 'NSView',
+    methods: {
+      'mouseUp:': { types: ['void', ['id']], implementation: function () { updateClicked(); } },
+      'acceptsFirstMouse:': { types: ['bool', ['id']], implementation: function () { return true; } },
+    },
+  });
+  const updView = $.ShuttleUpdateView.alloc.initWithFrame($.NSMakeRect(0, 0, 220, UPD_H));
+  updView.autoresizingMask = $.NSViewWidthSizable;
+  const updBg = $.NSBox.alloc.initWithFrame($.NSMakeRect(UPD_INSET, 0, 220 - 2 * UPD_INSET, UPD_H));
+  updBg.boxType = $.NSBoxCustom;
+  updBg.borderWidth = 0;
+  updBg.cornerRadius = 4;
+  updBg.fillColor = $.NSColor.selectedContentBackgroundColor;
+  updBg.transparent = true;
+  updBg.autoresizingMask = $.NSViewWidthSizable;
+  const updLabel = $.NSTextField.labelWithString('Check for updates');
+  updLabel.font = $.NSFont.menuFontOfSize(0);
+  updLabel.lineBreakMode = $.NSLineBreakByTruncatingTail;
+  updLabel.autoresizingMask = $.NSViewWidthSizable;
+  updView.addSubview(updBg);
+  updView.addSubview(updLabel);
+  const upd = $.NSMenuItem.alloc.initWithTitleActionKeyEquivalent('Check for updates', '', '');
+  upd.view = updView;
+  menu.addItem(upd);
+  menu.delegate = target;
+  function paintUpd() {
+    const hot = updHot && updEnabled;
+    updBg.transparent = !hot;
+    updLabel.textColor = hot ? $.NSColor.selectedMenuItemTextColor : updEnabled ? $.NSColor.labelColor : $.NSColor.disabledControlTextColor;
+  }
+  function layoutUpd() {
+    const tw = Math.ceil(updLabel.fittingSize.width), th = Math.ceil(updLabel.fittingSize.height);
+    const w = Math.max(updView.frame.size.width, tw + 2 * UPD_TEXT_X);
+    updView.setFrameSize($.NSMakeSize(w, UPD_H));
+    updLabel.frame = $.NSMakeRect(UPD_TEXT_X, Math.floor((UPD_H - th) / 2), w - 2 * UPD_TEXT_X, th);
+  }
+  layoutUpd();
+  paintUpd();
   menu.addItem($.NSMenuItem.separatorItem);
   add('Restart Shuttle', 'restartServer:');
   add('Stop Shuttle', 'quitServer:');
@@ -99,11 +148,12 @@ function run(argv) {
   }
 
   function showUpdate(title, enabled) {
-    upd.title = title;
-    upd.enabled = enabled;
-  }
-  function reopenMenu() {
-    $.NSTimer.scheduledTimerWithTimeIntervalTargetSelectorUserInfoRepeats(0.2, target, 'reopen:', $(), false);
+    if (updLabel.stringValue.js === title && updEnabled === enabled) return;
+    upd.title = title; // for VoiceOver
+    updLabel.stringValue = title;
+    updEnabled = enabled;
+    layoutUpd();
+    paintUpd();
   }
 
   function refresh() {

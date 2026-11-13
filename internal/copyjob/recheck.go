@@ -61,8 +61,9 @@ func (m *Manager) AskRecheck(id string, i int, which string) error {
 	if j == nil {
 		return errors.New("this copy no longer exists")
 	}
-	if j.st.Spec.isVerify() && which == "source" {
-		return errors.New("a Verify job has no source to read")
+	// A Verify item knows the source only when it reads it again itself.
+	if j.st.Spec.isVerify() && which == "source" && !j.st.Spec.readsSource() {
+		return errors.New("this Verify item checks the copy only, so it has no source to read")
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
