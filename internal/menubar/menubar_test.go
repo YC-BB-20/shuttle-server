@@ -43,6 +43,10 @@ func TestStatusFileAndHelperStoppedWithShuttle(t *testing.T) {
 	for _, c := range pid {
 		n = n*10 + int(c-'0')
 	}
+	// The kill is delivered at once but the child may take a moment to go.
+	for k := 0; k < 100 && alive(n); k++ {
+		time.Sleep(20 * time.Millisecond)
+	}
 	if alive(n) {
 		t.Fatal("helper's child still running after Shuttle stopped")
 	}
