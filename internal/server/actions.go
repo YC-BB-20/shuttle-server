@@ -169,6 +169,22 @@ func (s *Server) jobHistory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.Jobs.History(max(skip, 0), 20))
 }
 
+func (s *Server) copySettings(w http.ResponseWriter, r *http.Request) {
+	if s.Jobs == nil {
+		writeJSON(w, http.StatusOK, copyjob.DefaultSettings)
+		return
+	}
+	writeJSON(w, http.StatusOK, s.Jobs.Settings())
+}
+
+func (s *Server) saveCopySettings(w http.ResponseWriter, r *http.Request) (any, error) {
+	var c copyjob.Settings
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&c); err != nil {
+		return nil, errors.New("could not read the request")
+	}
+	return s.Jobs.SetSettings(c)
+}
+
 func isDir(p string) bool { fi, err := os.Stat(p); return err == nil && fi.IsDir() }
 
 func (s *Server) restart(w http.ResponseWriter, r *http.Request) (any, error) {

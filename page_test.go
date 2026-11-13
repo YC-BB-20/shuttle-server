@@ -41,3 +41,15 @@ func TestPageQueueFilters(t *testing.T) {
 		}
 	}
 }
+
+func TestPageSystemFilesSetting(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`id="skipSys"`, `id="skipDot"`, `id="sysNote"`, `post("/api/settings/copy"`,
+		`" · system files left out: " + v.system_skipped`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}

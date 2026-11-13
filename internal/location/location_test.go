@@ -46,3 +46,19 @@ func TestWalkOnlyChosen(t *testing.T) {
 		t.Fatalf("%v %v", got, err)
 	}
 }
+
+func TestIsSystemName(t *testing.T) {
+	for _, n := range []string{".DS_Store", ".ds_store", ".Spotlight-V100", ".Trashes", ".fseventsd", ".TemporaryItems", "Thumbs.db", "desktop.ini"} {
+		if !IsSystemName(n, false) {
+			t.Errorf("%s not a system name", n)
+		}
+	}
+	for _, n := range []string{"A001C001.ari", "DS_Store", "._A001.mxf", ".hidden"} {
+		if IsSystemName(n, false) {
+			t.Errorf("%s taken as a system name", n)
+		}
+	}
+	if !IsSystemName("._A001.mxf", true) || !IsSystemPath("a/.Spotlight-V100/b", false) || IsSystemPath("a/b/c", true) {
+		t.Error("AppleDouble or path check wrong")
+	}
+}

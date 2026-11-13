@@ -39,6 +39,9 @@ type Manager struct {
 	wake    chan struct{}
 
 	rechecks []*recheckReq // files to read again, first is the one being read
+
+	setMu sync.Mutex
+	set   *Settings // read from settings.json on first use
 }
 
 // Load reads the jobs left from earlier runs. A job that was running when
@@ -116,6 +119,8 @@ func (m *Manager) Add(s Spec) (*Job, error) {
 		}
 	}
 	s.Only = only
+	cs := m.Settings()
+	s.SkipSystem, s.SkipAppleDouble = cs.SkipSystem, cs.SkipSystem && cs.SkipAppleDouble
 	if inside(dst, src) || inside(src, dst) {
 		return nil, errors.New("the source and destination cannot be inside each other")
 	}

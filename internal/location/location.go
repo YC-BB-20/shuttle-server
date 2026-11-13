@@ -36,6 +36,37 @@ type Source interface {
 type Folder struct {
 	Dir  string
 	Only []string
+	// System leaves out the files and folders macOS and Windows make for
+	// themselves (IsSystemName); AppleDouble also leaves out "._" files.
+	System, AppleDouble bool
+}
+
+// WhySystem is the reason given for a system file left out by a walk.
+const WhySystem = "a system file, left out (Settings)"
+
+// systemNames are names the operating system writes for itself: Finder
+// rewrites .DS_Store whenever a folder is opened, so a copy of one can
+// never stay proven. Compared without regard to case.
+var systemNames = map[string]bool{
+	".ds_store": true, ".spotlight-v100": true, ".trashes": true, ".fseventsd": true,
+	".temporaryitems": true, ".documentrevisions-v100": true, "thumbs.db": true, "desktop.ini": true,
+}
+
+// IsSystemName reports a name the system makes for itself, and with
+// appleDouble also a "._" file (Mac information on a non-Mac disk).
+func IsSystemName(name string, appleDouble bool) bool {
+	return systemNames[strings.ToLower(name)] || appleDouble && strings.HasPrefix(name, "._")
+}
+
+// IsSystemPath reports whether any part of a slash-separated path is a
+// system name.
+func IsSystemPath(rel string, appleDouble bool) bool {
+	for _, n := range strings.Split(rel, "/") {
+		if IsSystemName(n, appleDouble) {
+			return true
+		}
+	}
+	return false
 }
 
 func (f Folder) Root() string           { return f.Dir }
@@ -81,6 +112,8 @@ func (f Folder) Walk(ctx context.Context, file func(Entry) error, skip func(Skip
 					r = rel + "/" + e.Name()
 				}
 				switch {
+				case f.System && IsSystemName(e.Name(), f.AppleDouble):
+					skip(Skipped{r, WhySystem})
 				case e.IsDir():
 					stack = append(stack, r)
 				case e.Type()&fs.ModeSymlink != 0:

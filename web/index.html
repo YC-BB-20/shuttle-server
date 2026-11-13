@@ -245,6 +245,13 @@
     <section class="card"><h2>Processor</h2><p id="cpu"></p><p class="mute" id="cpuNote"></p></section>
     <section class="card"><h2>Open files</h2><p id="files"></p><p class="mute">Pages open: <span id="pages"></span></p></section>
   </div>
+  <section class="card" id="sysFiles">
+    <h2>System files</h2>
+    <label class="opt"><input type="checkbox" id="skipSys"><span>Don't copy system files: .DS_Store, .Spotlight-V100, .Trashes, .fseventsd, .TemporaryItems, Thumbs.db, desktop.ini</span></label>
+    <label class="opt in"><input type="checkbox" id="skipDot"><span>Also leave out "._" files (Mac information such as Finder tags on non-Mac disks like exFAT)</span></label>
+    <p class="mute">Finder rewrites .DS_Store whenever a folder is opened, so a copy of one can never stay verified. Left-out files are counted on the copy, not hidden. Applies to new copies and verifies.</p>
+    <p class="err" id="sysErr"></p>
+  </section>
   <section class="card" id="updates">
     <h2>Updates</h2>
     <p id="updLine">…</p>
@@ -290,6 +297,7 @@
     </div>
     <p class="mute" id="proofSum"></p>
     <p class="mute">The source is only read, never changed. Files already at the destination are compared, never replaced.</p>
+    <p class="mute" id="sysNote"></p>
     <p class="err" id="newErr"></p>
   </div>
   <div class="foot"><button type="button" data-close>Cancel</button><button type="button" class="primary" id="startBtn">Start copy</button></div>
@@ -446,6 +454,7 @@ $("newBtn").onclick = () => {
     $(last.hash === "later" ? "whenEnd" : "whenFile").checked = true;
   }
   proofForm();
+  loadSys();
   $("newDlg").showModal();
 };
 $("startBtn").onclick = () => {
@@ -681,6 +690,7 @@ function card(v) {
     (v.copied ? " · copied, check to come: " + v.copied : "") +
     (v.identical ? " · " + v.identical + " were already there" : "") + (v.s2 === "now" ? " · read twice: " + v.strong : "") +
     (v.failed ? " · failed: " + v.failed : "") + (v.s2_warnings ? " · source warnings: " + v.s2_warnings : "") + (v.skipped ? " · not copied (links etc.): " + v.skipped : "");
+  if (v.system_skipped) q(".counts").textContent += " · system files left out: " + v.system_skipped;
   q(".same").hidden = !v.same_volume;
   // Pause / resume / stop as small round buttons on the row; the rest in the details.
   const acts = [], btns = [];
@@ -811,6 +821,20 @@ async function installUpdate(u, running) {
   if (running) { if (!await confirmBox("A copy is running", "Install " + u.available.version + " now? The copy pauses where it is and continues after the restart. Or choose Keep copying, and the update installs when the copy finishes.", "Install now")) { post("/api/update/install", { now: false }); return; } now = true; }
   post("/api/update/install", { now }).catch(e => alert(e.message));
 }
+// System files: Settings choices for new copies and verifies.
+function showSys(c) {
+  $("skipSys").checked = c.skip_system_files; $("skipDot").checked = c.skip_system_files && c.skip_appledouble_files;
+  $("skipDot").disabled = !c.skip_system_files; $("skipDot").closest(".opt").classList.toggle("mute", !c.skip_system_files);
+  $("sysNote").textContent = c.skip_system_files ? "System files such as .DS_Store" + (c.skip_appledouble_files ? " and \"._\" files" : "") + " are left out (Settings)." : "System files such as .DS_Store are copied too (Settings).";
+}
+function loadSys() { fetch("/api/settings/copy").then(r => r.json()).then(showSys).catch(() => {}); }
+function saveSys() {
+  $("sysErr").textContent = "";
+  post("/api/settings/copy", { skip_system_files: $("skipSys").checked, skip_appledouble_files: $("skipSys").checked && $("skipDot").checked })
+    .then(showSys).catch(e => { $("sysErr").textContent = e.message; loadSys(); });
+}
+$("skipSys").onchange = saveSys; $("skipDot").onchange = saveSys;
+loadSys();
 $("keySave").onclick = () => {
   $("keyErr").textContent = "";
   post("/api/update/key", { key: $("keyIn").value }).then(() => { $("keyIn").value = ""; delete $("keyBox").dataset.open; })

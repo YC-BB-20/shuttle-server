@@ -52,16 +52,21 @@ type Spec struct {
 	// Verify jobs (added in 0.2.9): Kind "verify", Source and Dest are the
 	// folder checked, File one file in it (empty: the whole folder), From the
 	// copy jobs whose stored hashes it compares with, oldest first.
-	Kind string   `json:"kind,omitempty"`
-	File string   `json:"file,omitempty"`
-	From []string `json:"from,omitempty"`
+	// SkipSystem (added in 0.2.22) leaves out system files such as
+	// .DS_Store; SkipAppleDouble also "._" files. Copied from Settings when
+	// the job is added, so a job keeps its rule after a restart.
+	SkipSystem      bool     `json:"skip_system,omitempty"`
+	SkipAppleDouble bool     `json:"skip_appledouble,omitempty"`
+	Kind            string   `json:"kind,omitempty"`
+	File            string   `json:"file,omitempty"`
+	From            []string `json:"from,omitempty"`
 }
 
 // MaxOnly bounds how many files and folders can be picked one by one.
 const MaxOnly = 1000
 
 func (j *Job) source() location.Folder {
-	return location.Folder{Dir: j.st.Spec.Source, Only: j.st.Spec.Only}
+	return location.Folder{Dir: j.st.Spec.Source, Only: j.st.Spec.Only, System: j.st.Spec.SkipSystem, AppleDouble: j.st.Spec.SkipAppleDouble}
 }
 
 // Hash schemes.
@@ -102,6 +107,7 @@ type state struct {
 	Files         int                   `json:"files"`
 	Bytes         int64                 `json:"bytes"`
 	Skipped       int                   `json:"skipped"`
+	SystemSkipped int                   `json:"system_skipped,omitempty"` // system files left out (Settings)
 	SourceVol     string                `json:"source_volume"`
 	DestVol       string                `json:"dest_volume"`
 	SameVolume    bool                  `json:"same_volume"`

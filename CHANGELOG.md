@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.22 — 13 November 2026
+
+- **System files can be left out.** A new "System files" card in Settings: "Don't copy system files" (on by default) leaves out .DS_Store, .Spotlight-V100, .Trashes, .fseventsd, .TemporaryItems, .DocumentRevisions-V100, Thumbs.db and desktop.ini. Finder rewrites .DS_Store whenever a folder is opened, so a copy of one could never stay verified. A second switch, "Also leave out ._ files" (off by default), leaves out the "._" files macOS makes on non-Mac disks. Left-out files are counted on the copy ("system files left out: N"), never hidden. The choice applies to new copies and new verifies, so a Verify of an older copy now passes over a .DS_Store that Finder changed. The New copy window says which rule is on.
+
 ## 0.2.21 — 13 November 2026
 
 - **Queue and History have filters, like Shuttle Router.** Buttons with counts show or hide Completed, Skipped (every file was already there), Stopped, Failed and Paused items; "Active only" switches them all off and "Show all" back on. A time range (last hour, today, yesterday, last 7 days) narrows the history, and a sort menu orders both lists (queue order, newest, oldest, name, size, status, time left, destination). Running and waiting items always show. "Showing N of M" says when something is hidden. The choices are remembered in this browser.

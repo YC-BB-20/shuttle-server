@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/YC-BB-20/shuttle-server/internal/diskio"
+	"github.com/YC-BB-20/shuttle-server/internal/location"
 	"github.com/YC-BB-20/shuttle-server/internal/xxh3"
 )
 
@@ -70,10 +71,11 @@ func (m *Manager) addVerify(s Spec) (*Job, error) {
 	if v.Network {
 		return nil, errors.New("verifying on a network server is not supported yet")
 	}
+	cs := m.Settings()
 	now := time.Now()
 	id := now.Format("20060102-150405.000")
 	j := &Job{dir: filepath.Join(m.Dir, id), st: state{FormatVersion: FormatVersion, ID: id, Created: now, Choice: "run", Phase: "scan",
-		Spec:      Spec{Kind: KindVerify, Source: root, Dest: root, File: file, From: from},
+		Spec:      Spec{Kind: KindVerify, Source: root, Dest: root, File: file, From: from, SkipSystem: cs.SkipSystem, SkipAppleDouble: cs.SkipSystem && cs.SkipAppleDouble},
 		SourceVol: v.ID, DestVol: v.ID}}
 	if err := os.MkdirAll(j.dir, 0o700); err != nil {
 		return nil, err
@@ -122,7 +124,7 @@ func (m *Manager) queueVerify(cj *Job) {
 			after = st.ID
 		}
 		j := &Job{dir: filepath.Join(m.Dir, id), st: state{FormatVersion: FormatVersion, ID: id, Created: time.Now(), Choice: choice, Phase: "scan", After: after,
-			Spec:      Spec{Kind: KindVerify, Source: src, Dest: st.Spec.Dest, S2: st.Spec.S2, From: []string{st.ID}},
+			Spec:      Spec{Kind: KindVerify, Source: src, Dest: st.Spec.Dest, S2: st.Spec.S2, From: []string{st.ID}, SkipSystem: st.Spec.SkipSystem, SkipAppleDouble: st.Spec.SkipAppleDouble},
 			SourceVol: srcVol, DestVol: st.DestVol, SameVolume: srcVol == st.DestVol}}
 		if err := os.MkdirAll(j.dir, 0o700); err != nil {
 			m.Log.Error("could not queue the Verify job for a copy", "job", st.ID, "err", err)
@@ -164,7 +166,7 @@ func (j *Job) verifyScan(ctx context.Context) error {
 	}
 	defer f.Close()
 	w := bufio.NewWriterSize(f, 256<<10)
-	n, skipped := 0, 0
+	n, skipped, system := 0, 0, 0
 	var total int64
 	var seen []uint64 // fingerprints of paths already taken, 8 bytes a file, only during the scan
 	for k := len(spec.From) - 1; k >= 0; k-- {
@@ -216,6 +218,10 @@ func (j *Job) verifyScan(ctx context.Context) error {
 			if spec.File != "" && rel != spec.File {
 				continue
 			}
+			if spec.SkipSystem && location.IsSystemPath(filepath.ToSlash(rel), spec.SkipAppleDouble) {
+				system++ // a system file: Finder may have changed it since
+				continue
+			}
 			fp := pathPrint(rel)
 			if _, dup := slices.BinarySearch(seen, fp); dup {
 				continue
@@ -250,7 +256,7 @@ func (j *Job) verifyScan(ctx context.Context) error {
 		return err
 	}
 	j.mu.Lock()
-	j.st.Files, j.st.Bytes, j.st.Skipped, j.st.Phase = n, total, skipped, "verify"
+	j.st.Files, j.st.Bytes, j.st.Skipped, j.st.SystemSkipped, j.st.Phase = n, total, skipped, system, "verify"
 	j.status = make([]byte, n)
 	j.live.scanned, j.live.scannedBytes = n, total
 	j.mu.Unlock()

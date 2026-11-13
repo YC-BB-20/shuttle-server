@@ -68,7 +68,7 @@ func (j *Job) scan(ctx context.Context, src location.Source) error {
 	w := bufio.NewWriterSize(f, 256<<10)
 	sk, _ := os.Create(j.path("skipped.jsonl"))
 	defer sk.Close()
-	n, skipped := 0, 0
+	n, skipped, system := 0, 0, 0
 	var total int64
 	err = src.Walk(ctx, func(e location.Entry) error {
 		b, _ := json.Marshal(entry{I: n, P: e.Rel, S: e.Size, M: e.Mtime, O: uint32(e.Mode)})
@@ -80,7 +80,11 @@ func (j *Job) scan(ctx context.Context, src location.Source) error {
 		}
 		return nil
 	}, func(s location.Skipped) {
-		skipped++
+		if s.Why == location.WhySystem {
+			system++
+		} else {
+			skipped++
+		}
 		b, _ := json.Marshal(s)
 		sk.Write(append(b, '\n'))
 	})
@@ -101,7 +105,7 @@ func (j *Job) scan(ctx context.Context, src location.Source) error {
 		return err
 	}
 	j.mu.Lock()
-	j.st.Files, j.st.Bytes, j.st.Skipped, j.st.Phase = n, total, skipped, "copy"
+	j.st.Files, j.st.Bytes, j.st.Skipped, j.st.SystemSkipped, j.st.Phase = n, total, skipped, system, "copy"
 	j.status = make([]byte, n)
 	j.live.scanned, j.live.scannedBytes = n, total
 	j.mu.Unlock()
