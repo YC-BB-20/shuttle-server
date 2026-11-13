@@ -35,16 +35,22 @@ func TestStatusFileAndHelperStoppedWithShuttle(t *testing.T) {
 	if f[1] != "warn" || f[2] != "Waiting for space" || f[3] != "0.1.1" || f[4] != "http://localhost:8470" || f[5] != "available" || f[6] != "0.2.1" {
 		t.Fatalf("status file %q", b)
 	}
-	pb, _ := os.ReadFile(pidFile)
-	pid := strings.TrimSpace(string(pb))
+	// On a slow machine the helper may not have written its child's number yet.
+	var n int
+	for k := 0; k < 250 && n <= 0; k++ {
+		pb, _ := os.ReadFile(pidFile)
+		n, _ = strconv.Atoi(strings.TrimSpace(string(pb)))
+		if n <= 0 {
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
 	cancel()
 	<-done
-	var n int
-	for _, c := range pid {
-		n = n*10 + int(c-'0')
+	if n <= 0 {
+		t.Fatal("helper never wrote its child's process number")
 	}
 	// The kill is delivered at once but the child may take a moment to go.
-	for k := 0; k < 100 && alive(n); k++ {
+	for k := 0; k < 250 && alive(n); k++ {
 		time.Sleep(20 * time.Millisecond)
 	}
 	if alive(n) {
