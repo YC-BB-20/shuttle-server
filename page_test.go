@@ -23,3 +23,21 @@ func TestPageColoursCopyAndVerify(t *testing.T) {
 		}
 	}
 }
+
+// Queue and History filter like Shuttle Router: kinds with counts, Active
+// only, a time range and a sort, remembered in the browser.
+func TestPageQueueFilters(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`id="qf"`, `data-k="done">Completed`, `data-k="skipped"`, `data-k="stopped">Stopped`,
+		`attention">Failed <span`, `you paused">Paused <span`, `id="qfActive">Active only`,
+		`<option value="yesterday">Yesterday</option>`, `<option value="week">Last 7 days</option>`,
+		`<option value="queue:1">Queue order</option>`, `<option value="left:1">Time left</option>`,
+		`function jobCat(v)`, `"Showing " + vis + " of " + total`, `localStorage.setItem("shuttle.qf"`,
+		`return k === "active" || qf.show[k] !== false`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}

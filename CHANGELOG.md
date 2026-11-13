@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.21 — 13 November 2026
+
+- **Queue and History have filters, like Shuttle Router.** Buttons with counts show or hide Completed, Skipped (every file was already there), Stopped, Failed and Paused items; "Active only" switches them all off and "Show all" back on. A time range (last hour, today, yesterday, last 7 days) narrows the history, and a sort menu orders both lists (queue order, newest, oldest, name, size, status, time left, destination). Running and waiting items always show. "Showing N of M" says when something is hidden. The choices are remembered in this browser.
+
 ## 0.2.20 — 13 November 2026
 
 - **Copies and verifies look different in the queue.** A copy is purple and a verify is pink while it runs or waits its turn: its icon, its progress bar and the file chips ("Copying" purple, "Verifying" pink). A verify's icon is ↻. When an item finishes it turns green; a problem turns it red (finishing with failures was orange before).

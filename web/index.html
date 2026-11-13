@@ -194,6 +194,8 @@
   .job .files { border-top:0; margin-top:8px; padding-top:0; }
   .job.old { padding:8px 12px; }
   .filters button .n { opacity:.75; font-variant-numeric:tabular-nums; }
+  .filters select { flex:none; font-size:14px; padding:3px 6px; }
+  .qf { margin-bottom:2px; } .qfinfo { font-size:13px; margin:0 0 6px; } .qfinfo:empty { display:none; }
   .resources { margin-top:18px; }
 </style>
 </head>
@@ -217,10 +219,19 @@
     </div>
   </div>
   <div class="jobs-head"><h2>Queue</h2><div class="row"><button type="button" id="verBtn" title="Read a copied folder or file again and compare it with the hashes stored when it was copied">Verify…</button><button class="primary" type="button" id="newBtn">New copy</button></div></div>
+  <div class="filters qf" id="qf" title="Click to show or hide each kind of entry (running and waiting items are always shown)">
+    <button type="button" data-k="done">Completed <span class="n"></span></button><button type="button" data-k="skipped" title="Copies where every file was already at the destination">Skipped <span class="n"></span></button><button type="button" data-k="stopped">Stopped <span class="n"></span></button><button type="button" data-k="failed" title="Finished with files that failed or need attention">Failed <span class="n"></span></button><button type="button" data-k="paused" title="Copies and verifies you paused">Paused <span class="n"></span></button>
+    <button type="button" id="qfActive">Active only</button>
+    <select id="qfRange" title="Time range of the history"><option value="all">All time</option><option value="hour">Last hour</option><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="week">Last 7 days</option></select>
+    <select id="qfSort" title="Sort the queue and the history"><option value="queue:1">Queue order</option><option value="time:-1">Newest first</option><option value="time:1">Oldest first</option><option value="name:1">Name A–Z</option><option value="name:-1">Name Z–A</option><option value="size:-1">Largest first</option><option value="size:1">Smallest first</option><option value="status:1">Status</option><option value="left:1">Time left</option><option value="dest:1">Destination</option></select>
+  </div>
+  <p class="mute qfinfo" id="qfInfo"></p>
   <p class="mute" id="noJobs">Nothing in the queue. Press New copy to copy a card, a folder or some files to another disk, with every file verified.</p>
+  <p class="mute" id="noJobsF" hidden>Nothing in the queue matches the filters.</p>
   <div class="jobs" id="jobs"></div>
   <div class="jobs-head"><h2>History</h2></div>
   <p class="mute" id="noDone">Finished and stopped copies appear here.</p>
+  <p class="mute" id="noDoneF" hidden>No finished or stopped copies match the filters.</p>
   <div class="hist" id="done"></div>
   <p><button type="button" id="moreHist" hidden>Show older copies</button></p>
   </div>
@@ -814,14 +825,84 @@ function place(box, want, keep) {
   while (box.children.length > want.length + keep) box.lastChild.remove();
 }
 let olderViews = [];
+// Queue and History filters, as in Shuttle Router: kinds to show, Active only,
+// a time range for the history and a sort order. Remembered in this browser.
+// Running, waiting and queued items are always shown.
+const qfDefault = () => ({ show: {}, range: "all", sort: "queue:1" });
+const qf = (() => { try { return Object.assign(qfDefault(), JSON.parse(localStorage.getItem("shuttle.qf") || "{}")); } catch (e) { return qfDefault(); } })();
+const saveQf = () => { try { localStorage.setItem("shuttle.qf", JSON.stringify(qf)); } catch (e) {} };
+const qfOffKeys = ["done", "skipped", "stopped", "failed"];
+function jobCat(v) {
+  if (v.state === "stopped") return "stopped";
+  if (v.state === "finished") return v.failed || v.s2_warnings || v.missing ? "failed" : v.files > 0 && v.identical === v.files ? "skipped" : "done";
+  return v.state === "paused" ? "paused" : "active";
+}
+const shown = v => { const k = jobCat(v); return k === "active" || qf.show[k] !== false; };
+function inRange(v) {
+  if (qf.range === "all") return true;
+  const t = new Date(v.finished || v.created).getTime(), now = Date.now(), mid = new Date(); mid.setHours(0, 0, 0, 0);
+  if (qf.range === "hour") return t >= now - 3600e3;
+  if (qf.range === "today") return t >= mid.getTime();
+  if (qf.range === "yesterday") return t >= mid.getTime() - 86400e3 && t < mid.getTime();
+  if (qf.range === "week") return t >= now - 7 * 86400e3;
+  return true;
+}
+const statusRank = v => ({ running: 0, waiting: 1, paused: 2, queued: 3 })[v.state] ?? (jobCat(v) === "failed" ? 4 : v.state === "finished" ? 5 : 6);
+function sortJobs(list, hist) {
+  const [key, d] = qf.sort.split(":"), dir = Number(d) || 1;
+  // Queue order: the queue as it runs (oldest first), the history newest first.
+  if (key === "queue") return hist ? list : list.slice().sort((a, b) => a.created < b.created ? -1 : 1);
+  const val = v => {
+    switch (key) {
+      case "name": return (v.kind === "verify" ? base(v.dest) : base(v.source)).toLowerCase();
+      case "dest": return (v.dest || "").toLowerCase();
+      case "size": return v.bytes || 0;
+      case "status": return statusRank(v);
+      case "left": return v.state === "running" ? (v.eta_seconds || 1e12) : 1e15;
+      default: return new Date(v.finished || v.created).getTime();
+    }
+  };
+  return list.slice().sort((a, b) => {
+    const ra = a.state === "running" ? 0 : 1, rb = b.state === "running" ? 0 : 1;
+    if (ra !== rb) return ra - rb;
+    const va = val(a), vb = val(b), c = typeof va === "string" ? va.localeCompare(vb) : va - vb;
+    return c * dir || (a.created < b.created ? 1 : -1);
+  });
+}
+function syncQf(counts) {
+  $("qf").querySelectorAll("button[data-k]").forEach(b => {
+    b.setAttribute("aria-pressed", qf.show[b.dataset.k] !== false);
+    if (counts) b.querySelector(".n").textContent = counts[b.dataset.k] || "";
+  });
+  const allOff = qfOffKeys.every(k => qf.show[k] === false);
+  $("qfActive").textContent = allOff ? "Show all" : "Active only";
+  $("qfActive").setAttribute("aria-pressed", allOff);
+  $("qfActive").title = allOff ? "Switch the filters back on (completed, skipped, stopped, failed)" : "Switch every filter off: show only what is copying, verifying, waiting or paused";
+  $("qfRange").value = qf.range; $("qfSort").value = qf.sort;
+}
+const qfChanged = () => { saveQf(); if (latest) renderJobs(latest.jobs || []); else syncQf(); };
+$("qf").querySelectorAll("button[data-k]").forEach(b => b.onclick = () => { qf.show[b.dataset.k] = qf.show[b.dataset.k] === false; qfChanged(); });
+$("qfActive").onclick = () => {
+  const allOff = qfOffKeys.every(k => qf.show[k] === false);
+  qfOffKeys.forEach(k => qf.show[k] = allOff); qf.show.paused = true; qfChanged();
+};
+$("qfRange").onchange = () => { qf.range = $("qfRange").value; qfChanged(); };
+$("qfSort").onchange = () => { qf.sort = $("qfSort").value; qfChanged(); };
+syncQf();
 function renderJobs(list) {
-  // The queue in the order it runs (oldest first); history newest first.
-  const active = list.filter(v => v.state !== "finished" && v.state !== "stopped").sort((a, b) => a.created < b.created ? -1 : 1);
+  const active = list.filter(v => v.state !== "finished" && v.state !== "stopped");
   const ids = new Set(list.map(v => v.id));
   const done = list.filter(v => v.state === "finished" || v.state === "stopped").concat(olderViews.filter(v => !ids.has(v.id)));
+  const counts = {};
+  active.concat(done).forEach(v => { const k = jobCat(v); counts[k] = (counts[k] || 0) + 1; });
+  syncQf(counts);
+  const qShow = sortJobs(active.filter(shown), false), hShow = sortJobs(done.filter(v => shown(v) && inRange(v)), true);
+  const total = active.length + done.length, vis = qShow.length + hShow.length;
+  $("qfInfo").textContent = vis === total ? "" : "Showing " + vis + " of " + total;
   $("noJobs").hidden = active.length > 0; $("noDone").hidden = done.length > 0;
-  place($("jobs"), active.map(card), 0);
-  place($("done"), done.map(card), 0);
+  $("noJobsF").hidden = !active.length || qShow.length > 0; $("noDoneF").hidden = !done.length || hShow.length > 0;
+  place($("jobs"), qShow.map(card), 0);
+  place($("done"), hShow.map(card), 0);
   $("moreHist").hidden = done.length < 20 || $("moreHist").dataset.end === "1";
 }
 $("moreHist").onclick = () => {
