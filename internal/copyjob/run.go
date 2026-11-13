@@ -704,6 +704,11 @@ func (j *Job) run(ctx context.Context, e env, accepting func() bool) error {
 		return fmt.Errorf("journal: %w", err)
 	}
 	defer jr.Close()
+	if j.st.Phase == "copy" && e.space != nil {
+		if err := e.space(); err != nil {
+			return err
+		}
+	}
 	if j.st.Phase == "copy" {
 		if err := j.copyPhase(ctx, e, jr, accepting); err != nil {
 			return err

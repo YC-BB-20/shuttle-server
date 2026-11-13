@@ -318,6 +318,11 @@
   <div class="body"><p id="confirmText"></p></div>
   <div class="foot"><button type="button" data-close>Keep copying</button><button type="button" class="primary" id="confirmYes"></button></div>
 </dialog>
+<dialog id="spaceDlg">
+  <div class="head"><h2 id="spaceTitle">Not enough space</h2></div>
+  <div class="body"><p id="spaceText"></p><p class="mute" id="spaceMore"></p></div>
+  <div class="foot"><button type="button" id="spaceCancel">Cancel job</button><button type="button" class="primary" id="spaceGo">Continue anyway</button></div>
+</dialog>
 <dialog id="probDlg">
   <div class="head"><h2>Files that need attention</h2><button type="button" data-close>Close</button></div>
   <div class="body" id="probList"></div>
@@ -462,10 +467,40 @@ $("startBtn").onclick = () => {
   const dest = $("ckDest").checked, s2 = $("ckSrc").checked ? "now" : "skip";
   const proof = !dest ? { check: "none" } : $("ckSep").checked ? { check: "none", verify: $("ckPaused").checked ? "paused" : "run", s2 } :
     { hash: $("whenEnd").checked ? "later" : "copy", s2 };
-  post("/api/jobs", Object.assign({ source: $("src").value, dest: $("dst").value, only: srcOnly }, proof))
-    .then(() => { $("newDlg").close(); $("src").value = ""; $("dst").value = ""; setOnly([]); })
-    .catch(e => $("newErr").textContent = e.message);
+  const body = Object.assign({ source: $("src").value, dest: $("dst").value, only: srcOnly }, proof);
+  const added = () => { $("newDlg").close(); $("src").value = ""; $("dst").value = ""; setOnly([]); };
+  post("/api/jobs", body).then(async r => {
+    if (!r.space) return added();
+    // It may not fit: continue anyway adds it, cancel adds nothing.
+    if (!await spaceBox(r.space, false)) { $("newErr").textContent = "The copy was not added. Choose another destination, or Cancel."; return; }
+    return post("/api/jobs", Object.assign(body, { ignore_space: true })).then(added);
+  }).catch(e => $("newErr").textContent = e.message);
 };
+
+// Free space: a copy that may not fit on its destination, on its own or with
+// the copies already queued there. Answers true for Continue anyway.
+function spaceBox(sp, started) {
+  const dlg = $("spaceDlg");
+  return new Promise(res => {
+    let answer = false;
+    $("spaceTitle").textContent = sp.fits_alone ? "Not enough space with the queue" : "Not enough space";
+    $("spaceText").textContent = sp.message;
+    $("spaceMore").textContent = (sp.unknown ? sp.unknown + (sp.unknown === 1 ? " queued copy is" : " queued copies are") + " still being sized and not counted. " : "") +
+      "Files already at the destination are not counted. If you continue and the disk fills up, the copy stops with an error; nothing already copied is lost." +
+      (started ? " Cancel ends this copy; anything it already proved stays." : "");
+    $("spaceGo").onclick = () => { answer = true; dlg.close(); };
+    $("spaceCancel").onclick = () => dlg.close();
+    dlg.onclose = () => { dlg.onclose = null; res(answer); };
+    dlg.showModal();
+  });
+}
+// A copy that stopped at its start because it no longer fits asks once per
+// page; the row keeps both buttons.
+const spaceAsked = new Set();
+async function spaceAnswer(v) {
+  const go = await spaceBox(v.space, true);
+  post("/api/jobs/" + v.id + "/" + (go ? "continue" : "stop")).catch(e => alert(e.message));
+}
 
 // Proof checkboxes: each includes the one above it. Below them, when and
 // where the check runs, and one line saying what the choice means.
@@ -650,6 +685,7 @@ function card(v) {
   const proven = v.verified + v.identical, only = !ver && v.check === "none", again = ver && v.s2 === "now" && v.source !== v.dest;
   let sub = "", subCls = "sub";
   if (v.state === "waiting") { sub = v.reason; subCls += v.missing ? " bad" : " warn"; }
+  else if (v.state === "paused" && v.space) { sub = "Paused · may not fit on " + v.space.disk + " — your answer is needed"; subCls += " warn"; }
   else if (v.state === "running" && scanning && ver) sub = "Reading the stored hashes — " + v.scanned + " files so far";
   else if (v.state === "running" && scanning) sub = "Scanning the source — " + v.scanned + " files, " + size(v.scanned_bytes) + " so far";
   else if (v.state === "running") sub = [pc, size((v.progress || 0) * v.bytes) + " of " + size(v.bytes), v.eta_seconds ? left(v.eta_seconds) : "working out the time left", ver ? rate(v.rate) : rate(v.copy_rate) && "copy speed " + rate(v.copy_rate)].filter(Boolean).join(" · ");
@@ -671,6 +707,7 @@ function card(v) {
   else if (v.state === "finished" && only) line = problems ? "Finished with problems — see the files marked Error." : "Finished. Every file is copied and hashed; no copy was read back." +
       (v.verify_next ? " The check is its own item in the queue." : " Not proof enough to erase a card.");
   else if (v.state === "finished") line = problems ? "Finished with problems — see the files marked Error." : "Finished. Every file is verified" + (v.s2 === "now" ? " twice (source read again)." : " (the copy read back; the source was not read again).");
+  else if (v.state === "paused" && v.space) line = v.space.message + " Continue anyway, or cancel the job.";
   else if (v.state === "paused") line = "Paused by you. Resume continues exactly where it stopped.";
   else if (!old && v.state !== "running") line = "Added " + when(v.created);
   if (ver && !old) line += (line ? " · " : "") + "Read in full and compared with the hashes stored when it was copied" + (again ? ", with the source read again beside it" : "") + ". Nothing is changed.";
@@ -696,7 +733,12 @@ function card(v) {
   const acts = [], btns = [];
   const btn = (list, t, f, cls, label) => { const b = document.createElement("button"); b.type = "button"; b.textContent = t; b.onclick = f; if (cls) b.className = cls; if (label) { b.title = label; b.setAttribute("aria-label", label); } list.push(b); };
   if (v.state === "running" || v.state === "waiting" || v.state === "queued") btn(acts, "❚❚", () => post("/api/jobs/" + v.id + "/pause").catch(e => alert(e.message)), "", "Pause");
-  if (v.state === "paused") btn(acts, "▶", () => post("/api/jobs/" + v.id + "/resume").catch(e => alert(e.message)), "primary", "Resume");
+  if (v.state === "paused") btn(acts, "▶", () => post("/api/jobs/" + v.id + "/" + (v.space ? "continue" : "resume")).catch(e => alert(e.message)), "primary", v.space ? "Continue anyway" : "Resume");
+  if (v.space) {
+    btn(btns, "Continue anyway", () => post("/api/jobs/" + v.id + "/continue").catch(e => alert(e.message)));
+    btn(btns, "Cancel job", () => post("/api/jobs/" + v.id + "/stop").catch(e => alert(e.message)));
+    if (!spaceAsked.has(v.id) && !document.querySelector("dialog[open]")) { spaceAsked.add(v.id); spaceAnswer(v); }
+  }
   if (!old) btn(acts, "✕", () => stopJob(v), "", "Stop…");
   if (problems) btn(btns, "Show problems", () => showProblems(v.id));
   if (old && !ver) btn(btns, "Verify again", () => verify(v.dest).catch(e => alert(e.message)));

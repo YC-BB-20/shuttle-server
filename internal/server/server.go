@@ -46,6 +46,7 @@ type Actions interface {
 	Pause(id string) error
 	Resume(id string) error
 	Stop(id string) error
+	ContinueAnyway(id string) error
 	Problems(id string, limit int) []copyjob.Problem
 	Files(id, filter string, from, limit int) (copyjob.FilePage, error)
 	History(skip, limit int) []copyjob.View

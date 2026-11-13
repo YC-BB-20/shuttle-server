@@ -36,6 +36,7 @@ type env struct {
 	dst       *diskio.Disk
 	afterCopy func(tmp string) // test hook
 	copyRead  func(b []byte)   // test hook
+	space     func() error     // free-space check before the copy pass (nil: none)
 }
 
 func statSM(p string) (int64, int64, error) {

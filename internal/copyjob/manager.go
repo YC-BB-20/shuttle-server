@@ -14,6 +14,7 @@ import (
 
 	"github.com/YC-BB-20/shuttle-server/internal/diskio"
 	"github.com/YC-BB-20/shuttle-server/internal/limits"
+	"github.com/YC-BB-20/shuttle-server/internal/location"
 )
 
 var (
@@ -31,6 +32,11 @@ type Manager struct {
 	Log       *slog.Logger
 	AfterCopy func(tmp string) // test hook
 	CopyRead  func(b []byte)   // test hook: sees (and may damage) each chunk read for the copy
+	// Floor is kept free on volume FloorVol (the internal disk with the data
+	// folder) when checking a destination's space.
+	Floor    uint64
+	FloorVol string
+	FreeHook func(dst string) uint64 // test hook: free space on dst's disk
 
 	mu      sync.Mutex
 	jobs    []*Job
@@ -152,6 +158,25 @@ func (m *Manager) Add(s Spec) (*Job, error) {
 	if sv.Network || dv.Network {
 		return nil, errors.New("copies to or from a network server are not supported yet; connect the disk by cable")
 	}
+	// Free space: this copy plus the copies ahead of it to the same disk.
+	ignoreSpace := s.IgnoreSpace
+	s.IgnoreSpace = false
+	var sizeAtAdd *int64
+	mctx, mcancel := context.WithTimeout(context.Background(), SizeTimeout)
+	need, merr := measure(mctx, location.Folder{Dir: src, Only: s.Only, System: s.SkipSystem, AppleDouble: s.SkipAppleDouble}, dst)
+	mcancel()
+	if merr == nil {
+		sizeAtAdd = &need
+		if !ignoreSpace {
+			if short, err := m.spaceFor(dst, need, nil); err == nil && short != nil {
+				m.Log.Info("a new copy may not fit on its destination; asking the owner", "source", src, "destination", dst,
+					"need", short.Need, "queued", short.Queued, "free", short.Free)
+				return nil, &SpaceError{*short}
+			}
+		}
+	} else {
+		m.Log.Info("the size of a new copy is counted by its scan; space is checked when it starts", "source", src, "err", merr)
+	}
 	if s.Hash != HashFirst && s.Hash != HashCheckLater {
 		s.Hash = HashDuringCopy
 	}
@@ -170,7 +195,7 @@ func (m *Manager) Add(s Spec) (*Job, error) {
 	now := time.Now()
 	id := now.Format("20060102-150405.000")
 	j := &Job{dir: filepath.Join(m.Dir, id), st: state{FormatVersion: FormatVersion, ID: id, Spec: s, Created: now,
-		Choice: "run", Phase: "scan", SourceVol: sv.ID, DestVol: dv.ID, SameVolume: sv.ID == dv.ID}}
+		Choice: "run", Phase: "scan", SourceVol: sv.ID, DestVol: dv.ID, SameVolume: sv.ID == dv.ID, SizeAtAdd: sizeAtAdd, SpaceOK: ignoreSpace}}
 	if err := os.MkdirAll(j.dir, 0o700); err != nil {
 		return nil, err
 	}
@@ -233,6 +258,7 @@ func (m *Manager) choose(id, choice string, cause error) error {
 		return errors.New("this job has already finished")
 	}
 	j.st.Choice = choice
+	j.st.SpaceAsk = nil // answered: Resume checks the space again, Stop cancels
 	j.mu.Unlock()
 	if err := j.save(); err != nil {
 		return err
@@ -374,7 +400,8 @@ func (m *Manager) runOne(ctx context.Context, j *Job) {
 			}
 		}
 	}()
-	err := j.run(jctx, env{budget: m.Budget, src: sd, dst: dd, afterCopy: m.AfterCopy, copyRead: m.CopyRead}, m.Accepting)
+	err := j.run(jctx, env{budget: m.Budget, src: sd, dst: dd, afterCopy: m.AfterCopy, copyRead: m.CopyRead,
+		space: func() error { return m.checkSpaceAtStart(j) }}, m.Accepting)
 	cancel(nil)
 	m.mu.Lock()
 	m.running = nil
@@ -384,9 +411,12 @@ func (m *Manager) runOne(ctx context.Context, j *Job) {
 	j.mu.Lock()
 	stopped := j.st.Choice == "stopped" // also when Stop came while a pause was settling
 	j.mu.Unlock()
+	var short errSpace
 	switch {
 	case stopped:
 		m.finishStopped(j)
+	case errors.As(err, &short):
+		m.holdForSpace(j, short.short)
 	case err == nil:
 		j.mu.Lock()
 		c := j.c

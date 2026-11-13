@@ -79,6 +79,12 @@ func (s *Server) addJob(w http.ResponseWriter, r *http.Request) (any, error) {
 		return nil, errors.New("choose a source folder and a destination folder")
 	}
 	if _, err := s.Jobs.Add(spec); err != nil {
+		var se *copyjob.SpaceError
+		if errors.As(err, &se) {
+			// Not added: the page asks "continue anyway" (sent again with
+			// ignore_space) or "cancel job" (nothing to undo).
+			return map[string]any{"ok": false, "space": se.Short}, nil
+		}
 		return nil, err
 	}
 	return map[string]bool{"ok": true}, nil
@@ -94,6 +100,8 @@ func (s *Server) jobAction(w http.ResponseWriter, r *http.Request) (any, error) 
 		err = s.Jobs.Resume(id)
 	case "stop":
 		err = s.Jobs.Stop(id)
+	case "continue": // the copy may not fit; the owner lets it run anyway
+		err = s.Jobs.ContinueAnyway(id)
 	default:
 		err = errors.New("unknown action")
 	}

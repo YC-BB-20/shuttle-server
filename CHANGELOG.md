@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.24 — 13 November 2026
+
+- **Free space is checked before a copy.** When you add a copy, Shuttle counts what it will write (files already at the destination with the same size are left out) and adds what every unfinished copy already queued to the same disk still has to write: running, waiting, queued or paused. If the new copy does not fit on its own, or fits only without the queue ahead of it, a pop-up gives the numbers and asks: **Continue anyway** adds it, **Cancel job** adds nothing. The check runs again when each copy starts, since the disk may have filled up while it waited; a copy that no longer fits is paused before writing anything, with the same question on screen and on its row. A very large folder that takes more than a few seconds to count is checked when it starts instead. On the internal disk the free-space floor is kept free too.
+
 ## 0.2.23 — 13 November 2026
 
 - **The menu bar icon no longer disappears after the Mac sleeps.** On waking, the icon could think Shuttle had gone and quit; three sleeps within ten minutes made Shuttle stop restarting it until Shuttle itself was restarted. The icon now quits only when Shuttle has really stopped, and an icon that ran for a while before quitting is always started again.

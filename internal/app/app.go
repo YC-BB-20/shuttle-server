@@ -203,7 +203,10 @@ func Run(opts Options) (code int) {
 	disks := diskio.NewRegistry(1, 60*time.Second)
 	if !safe {
 		jobs = &copyjob.Manager{Dir: filepath.Join(stateDir, "jobs"), Budget: budget, Disks: disks,
-			Accepting: wd.AcceptingNewWork, Log: log}
+			Accepting: wd.AcceptingNewWork, Log: log, Floor: cfg.FloorBytes()}
+		if v, err := diskio.VolumeOf(data); err == nil {
+			jobs.FloorVol = v.ID // the free-space floor is kept on the internal disk
+		}
 		if err := jobs.Load(); err != nil {
 			log.Error("could not read the copy jobs", "err", err)
 			jobs = nil

@@ -60,6 +60,9 @@ type Spec struct {
 	Kind            string   `json:"kind,omitempty"`
 	File            string   `json:"file,omitempty"`
 	From            []string `json:"from,omitempty"`
+	// IgnoreSpace (request only, never saved): the owner chose "continue
+	// anyway" after being told the copy may not fit.
+	IgnoreSpace bool `json:"ignore_space,omitempty"`
 }
 
 // MaxOnly bounds how many files and folders can be picked one by one.
@@ -117,6 +120,12 @@ type state struct {
 	Finished      time.Time             `json:"finished,omitzero"`
 	VerifyJob     string                `json:"verify_job,omitempty"` // the Verify job that follows this copy
 	After         string                `json:"after,omitempty"`      // a Verify job: the copy it waits for (added with it, v0.2.16)
+	// Free space (added in 0.2.24): the bytes to write counted when the job
+	// was added (nil: not known), the owner's "continue anyway", and the
+	// question waiting for an answer when the copy no longer fits.
+	SizeAtAdd *int64      `json:"size_at_add,omitempty"`
+	SpaceOK   bool        `json:"space_ok,omitempty"`
+	SpaceAsk  *SpaceShort `json:"space_ask,omitempty"`
 }
 
 // Job is one copy job.

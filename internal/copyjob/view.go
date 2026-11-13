@@ -11,49 +11,50 @@ import (
 
 // View is what the page shows for a job.
 type View struct {
-	ID         string    `json:"id"`
-	Source     string    `json:"source"`
-	Dest       string    `json:"dest"`
-	S2         string    `json:"s2"`
-	Hash       string    `json:"hash"`
-	Only       int       `json:"only,omitempty"` // how many files and folders were picked one by one; 0 means the whole folder
-	Kind       string    `json:"kind,omitempty"` // "verify" for a Verify job
-	VerifyFile string    `json:"verify_file,omitempty"`
-	Created    time.Time `json:"created"`
-	Finished   time.Time `json:"finished,omitzero"`
-	State      string    `json:"state"` // running, waiting, paused, queued, finished, stopped
-	Reason     string    `json:"reason,omitempty"`
-	Missing    string    `json:"missing,omitempty"` // source, destination or both: a disk is not connected
-	Phase      string    `json:"phase"`
-	Stage      string    `json:"stage,omitempty"`
-	File       string    `json:"file,omitempty"`
-	FileDone   int64     `json:"file_done"`
-	FileSize   int64     `json:"file_size"`
-	Files      int       `json:"files"`
-	Bytes      int64     `json:"bytes"`
-	Scanned    int       `json:"scanned"`
-	ScannedB   int64     `json:"scanned_bytes"`
-	Verified   int       `json:"verified"`
-	Identical  int       `json:"identical"`
-	Failed     int       `json:"failed"`
-	Strong     int       `json:"strong"`
-	S2Warn     int       `json:"s2_warnings"`
-	Proven     int64     `json:"bytes_proven"`
-	Copied     int       `json:"copied,omitempty"`      // copy-then-check: copied, waiting for the check pass
-	Hashed     int       `json:"hashed,omitempty"`      // copy only: copied and hashed, not read back
-	Check      string    `json:"check,omitempty"`       // "none": copy only in this job
-	VerifyNext string    `json:"verify_next,omitempty"` // "run" or "paused": a Verify job follows this copy
-	After      string    `json:"after,omitempty"`       // a Verify job that starts when this copy has finished
-	VerifyJob  string    `json:"verify_job,omitempty"`
-	Skipped    int       `json:"skipped"`
-	System     int       `json:"system_skipped"`
-	SameVolume bool      `json:"same_volume"`
-	SrcRate    int64     `json:"source_rate"`
-	DstRate    int64     `json:"dest_rate"`
-	Progress   float64   `json:"progress"`              // 0 to 1, all reads and writes the job needs
-	Rate       int64     `json:"rate,omitempty"`        // overall bytes of the job finished per second, smoothed
-	CopyRate   int64     `json:"copy_rate,omitempty"`   // speed of the copy pass alone, while it runs
-	ETA        int64     `json:"eta_seconds,omitempty"` // time left, when it can be estimated
+	ID         string      `json:"id"`
+	Source     string      `json:"source"`
+	Dest       string      `json:"dest"`
+	S2         string      `json:"s2"`
+	Hash       string      `json:"hash"`
+	Only       int         `json:"only,omitempty"` // how many files and folders were picked one by one; 0 means the whole folder
+	Kind       string      `json:"kind,omitempty"` // "verify" for a Verify job
+	VerifyFile string      `json:"verify_file,omitempty"`
+	Created    time.Time   `json:"created"`
+	Finished   time.Time   `json:"finished,omitzero"`
+	State      string      `json:"state"` // running, waiting, paused, queued, finished, stopped
+	Reason     string      `json:"reason,omitempty"`
+	Missing    string      `json:"missing,omitempty"` // source, destination or both: a disk is not connected
+	Phase      string      `json:"phase"`
+	Stage      string      `json:"stage,omitempty"`
+	File       string      `json:"file,omitempty"`
+	FileDone   int64       `json:"file_done"`
+	FileSize   int64       `json:"file_size"`
+	Files      int         `json:"files"`
+	Bytes      int64       `json:"bytes"`
+	Scanned    int         `json:"scanned"`
+	ScannedB   int64       `json:"scanned_bytes"`
+	Verified   int         `json:"verified"`
+	Identical  int         `json:"identical"`
+	Failed     int         `json:"failed"`
+	Strong     int         `json:"strong"`
+	S2Warn     int         `json:"s2_warnings"`
+	Proven     int64       `json:"bytes_proven"`
+	Copied     int         `json:"copied,omitempty"`      // copy-then-check: copied, waiting for the check pass
+	Hashed     int         `json:"hashed,omitempty"`      // copy only: copied and hashed, not read back
+	Check      string      `json:"check,omitempty"`       // "none": copy only in this job
+	VerifyNext string      `json:"verify_next,omitempty"` // "run" or "paused": a Verify job follows this copy
+	After      string      `json:"after,omitempty"`       // a Verify job that starts when this copy has finished
+	VerifyJob  string      `json:"verify_job,omitempty"`
+	Skipped    int         `json:"skipped"`
+	System     int         `json:"system_skipped"`
+	SameVolume bool        `json:"same_volume"`
+	SrcRate    int64       `json:"source_rate"`
+	DstRate    int64       `json:"dest_rate"`
+	Progress   float64     `json:"progress"`              // 0 to 1, all reads and writes the job needs
+	Rate       int64       `json:"rate,omitempty"`        // overall bytes of the job finished per second, smoothed
+	CopyRate   int64       `json:"copy_rate,omitempty"`   // speed of the copy pass alone, while it runs
+	ETA        int64       `json:"eta_seconds,omitempty"` // time left, when it can be estimated
+	Space      *SpaceShort `json:"space,omitempty"`       // paused because it may not fit: the question for the owner
 }
 
 type rateMemo struct {
@@ -217,7 +218,7 @@ func baseView(j *Job) (View, state, live) {
 		Verified: c.Verified, Identical: c.Identical, Failed: c.Failed, Strong: c.Strong, S2Warn: c.S2Warn, Copied: c.Copied, Hashed: c.Hashed,
 		Check: st.Spec.Check, VerifyNext: st.Spec.Verify, VerifyJob: st.VerifyJob, After: st.After,
 		Proven: c.BytesProven, SameVolume: st.SameVolume, Scanned: l.scanned, ScannedB: l.scannedBytes,
-		Progress: progress(st, c, l)}
+		Progress: progress(st, c, l), Space: st.SpaceAsk}
 	if st.Phase == "done" && st.Choice == "stopped" {
 		v.Progress = 0 // a stopped copy shows what is proven, not a full bar
 		if st.Bytes > 0 {
