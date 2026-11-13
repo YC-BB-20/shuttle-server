@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.20 — 13 November 2026
+
+- **Copies and verifies look different in the queue.** A copy is purple and a verify is pink while it runs or waits its turn: its icon, its progress bar and the file chips ("Copying" purple, "Verifying" pink). A verify's icon is ↻. When an item finishes it turns green; a problem turns it red (finishing with failures was orange before).
+
 ## 0.2.19 — 13 November 2026
 
 - **The menu bar menu stays open when you click "Check for updates" or "Install update".** Only the item's text changes ("Checking for updates…", "Installing update…"); the menu no longer closes and opens again.

@@ -7,8 +7,8 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a64d8'/%3E%3Cpath d='M22 46V18m0 0l-8 8m8-8l8 8M42 18v28m0 0l-8-8m8 8l8-8' stroke='%23fff' stroke-width='5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
   :root { color-scheme: light dark; --bg:#f5f5f7; --card:#fff; --fg:#1d1d1f; --mute:#6e6e73; --line:#d2d2d7;
-          --ok:#1f8a3b; --warn:#b25e00; --bad:#c62828; --accent:#0a64d8; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#111; --card:#1c1c1e; --fg:#f5f5f7; --mute:#a1a1a6; --line:#38383a; } }
+          --ok:#1f8a3b; --warn:#b25e00; --bad:#c62828; --accent:#0a64d8; --copy:#8e44d6; --verify:#d63384; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111; --card:#1c1c1e; --fg:#f5f5f7; --mute:#a1a1a6; --line:#38383a; --copy:#b07ae8; --verify:#f06aa8; } }
   * { box-sizing: border-box; }
   html, body { max-width:100%; overflow-x:hidden; overflow-x:clip; overscroll-behavior-x:none; margin:0; }
   body { font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--fg);
@@ -79,6 +79,8 @@
   .chip.running { color:var(--ok); border-color:var(--ok); }
   .chip.waiting, .chip.paused { color:var(--warn); border-color:var(--warn); }
   .chip.bad { color:var(--bad); border-color:var(--bad); }
+  /* Copies are purple and verifies pink while they work; green when done, red for a problem. */
+  .chip.copying { color:var(--copy); border-color:var(--copy); } .chip.verifying { color:var(--verify); border-color:var(--verify); }
   .job .line { margin:6px 0 2px; overflow-wrap:anywhere; }
   .job .counts { font-size:14px; color:var(--mute); }
   .cspeed { font-size:22px; font-weight:600; margin:4px 0 2px; font-variant-numeric:tabular-nums; }
@@ -172,7 +174,9 @@
   .job .r { display:flex; align-items:center; gap:10px; }
   .job .r > .m { flex:1; min-width:0; }
   .job .ico { flex:none; width:30px; height:30px; border-radius:8px; display:grid; place-items:center; font-size:15px; color:#fff; background:var(--accent); }
-  .job .ico.ok { background:var(--ok); } .job .ico.warn { background:var(--warn); } .job .ico.bad { background:var(--bad); } .job .ico.idle { background:var(--mute); }
+  .job .ico.ok { background:var(--ok); } .job .ico.warn { background:var(--warn); } .job .ico.bad { background:var(--bad); } .job .ico.idle { background:var(--mute); } .job .ico.copy { background:var(--copy); } .job .ico.verify { background:var(--verify); }
+  .job.verify .route .s { color:var(--verify); }
+  .job .detail .bar:not(.ok) > i { background:var(--copy); } .job.verify .detail .bar:not(.ok) > i { background:var(--verify); }
   .route { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); gap:6px; max-width:560px; align-items:baseline; font-size:15px; font-weight:600; }
   .route > span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
   .route > .arr { color:var(--mute); font-weight:400; }
@@ -605,20 +609,23 @@ function card(v) {
   const old = v.state === "finished" || v.state === "stopped";
   const problems = v.failed || v.s2_warnings;
   c.classList.toggle("old", old);
-  const ver = v.kind === "verify", place = ver && v.verify_file ? v.dest + "/" + v.verify_file : v.dest;
+  const ver = v.kind === "verify", kind = ver ? "verify" : "copy";
+  c.classList.toggle("verify", ver);
+  const place = ver && v.verify_file ? v.dest + "/" + v.verify_file : v.dest;
   q(".s").textContent = ver ? "Verify" : base(v.source) + (v.only ? " (" + v.only + " chosen)" : ""); q(".s").title = ver ? "Read again and compared with the stored hashes" : v.source;
   q(".d").textContent = base(place); q(".d").title = place;
   q(".from").textContent = ver ? "Checks " + place : "From " + v.source; q(".to").textContent = ver ? "" : "To " + v.dest;
   // Icon: what state it is in, at a glance.
   const ico = q(".ico");
-  const [sym, tone] = v.missing ? ["!", "bad"] : v.state === "running" ? ["⇅", ""] : v.state === "waiting" ? ["…", "warn"] :
-    v.state === "paused" ? ["❚❚", "idle"] : v.state === "queued" ? ["•", "idle"] : v.state === "stopped" ? ["■", "idle"] : problems ? ["!", "warn"] : ["✓", "ok"];
+  // Purple for a copy, pink for a verify; green once done, red for a problem.
+  const [sym, tone] = v.missing ? ["!", "bad"] : v.state === "running" ? [ver ? "↻" : "⇅", kind] : v.state === "waiting" ? ["…", "warn"] :
+    v.state === "paused" ? ["❚❚", kind] : v.state === "queued" ? ["•", kind] : v.state === "stopped" ? ["■", "idle"] : problems ? ["!", "bad"] : ["✓", "ok"];
   ico.textContent = sym; ico.className = "ico " + tone; ico.title = stateText[v.state] || v.state;
   const p = Math.round((v.progress || 0) * 1000) / 10, scanning = v.phase === "scan";
   const pc = (p >= 100 || p === Math.floor(p) ? Math.floor(p) : p.toFixed(1)) + "%";
   const mb = q(".r .bar > i"); mb.style.width = (scanning ? 0 : p) + "%";
-  mb.style.background = v.missing ? "var(--bad)" : v.state === "running" ? "var(--accent)" :
-    v.state === "finished" ? (problems ? "var(--warn)" : "var(--ok)") : "var(--mute)";
+  mb.style.background = v.missing ? "var(--bad)" : v.state === "running" ? "var(--" + kind + ")" :
+    v.state === "finished" ? (problems ? "var(--bad)" : "var(--ok)") : "var(--mute)";
   // One status line.
   const proven = v.verified + v.identical, only = !ver && v.check === "none", again = ver && v.s2 === "now" && v.source !== v.dest;
   let sub = "", subCls = "sub";
@@ -710,7 +717,7 @@ function renderMonitor(list) {
   $("monOf").textContent = [size(done) + " of " + size(total) + (unknown ? " (+" + unknown + (unknown === 1 ? " item" : " items") + " not sized yet: still listing its files)" : ""),
     qleft ? left(qleft) + " for the whole queue" : run && run.state === "running" ? "working out the time left" : ""].filter(Boolean).join(" · ");
   $("monBar").style.width = p + "%";
-  $("monBar").style.background = run && run.missing ? "var(--bad)" : run && run.state === "running" ? "var(--accent)" : "var(--mute)";
+  $("monBar").style.background = run && run.missing ? "var(--bad)" : run && run.state === "running" ? (run.kind === "verify" ? "var(--verify)" : "var(--copy)") : "var(--mute)";
   const nv = active.filter(v => v.kind === "verify").length, nc = active.length - nv;
   const rows = [["Queue", [nc ? nc + (nc === 1 ? " copy" : " copies") : "", nv ? nv + (nv === 1 ? " verify" : " verifies") : ""].filter(Boolean).join(", ")]];
   if (run) {
@@ -830,14 +837,14 @@ $("moreHist").onclick = () => {
 // own bar. Refreshed every 2 s while the copy runs and the page is visible.
 const fv = {};
 const fileLabel = { waiting: "Waiting", proven: "Verified", strong: "Verified · read twice", failed: "Error", warning: "Source warning", copied: "Copied · check to come", hashed: "Copied · not verified" };
-// A file being worked on: "Copying" (green) while it is written, "Verifying"
-// (orange) while the destination or the source is read back.
+// A file being worked on: "Copying" (purple) while it is written, "Verifying"
+// (pink) while the destination or the source is read back.
 function workChip(r) {
   if (r.status !== "working") return el("span", "chip " + (fileChip[r.status] || ""), fileLabel[r.status] || r.status);
   const checking = /^Reading back|^Checking/.test(r.stage || "");
-  return el("span", "chip " + (checking ? "waiting" : "running"), checking ? "Verifying" : /^Reading the source/.test(r.stage || "") ? "Reading" : "Copying");
+  return el("span", "chip " + (checking ? "verifying" : "copying"), checking ? "Verifying" : /^Reading the source/.test(r.stage || "") ? "Reading" : "Copying");
 }
-const fileChip = { proven: "ok", strong: "ok", failed: "bad", warning: "waiting", working: "running", copied: "running", hashed: "waiting" };
+const fileChip = { proven: "ok", strong: "ok", failed: "bad", warning: "waiting", working: "copying", copied: "copying", hashed: "waiting" };
 function toggleFiles(v, c) {
   if (fv[v.id]) { fv[v.id].box.remove(); delete fv[v.id]; return; }
   const box = el("div", "files");
