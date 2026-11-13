@@ -178,7 +178,7 @@ func TestProgressCopyOnly(t *testing.T) {
 
 // The separate Verify item is in the queue from the moment the copy is
 // added, right under it, and waits for the copy rather than running beside
-// it; a stopped copy leaves its Verify item paused, not stopped.
+// it; stopping the copy stops its Verify item too.
 func TestVerifyItemShownFromStartAndWaitsForCopy(t *testing.T) {
 	for _, choice := range []string{"run", "paused"} {
 		root := t.TempDir()
@@ -209,15 +209,11 @@ func TestVerifyItemShownFromStartAndWaitsForCopy(t *testing.T) {
 		}
 		m.Stop(j.st.ID)
 		f := m.find(fv.ID)
-		if f.st.Choice != "paused" || f.st.Phase == "done" {
+		if f.st.Choice != "stopped" || f.st.Phase != "done" {
 			t.Fatalf("%s: after the copy was stopped the Verify item is %s/%s", choice, f.st.Choice, f.st.Phase)
 		}
 		if p := m.pick(); p != nil {
 			t.Fatalf("%s: nothing should run, got %s", choice, p.st.ID)
-		}
-		m.Resume(fv.ID)
-		if p := m.pick(); p != f {
-			t.Fatalf("%s: once its copy has ended the Verify item can run", choice)
 		}
 	}
 }

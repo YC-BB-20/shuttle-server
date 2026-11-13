@@ -319,6 +319,7 @@ function render() {
   frame = 0;
   const s = latest; if (!s) return;
   $("ver").textContent = "v" + s.version;
+  reloadIfUpdated(s);
   $("headline").firstChild.textContent = s.headline;
   $("headline").classList.toggle("alarm", s.level === "bad");
   $("sub").textContent = "Running for " + ago(s.started_at) + (s.notes ? " · " + s.notes.join(" · ") : "");
@@ -562,7 +563,7 @@ async function stopJob(v) {
   if (!await confirmBox("Stop this copy?", proven + " files (" + size(v.bytes_proven) + ") are copied and verified and will stay. " +
       (v.copied ? v.copied + " copied files not yet checked stay, marked not verified. " : "") +
       Math.max(0, v.files - proven - v.failed - (v.copied || 0)) + " files have not been copied yet. The file being copied now is discarded." +
-      (v.verify_job ? " Its Verify item is paused; resume it to check the files copied so far." : ""), "Stop")) return;
+      (v.verify_job ? " Its Verify item is stopped too." : ""), "Stop")) return;
   if (!await confirmBox("Really stop?", "A stopped copy cannot be resumed; you can start a new one, which skips files already there after comparing them.", "Yes, stop")) return;
   post("/api/jobs/" + v.id + "/stop").catch(e => alert(e.message));
 }
@@ -625,7 +626,7 @@ function card(v) {
   else if (v.state === "running" && scanning && ver) sub = "Reading the stored hashes — " + v.scanned + " files so far";
   else if (v.state === "running" && scanning) sub = "Scanning the source — " + v.scanned + " files, " + size(v.scanned_bytes) + " so far";
   else if (v.state === "running") sub = [pc, size((v.progress || 0) * v.bytes) + " of " + size(v.bytes), v.eta_seconds ? left(v.eta_seconds) : "working out the time left", ver ? rate(v.rate) : rate(v.copy_rate) && "copy speed " + rate(v.copy_rate)].filter(Boolean).join(" · ");
-  else if (v.state === "paused") sub = v.after ? "Paused by you · press ▶ and it starts when the copy above has finished" : pc + " · Paused by you";
+  else if (v.state === "paused") sub = v.after ? "Paused · press ▶ and it starts when the copy above has finished" : pc + " · Paused by you";
   else if (v.state === "queued") sub = v.after ? "Starts when the copy above has finished" : "Waiting for the job before it to finish";
   else if (v.state === "finished") { sub = (v.finished ? when(v.finished) + " · " : "") + took(v.created, v.finished) + " · " + size(v.bytes) +
       (secs(v.created, v.finished) >= 1 && v.bytes ? " · " + rate(v.bytes / secs(v.created, v.finished)) + " average" : "") +
@@ -698,19 +699,23 @@ function renderMonitor(list) {
   if (!active.length) return;
   const run = active.find(v => v.state === "running") || active.find(v => v.state === "waiting");
   let total = 0, done = 0, unknown = 0;
-  active.forEach(v => { if (v.phase === "scan" || !v.bytes) unknown++; else { total += v.bytes; done += (v.progress || 0) * v.bytes; } });
+  // A Verify item that has not started yet reads what its copy writes, so it is sized by its copy.
+  const sizeOf = v => v.bytes && v.phase !== "scan" ? v.bytes :
+    v.kind === "verify" && /-verify$/.test(v.id) ? ((active.find(c => c.id + "-verify" === v.id) || {}).bytes || 0) : 0;
+  active.forEach(v => { const b = sizeOf(v); if (!b) unknown++; else { total += b; done += (v.phase === "scan" ? 0 : v.progress || 0) * b; } });
   const p = total ? done / total * 100 : 0;
   $("monPc").textContent = (unknown && !total) ? "Scanning" : (p >= 100 ? 100 : p.toFixed(p < 10 ? 1 : 0)) + "%";
   const r = run && run.state === "running" ? run.rate : 0;
   const qleft = r > 0 ? (total - done) / r : 0;
-  $("monOf").textContent = [size(done) + " of " + size(total) + (unknown ? " (+" + unknown + " not measured yet)" : ""),
+  $("monOf").textContent = [size(done) + " of " + size(total) + (unknown ? " (+" + unknown + (unknown === 1 ? " item" : " items") + " not sized yet: still listing its files)" : ""),
     qleft ? left(qleft) + " for the whole queue" : run && run.state === "running" ? "working out the time left" : ""].filter(Boolean).join(" · ");
   $("monBar").style.width = p + "%";
   $("monBar").style.background = run && run.missing ? "var(--bad)" : run && run.state === "running" ? "var(--accent)" : "var(--mute)";
-  const rows = [["Queue", active.length + (active.length === 1 ? " copy" : " copies") + ""]];
+  const nv = active.filter(v => v.kind === "verify").length, nc = active.length - nv;
+  const rows = [["Queue", [nc ? nc + (nc === 1 ? " copy" : " copies") : "", nv ? nv + (nv === 1 ? " verify" : " verifies") : ""].filter(Boolean).join(", ")]];
   if (run) {
     const rp = Math.round((run.progress || 0) * 100);
-    rows.push(["This copy", base(run.source) + " → " + base(run.dest) + " · " + (run.phase === "scan" ? "scanning, " + run.scanned + " files so far" :
+    rows.push([run.kind === "verify" ? "This verify" : "This copy", base(run.source) + " → " + base(run.dest) + " · " + (run.phase === "scan" ? "scanning, " + run.scanned + " files so far" :
       rp + "% · " + (run.state === "waiting" ? (run.missing ? "waiting for the disk" : "waiting") : run.eta_seconds ? left(run.eta_seconds) : "working out the time left")), run.phase === "scan" ? null : rp]);
     if (run.state === "running" && run.phase !== "scan" && run.kind !== "verify") {
       rows.push(["Copy speed", rate(run.copy_rate) || "measuring…", null, "big"]);
@@ -729,6 +734,15 @@ function renderMonitor(list) {
     if (bar != null) { const b = el("div", "bar"), i = el("i"); i.style.width = bar + "%"; i.style.background = $("monBar").style.background; b.append(i); d.append(b); }
     dl.append(d);
   });
+}
+// After an update the server is new but an open tab still runs the old page:
+// reload as soon as the version changes, waiting while a pop-up is open so
+// nothing typed into it is lost.
+let pageBuild = "";
+function reloadIfUpdated(s) {
+  const b = s.version + " " + s.commit;
+  if (!pageBuild) { pageBuild = b; return; }
+  if (b !== pageBuild && !document.querySelector("dialog[open]")) location.reload();
 }
 let updKey = "";
 function renderUpdate(u, s) {

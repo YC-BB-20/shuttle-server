@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.18 — 13 November 2026
+
+- **Stopping a copy stops its Verify item too.** It had read nothing yet, so nothing is lost.
+- **An open page reloads itself after an update,** so it never shows the old page with the new Shuttle behind it (it waits while a pop-up is open). Earlier fixes, such as the always-visible Start copy and Cancel buttons, only appeared after reloading the page by hand.
+- **The queue line counts copies and verifies separately:** "1 copy, 1 verify".
+- **A Verify item that has not started yet counts with its copy's size** in the whole-queue total, instead of "(+1 not measured yet)". Any item still listing its files now says "(+1 item not sized yet: still listing its files)".
+- The panel says "This verify" while a Verify item runs.
+
 ## 0.2.17 — 12 November 2026
 
 - **A file being checked shows an orange "Verifying" chip** instead of "Working"; while it is being copied the chip says "Copying" (green).

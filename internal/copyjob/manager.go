@@ -243,7 +243,7 @@ func (m *Manager) choose(id, choice string, cause error) error {
 		m.finishStopped(j)
 	}
 	if choice == "stopped" {
-		m.holdFollower(j)
+		m.stopFollower(j)
 	}
 	m.Log.Info("owner changed a copy job", "job", id, "to", choice)
 	m.poke()
@@ -262,25 +262,22 @@ func (m *Manager) unfinishedLocked(id string) bool {
 	return false
 }
 
-// holdFollower pauses the Verify item of a copy the owner stopped, rather than
-// stopping it: resumed, it checks the files that copy finished.
-func (m *Manager) holdFollower(cj *Job) {
+// stopFollower stops the Verify item queued with a copy the owner stopped
+// (owner, 12 November 2026). It has read nothing yet, so nothing is lost.
+func (m *Manager) stopFollower(cj *Job) {
 	cj.mu.Lock()
-	id := cj.st.VerifyJob
+	id, isCopy := cj.st.VerifyJob, !cj.st.Spec.isVerify()
 	cj.mu.Unlock()
-	if id == "" {
+	if id == "" || !isCopy {
 		return
 	}
 	if f := m.find(id); f != nil {
 		f.mu.Lock()
-		change := f.st.Phase != "done" && f.st.Choice == "run"
-		if change {
-			f.st.Choice = "paused"
-		}
+		waiting := f.st.Phase != "done"
 		f.mu.Unlock()
-		if change {
-			f.save()
-			m.Log.Info("the Verify item of a stopped copy was paused", "job", id)
+		if waiting {
+			m.choose(id, "stopped", errOwnerStop)
+			m.Log.Info("the Verify item of a stopped copy was stopped too", "job", id)
 		}
 	}
 }
