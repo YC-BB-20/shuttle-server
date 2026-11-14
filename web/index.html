@@ -176,8 +176,10 @@
   .frow .sz { font-variant-numeric:tabular-nums; min-width:5.5em; text-align:right; }
   .frow .chip { min-width:11.5em; text-align:center; box-sizing:border-box; }
   /* While verifying (v0.2.49): purple on a light purple track. */
-  .bar.vbar { background:rgba(142,68,214,.35); background:color-mix(in srgb, var(--copy) 38%, transparent); }
-  .bar.vbar > i { background:var(--copy) !important; }
+  /* While verifying (v0.2.51): the copy's purple is the track, the progress
+     is drawn in the pink of the Verifying chip. */
+  .bar.vbar { background:var(--copy); }
+  .bar.vbar > i { background:var(--verify) !important; }
   .frow .bar.edge { position:absolute; left:0; right:0; bottom:0; margin:0; height:3px; border-radius:0; }
   .frow .sz { color:var(--mute); font-size:13px; white-space:nowrap; }
   .frow .why { font-size:13px; color:var(--bad); overflow-wrap:anywhere; }
@@ -1036,7 +1038,7 @@ function card(v) {
   const pc = (p >= 100 || p === Math.floor(p) ? Math.floor(p) : p.toFixed(1)) + "%";
   const mb = q(".r .bar > i"); mb.style.width = (scanning ? 0 : p) + "%";
   const vnow = v.state === "running" && !scanning && (ver || isCheckStage(v.stage));
-  q(".r .bar").classList.toggle("vbar", vnow); q(".bar.file").classList.toggle("vbar", vnow);
+  q(".r .bar").classList.toggle("vbar", vnow && ver); q(".bar.file").classList.toggle("vbar", vnow);
   mb.style.background = v.missing ? "var(--bad)" : v.state === "running" ? "var(--" + kind + ")" :
     v.state === "finished" ? (problems ? "var(--bad)" : "var(--ok)") : "var(--mute)";
   // One status line.
@@ -1081,6 +1083,11 @@ function card(v) {
   q(".bar.file > i").style.width = v.state === "running" ? pct(v.file_done, v.file_size) + "%" : "0%";
   const live = v.state === "running" && !scanning;
   c.classList.toggle("live", live);
+  if (fv[v.id]) {
+    fv[v.id].live = live && v.file ? { file: v.file, stage: v.stage, file_done: v.file_done, file_size: v.file_size } : null;
+    const lw = fv[v.id].live;
+    if (lw) fv[v.id].box.querySelectorAll(".frow").forEach(r => { if (r.dataset.p === lw.file) syncRow(r, lw); });
+  }
   // The speed sits beside the pause button (v0.2.50): a copy's average, a Verify's current speed.
   const sp = live ? (ver ? rate(v.rate) : rate(v.copy_rate)) : "";
   q(".rspeed").hidden = !live;
@@ -1162,7 +1169,7 @@ function renderMonitor(list) {
     qleft ? left(qleft) + " for the whole queue" : run && run.state === "running" ? "working out the time left" : ""].filter(Boolean).join(" · ");
   $("monBar").style.width = p + "%";
   $("monBar").style.background = run && run.missing ? "var(--bad)" : run && run.state === "running" ? "var(--copy)" : "var(--mute)";
-  $("monBar").parentNode.classList.toggle("vbar", !!(run && run.state === "running" && !run.missing && (run.kind === "verify" || isCheckStage(run.stage))));
+  $("monBar").parentNode.classList.toggle("vbar", !!(run && run.state === "running" && !run.missing && run.kind === "verify"));
   const nv = active.filter(v => v.kind === "verify").length, nc = active.length - nv;
   const rows = [["Queue", [nc ? nc + (nc === 1 ? " copy" : " copies") : "", nv ? nv + (nv === 1 ? " verify" : " verifies") : ""].filter(Boolean).join(", ")]];
   if (run) {
@@ -1176,14 +1183,14 @@ function renderMonitor(list) {
     if (run.state === "running" && run.file && run.phase !== "scan") {
       const pr = passRate(run), fl = pr > 0 ? (run.file_size - run.file_done) / pr : 0;
       rows.push(["This file", base(run.file) + " · " + run.stage.replace(/ \(.*\)$/, "") + " · " + size(run.file_done) + " of " + size(run.file_size) +
-        (fl >= 1 ? " · " + left(fl) : run.file_size ? " · almost done" : ""), pct(run.file_done, run.file_size)]);
+        (fl >= 1 ? " · " + left(fl) : run.file_size ? " · almost done" : ""), pct(run.file_done, run.file_size), "", isCheckStage(run.stage)]);
     }
   }
   const dl = $("monLines"); dl.replaceChildren();
-  rows.forEach(([k, t, bar, cls]) => {
+  rows.forEach(([k, t, bar, cls, vb]) => {
     dl.append(el("dt", "", k));
     const d = el("dd", cls || "", t);
-    if (bar != null) { const b = el("div", "bar"), i = el("i"); i.style.width = bar + "%"; i.style.background = $("monBar").style.background; b.append(i); d.append(b); }
+    if (bar != null) { const b = el("div", "bar" + (vb ? " vbar" : "")), i = el("i"); i.style.width = bar + "%"; i.style.background = $("monBar").style.background; b.append(i); d.append(b); }
     dl.append(d);
   });
 }
@@ -1487,6 +1494,7 @@ function folderChip(fr) {
 const fileHeads = { done: "Files verified:", todo: "Files in progress:", unverified: "Files not verified:", problems: "Files with problems:" };
 function fileRow(f, r, depth) {
   const row = el("div", "frow"), t = el("div", "t");
+  row.dataset.p = r.path;
   row.tabIndex = 0; row.onclick = () => fileInfo(f.v.id, r.i); row.onkeydown = e => { if (e.key === "Enter") row.onclick(); };
   if (depth) row.style.paddingLeft = (depth * 18 + 12) + "px";
   const name = el("span", "", f.tree ? r.path.split("/").pop() : r.path); name.title = r.path;
@@ -1496,8 +1504,21 @@ function fileRow(f, r, depth) {
     row.title = r.stage + (r.size ? " — " + size(r.done) + " of " + size(r.size) : "");
     const b = el("div", "bar edge" + (isCheckStage(r.stage) ? " vbar" : "")), i = el("i"); i.style.width = pct(r.done, r.size) + "%"; b.append(i); row.append(b);
   }
+  if (f.live && f.live.file === r.path) syncRow(row, f.live);
   if (r.why) row.append(el("div", "why", r.why));
   return row;
+}
+// The file named in "Now:" moves with it (v0.2.51): every update of the copy
+// sets that file's chip and bar from the same numbers, instead of waiting
+// for the file list's own refresh.
+function syncRow(row, w) {
+  const r = { status: "working", stage: w.stage, done: w.file_done, size: w.file_size };
+  const chip = row.querySelector(".t .chip"); if (chip) chip.replaceWith(workChip(r));
+  let b = row.querySelector(".bar.edge");
+  if (!b) { b = el("div", "bar edge"); b.append(el("i")); row.querySelector(".t").after(b); }
+  b.classList.toggle("vbar", isCheckStage(r.stage));
+  b.firstChild.style.width = pct(r.done, r.size) + "%";
+  row.title = r.stage + (r.size ? " — " + size(r.done) + " of " + size(r.size) : "");
 }
 // Rows of one folder: its folders first (closed unless opened), then its files.
 function dirRows(f, dir, depth) {

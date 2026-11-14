@@ -283,7 +283,7 @@ func TestPageFolderHeadsAndVerifyBars(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
 		`tree: true,`, `function autoOpen(f, dir)`, `.then(() => autoOpen(f, ""))`, `e.stopPropagation(); openDir(f, fr.path)`,
-		`.bar.vbar {`, `.bar.vbar > i { background:var(--copy) !important; }`, `(isCheckStage(r.stage) ? " vbar" : "")`, `classList.toggle("vbar", vnow)`,
+		`.bar.vbar {`, `.bar.vbar > i { background:var(--verify) !important; }`, `(isCheckStage(r.stage) ? " vbar" : "")`, `classList.toggle("vbar", vnow)`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
@@ -317,6 +317,20 @@ func TestPagePickerMultiSelect(t *testing.T) {
 	for _, want := range []string{
 		`e.metaKey || e.ctrlKey || e.shiftKey`, `row.oncontextmenu = e => { if (e.ctrlKey) multi(e, i); };`,
 		`b.onclick = e => { if (!multi(e, i)) browse(f.path); };`, `"Tick files or folders (or ⌘-click / Ctrl-click them; Shift-click ticks a run)`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}
+
+// v0.2.51: verifying is pink progress on the copy's purple; the file named
+// in "Now:" moves with it in the file list.
+func TestPageVerifyColoursAndSync(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`.bar.vbar { background:var(--copy); }`, `function syncRow(row, w)`, `row.dataset.p = r.path;`,
+		`if (f.live && f.live.file === r.path) syncRow(row, f.live);`, `if (r.dataset.p === lw.file) syncRow(r, lw);`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)

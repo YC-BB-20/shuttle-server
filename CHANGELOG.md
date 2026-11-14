@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.51 — 14 November 2026
+
+- **Verifying bars match the Verifying chip:** the copy's purple is the track, and the progress is drawn over it in the chip's pink. On a file's row, under "Now:", on the Status page's "This file" and on a Verify job's bars. A copy's overall bar stays as it was.
+- **"Now:" and the file's row move together.** The file being worked on takes its chip and bar from the same update as "Now:", instead of waiting for the file list to refresh.
+
 ## 0.2.50 — 14 November 2026
 
 - **Choose several folders at once.** In "Choose what to copy", ⌘-click or Ctrl-click a folder or file to tick it without opening it; Shift-click ticks everything from the last one ticked. The tick boxes work as before.
