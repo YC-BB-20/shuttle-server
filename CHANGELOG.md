@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.28 — 13 November 2026
+
+- **The Verify pop-up is easier to read.** Each choice has a larger name with a short explanation under it in smaller grey text. The texts are now: **Destinations only** (read every copy back from the destination and compare it with the source file's hash), **Destinations, then the source read again** (catches a bad read from the card or cable; the source disk must be connected), **Source read again only**, and **Add job as paused**.
+- **The pop-up is titled "Verify files again"** once a copy has had any check; before that it reads "Verify files".
+
 ## 0.2.27 — 13 November 2026
 
 - **The row button is now "Verify files"**, on copies and on Verify items alike. Its pop-up adds a third choice: **Source read again only**, which compares the source with the hashes stored when it was copied, without reading the copies.

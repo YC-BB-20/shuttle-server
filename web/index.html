@@ -96,6 +96,8 @@
   .row > input { flex:1; min-width:0; }
   input[type=text] { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--fg); }
   .opt { display:flex; gap:8px; align-items:flex-start; font-weight:400; margin:6px 0; }
+  .vopt { margin:12px 0; } .vopt > span { min-width:0; } .vopt b { display:block; font-size:17px; font-weight:600; }
+  .vopt small { display:block; font-size:13px; color:var(--mute); margin-top:2px; overflow-wrap:anywhere; }
   .err { color:var(--bad); min-height:1.2em; }
   .list { border:1px solid var(--line); border-radius:8px; max-height:45vh; overflow:auto; }
   .list button { display:block; width:100%; text-align:left; border:0; border-bottom:1px solid var(--line); border-radius:0; overflow-wrap:anywhere; }
@@ -328,10 +330,10 @@
   <div class="head"><h2 id="verTitle">Verify files</h2></div>
   <div class="body">
     <p class="mute" id="verWhat"></p>
-    <label class="opt"><input type="radio" name="verHow" id="verDest" checked><span>Destinations only: read every copy back and compare it with the hash stored when it was copied</span></label>
-    <label class="opt"><input type="radio" name="verHow" id="verSrc"><span>Destinations, then the source read again after the whole job: catches a bad read from the card or cable (the source disk must be connected)</span></label>
-    <label class="opt"><input type="radio" name="verHow" id="verOnly"><span>Source read again only: compared with the hash stored when it was copied; the copies are not read</span></label>
-    <label class="opt"><input type="checkbox" id="verPaused"><span>Add paused, to start when you choose</span></label>
+    <label class="opt vopt"><input type="radio" name="verHow" id="verDest" checked><span><b>Destinations only</b><small>Read every copy back from the destination and compare it with the source file's hash</small></span></label>
+    <label class="opt vopt"><input type="radio" name="verHow" id="verSrc"><span><b>Destinations, then the source read again</b><small>Catches a bad read from the card or cable (the source disk must be connected)</small></span></label>
+    <label class="opt vopt"><input type="radio" name="verHow" id="verOnly"><span><b>Source read again only</b><small>Compared with the hash stored when it was copied; the copies are not read</small></span></label>
+    <label class="opt vopt"><input type="checkbox" id="verPaused"><span><b>Add job as paused</b></span></label>
     <p class="mute">Nothing is changed on either side. If a folder is missing, the check stops and says which.</p>
     <p class="bad" id="verErr"></p>
   </div>
@@ -785,7 +787,8 @@ function card(v) {
   }
   if (!old) btn(acts, "✕", () => stopJob(v), "", "Stop…");
   if (problems) btn(btns, "Show problems", () => showProblems(v.id));
-  if (old) btn(btns, "Verify files", () => verifyBox(ver ? place : v.dest, "Verify files"));
+  if (old) btn(btns, "Verify files", () => verifyBox(ver ? place : v.dest,
+    ver || (v.checks && (v.checks.dest || v.checks.source)) ? "Verify files again" : "Verify files"));
   drawChecks(q(".checks"), v);
   const key = acts.map(b => b.title).join("|") + "/" + btns.map(b => b.textContent).join("|");
   if (fv[v.id]) { const was = fv[v.id].v.state; fv[v.id].v = v; if (was !== v.state) loadFiles(fv[v.id], false, true); }
