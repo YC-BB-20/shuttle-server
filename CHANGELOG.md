@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.49 — 14 November 2026
+
+- **Files always sit under their folder's name,** in a row that closes and opens, even when there is only one folder or only a few files. With up to 20 files every folder starts open; with more, folders start closed as before.
+- **Closing a folder no longer closes the whole copy.** The list redrew under the click, and the copy's card took it for a tap outside.
+- **Verifying is purple on light purple.** While a file is read back or compared, its bar, the copy's bars and the Status bar are purple on a light purple track; a Verify job's bars are purple too, no longer pink.
+
 ## 0.2.48 — 14 November 2026
 
 - **Copy size while choosing the source.** The picker shows how much a copy of the open folder would be, for example "This whole folder: 412.3 GB in 18,204 files"; tick files or folders and it shows the size of just those ("The 3 chosen: …"). New copy shows "Copy size: …" under the source.

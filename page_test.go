@@ -275,3 +275,18 @@ func TestPageCopySize(t *testing.T) {
 		}
 	}
 }
+
+// v0.2.49: every file list shows its folders as rows that close, even one
+// folder and few files; small lists start open; a folder click never closes
+// the copy card; verifying bars are purple on a light purple track.
+func TestPageFolderHeadsAndVerifyBars(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`tree: true,`, `function autoOpen(f, dir)`, `.then(() => autoOpen(f, ""))`, `e.stopPropagation(); openDir(f, fr.path)`,
+		`.bar.vbar {`, `.bar.vbar > i { background:var(--copy) !important; }`, `(isCheckStage(r.stage) ? " vbar" : "")`, `classList.toggle("vbar", vnow)`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}
