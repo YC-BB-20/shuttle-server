@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +32,14 @@ type Info struct {
 	Ejectable  bool   `json:"ejectable,omitempty"`
 	Device     string `json:"device,omitempty"` // e.g. disk4s1
 	Camera     string `json:"camera,omitempty"` // why it looks like a camera card, if it does
+	// Where it is attached (v0.2.47): the computer's port or controller,
+	// anything in between, and the other disks on the same port.
+	Bus    string   `json:"bus,omitempty"`
+	Via    []string `json:"via,omitempty"`
+	BusKey string   `json:"bus_key,omitempty"`
+	Shares []string `json:"shares,omitempty"`
+	Trash  bool     `json:"trash,omitempty"` // the disk's Trash holds items, whose space is not free yet
+	Unit   string   `json:"-"`               // the physical drive, so two volumes of one drive are not "sharing"
 }
 
 // Run time limits for the outside programs.
@@ -49,6 +58,7 @@ func Details(ctx context.Context, mount string) Info {
 		in = linuxInfo(mount)
 	}
 	in.Camera = CameraHint(mount)
+	in.Trash = TrashHasItems(mount, in.Internal || mount == "/")
 	return in
 }
 
@@ -108,9 +118,91 @@ func darwinInfo(ctx context.Context, mount string) Info {
 		whole = in.Device
 	}
 	if in.Connection == "USB" || in.Connection == "Thunderbolt" {
-		in.Speed, in.Detail = linkSpeed(ctx, whole, in.Connection)
+		attach(ctx, &in, whole)
 	}
 	return in
+}
+
+// attach fills in the port, what is in between and the link speed from the
+// device tree and the hardware report (v0.2.47).
+func attach(ctx context.Context, in *Info, whole string) {
+	tp, ok := Topology(ctx, volumeSig())[whole]
+	if !ok {
+		in.Speed, in.Detail = linkSpeed(ctx, whole, in.Connection)
+		return
+	}
+	in.Bus, in.Via, in.BusKey, in.Unit = tp.Bus, tp.Via, tp.Key, tp.USBID
+	if in.Unit == "" {
+		in.Unit = whole
+	}
+	tree := hardware(ctx)
+	if in.Connection == "USB" {
+		raw := usbLinkByLocation(tree, tp.USBID)
+		if raw == "" {
+			raw = speedAbove(tree, whole)
+		}
+		if raw == "" {
+			raw = tp.Speed
+		}
+		if raw != "" {
+			in.Speed, in.Detail = usbSpeed(raw)
+			if strings.Contains(strings.ToLower(raw), "limited") {
+				in.Detail += " — the drive can go faster: the cable, adapter, hub or port is holding it back"
+			}
+		}
+		if tp.Thund {
+			in.Detail = strings.TrimPrefix(in.Detail+" · through a Thunderbolt dock", " · ")
+		}
+		return
+	}
+	if tp.Port >= 0 {
+		if s := thunderboltBusSpeed(tree, tp.Port); s != "" {
+			in.Speed, in.Detail = strings.TrimPrefix(s, "Up to "), "Thunderbolt link"
+			return
+		}
+	}
+	in.Speed, in.Detail = linkSpeed(ctx, whole, in.Connection)
+}
+
+// volumeSig names the mounted volumes, so the device tree is read again
+// as soon as a disk comes or goes.
+func volumeSig() string {
+	ents, _ := os.ReadDir("/Volumes")
+	var b strings.Builder
+	for i, e := range ents {
+		if i > 100 {
+			break
+		}
+		b.WriteString(e.Name())
+		b.WriteByte('/')
+	}
+	return b.String()
+}
+
+// TrashHasItems says whether the disk's Trash holds anything. Files moved to
+// the Trash in Finder still take their space until it is emptied. Reads at
+// most a few names.
+func TrashHasItems(mount string, internal bool) bool {
+	uid := strconv.Itoa(os.Getuid())
+	dirs := []string{filepath.Join(mount, ".Trashes", uid), filepath.Join(mount, ".Trash-"+uid, "files")}
+	if internal {
+		home, _ := os.UserHomeDir()
+		dirs = []string{filepath.Join(home, ".Trash"), filepath.Join(home, ".local/share/Trash/files")}
+	}
+	for _, d := range dirs {
+		f, err := os.Open(d)
+		if err != nil {
+			continue
+		}
+		names, _ := f.Readdirnames(4)
+		f.Close()
+		for _, n := range names {
+			if n != ".DS_Store" && n != ".localized" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // connectionName turns diskutil's bus protocol into plain words. An
@@ -169,7 +261,7 @@ func hardware(ctx context.Context) any {
 		done := make(chan struct{})
 		profBusy = done
 		go func() {
-			out := run(context.Background(), profileTimeout, "/usr/sbin/system_profiler", "-json", "-detailLevel", "mini",
+			out := run(context.Background(), profileTimeout, "/usr/sbin/system_profiler", "-json",
 				"SPUSBHostDataType", "SPUSBDataType", "SPThunderboltDataType")
 			var v any
 			ok := out != nil && jsonUnmarshal(out, &v) == nil
@@ -327,6 +419,9 @@ func linuxInfo(mount string) Info {
 		in.Solid = &s
 	}
 	link, _ := filepath.EvalSymlinks("/sys/block/" + whole)
+	if tp := linuxPath(link); tp.Key != "" {
+		in.Bus, in.BusKey = tp.Bus, tp.Key
+	}
 	switch {
 	case strings.Contains(link, "/usb"):
 		in.Connection = "USB"

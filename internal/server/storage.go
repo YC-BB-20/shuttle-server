@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/YC-BB-20/shuttle-server/internal/speedtest"
@@ -25,6 +28,12 @@ type Disk struct {
 func (s *Server) storageList(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 11*time.Second)
 	defer cancel()
+	if r.URL.Query().Get("fresh") == "1" {
+		storage.ForgetHardware()
+		infoCache.Lock()
+		infoCache.m = nil
+		infoCache.Unlock()
+	}
 	out := []Disk{}
 	for _, p := range places() {
 		d := Disk{Place: p}
@@ -33,11 +42,80 @@ func (s *Server) storageList(w http.ResponseWriter, r *http.Request) {
 			if p.Kind == "internal" {
 				at = "/"
 			}
-			d.Info = storage.Details(ctx, at)
+			d.Info = cachedDetails(ctx, at)
 		}
 		out = append(out, d)
 	}
+	markShared(out)
 	writeJSON(w, http.StatusOK, map[string]any{"disks": out, "pending": storage.Pending()})
+}
+
+// The page asks every few seconds while Storage is open (v0.2.47): free
+// space is read fresh every time, the slower details are kept for a minute
+// unless the set of disks changes. At most one entry per mounted disk.
+var infoCache struct {
+	sync.Mutex
+	m   map[string]cachedInfo
+	sig string
+}
+
+type cachedInfo struct {
+	in storage.Info
+	at time.Time
+}
+
+func cachedDetails(ctx context.Context, at string) storage.Info {
+	sig := mountSig()
+	infoCache.Lock()
+	if infoCache.sig != sig || infoCache.m == nil {
+		infoCache.m, infoCache.sig = map[string]cachedInfo{}, sig
+	}
+	c, ok := infoCache.m[at]
+	infoCache.Unlock()
+	if ok && time.Since(c.at) < time.Minute && !storage.Pending() {
+		c.in.Trash = storage.TrashHasItems(at, c.in.Internal || at == "/")
+		c.in.Shares = nil
+		return c.in
+	}
+	in := storage.Details(ctx, at)
+	if in.Device != "" || in.FileSystem != "" {
+		infoCache.Lock()
+		if infoCache.sig == sig && len(infoCache.m) < 200 {
+			infoCache.m[at] = cachedInfo{in, time.Now()}
+		}
+		infoCache.Unlock()
+	}
+	return in
+}
+
+func mountSig() string {
+	var b strings.Builder
+	for _, d := range mountDirs() {
+		ents, _ := os.ReadDir(d)
+		for i, e := range ents {
+			if i > 100 {
+				break
+			}
+			b.WriteString(e.Name())
+			b.WriteByte('/')
+		}
+	}
+	return b.String()
+}
+
+// markShared names, for each disk, the other disks on the same port or
+// controller: they split its bandwidth when used at the same time.
+func markShared(ds []Disk) {
+	for i := range ds {
+		if ds[i].BusKey == "" {
+			continue
+		}
+		for j := range ds {
+			if i != j && ds[j].BusKey == ds[i].BusKey && (ds[i].Unit == "" || ds[j].Unit != ds[i].Unit) {
+				ds[i].Shares = append(ds[i].Shares, ds[j].Name)
+			}
+		}
+	}
 }
 
 // speedStatus is the running or last speed test, the kept results of every

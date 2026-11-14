@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.47 — 14 November 2026
+
+- **Storage is live.** While the Storage tab is open it updates itself every 3 seconds: disks plugged in or out, and free space, show without pressing Refresh. Refresh now also reads the hardware again from scratch.
+- **Each disk shows where it is attached:** the Mac's port and its Thunderbolt/USB4 bus (the same names as System Information), and any hub or dock in between.
+- **Disks sharing a port are named,** for example "Shares this port with T5-B: used at the same time, they split its bandwidth".
+- **USB speeds are found on macOS 26,** whose hardware report no longer names the disk; Shuttle now matches the drive by its USB place. A drive running slower than it can ("Limited to 5 Gb/s") says the cable, adapter, hub or port is holding it back.
+- **A disk whose Trash has items says so:** files deleted in Finder keep their space until the Trash is emptied.
+
 ## 0.2.46 — 13 November 2026
 
 - **Files shown as folders.** A copy or Verify with more than 20 files lists its folders closed; click one to open it. Each folder says how many files it holds and how they stand, for example "72 files · Destination verified", or "3 errors", "40 of 72 done", "Not verified". A folder that holds nothing but one folder opens by itself.

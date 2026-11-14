@@ -104,7 +104,7 @@ func TestPageVerifyKindsDisksProof(t *testing.T) {
 func TestPageStorageTab(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
-		`id="tabStorageBtn"`, `id="tabStorage"`, `fetch("/api/storage")`, `function diskCard(d)`,
+		`id="tabStorageBtn"`, `id="tabStorage"`, `fetch("/api/storage"`, `function diskCard(d)`,
 		`"Copy from here"`, `"Copy to here"`, `function diskUse(path)`, `!d.read_only && !d.camera`,
 	} {
 		if !strings.Contains(s, want) {
@@ -243,6 +243,20 @@ func TestPageFoldersPagingAndVerifyInfo(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{"function dirRows", "function folderChip", `"&tree=1&dir="`, `"Show more files"`, `"Show fewer files"`, `<div class="fpage">`,
 		`if (old && !ver) btn(btns, "Verify files"`, `ver ? fi.from : [infoAt.id]`, `body.push(...proofSlots(fi));`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}
+
+// v0.2.47: Storage updates itself while open, and shows each disk's port,
+// what is in between, disks sharing the port, and items in its Trash.
+func TestPageStorageLive(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`stoTimer = setTimeout(loadStorage, 3000)`, `!document.hidden`, `now !== stoLast`, `"Attached to " + d.bus`,
+		`"Shares this port with "`, `d.trash`, `loadStorage(true)`, `?fresh=1`,
+	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
 		}

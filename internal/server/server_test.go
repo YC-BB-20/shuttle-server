@@ -206,3 +206,15 @@ func TestMkdirMakesOneNewFolderOnly(t *testing.T) {
 		t.Errorf("missing parent: got %d", code)
 	}
 }
+
+func TestStorageSharedPort(t *testing.T) {
+	ds := []Disk{{Place: Place{Name: "A"}}, {Place: Place{Name: "B"}}, {Place: Place{Name: "C"}}, {Place: Place{Name: "A2"}}}
+	ds[0].BusKey, ds[0].Unit = "port1", "0x1"
+	ds[1].BusKey, ds[1].Unit = "port1", "0x2"
+	ds[2].BusKey, ds[2].Unit = "port2", "0x3"
+	ds[3].BusKey, ds[3].Unit = "port1", "0x1" // a second volume of drive A
+	markShared(ds)
+	if len(ds[0].Shares) != 1 || ds[0].Shares[0] != "B" || len(ds[1].Shares) != 2 || ds[2].Shares != nil {
+		t.Fatalf("%v %v %v", ds[0].Shares, ds[1].Shares, ds[2].Shares)
+	}
+}
