@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.29 — 13 November 2026
+
+- **Verify from a row checks that copy only.** It used to take in every copy ever made into the same folder, so a folder that had received copies from different sources refused to read "the source" again. Now Verify files, Read destination now and Read source again now on a copy check just that copy, against its own source. A Verify item's "Verify files again" checks the same copies it did before.
+- **Filters with nothing in them are hidden** in a job's file list (All always shows, and so does the one you have chosen).
+
 ## 0.2.28 — 13 November 2026
 
 - **The Verify pop-up is easier to read.** Each choice has a larger name with a short explanation under it in smaller grey text. The texts are now: **Destinations only** (read every copy back from the destination and compare it with the source file's hash), **Destinations, then the source read again** (catches a bad read from the card or cable; the source disk must be connected), **Source read again only**, and **Add job as paused**.

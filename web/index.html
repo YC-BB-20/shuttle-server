@@ -569,7 +569,7 @@ function drawChecks(box, v) {
     p.append((done >= k.of && k.of > 0 ? "✓ " : "✗ ") + (done ? okText + ": " + all(done) + (at ? " · " + when(at) : "") : noText));
     if (done < k.of && !k.queued) {
       const b = el("button", "", btnText); b.type = "button";
-      b.onclick = () => verify(v.dest, { s2 }).catch(e => alert(e.message)); p.append(" ", b);
+      b.onclick = () => verify(v.dest, { s2, from: [v.id] }).catch(e => alert(e.message)); p.append(" ", b);
     }
     return p;
   };
@@ -578,10 +578,10 @@ function drawChecks(box, v) {
     row(k.source, k.source_at, "Source read a second time", "Source not read a second time yet", "Read source again now", "only"),
     ...(k.queued ? [el("p", "mute", "A check of this copy is in the queue.")] : []));
 }
-function verifyBox(path, title) {
+function verifyBox(path, title, from) {
   $("verTitle").textContent = title; $("verWhat").textContent = "Checks " + path;
   $("verErr").textContent = ""; $("verDest").checked = true; $("verPaused").checked = false;
-  $("verGo").onclick = () => verify(path, { s2: $("verSrc").checked ? "after" : $("verOnly").checked ? "only" : "", paused: $("verPaused").checked })
+  $("verGo").onclick = () => verify(path, { from, s2: $("verSrc").checked ? "after" : $("verOnly").checked ? "only" : "", paused: $("verPaused").checked })
     .then(() => $("verDlg").close()).catch(e => $("verErr").textContent = e.message);
   $("verDlg").showModal();
 }
@@ -788,7 +788,7 @@ function card(v) {
   if (!old) btn(acts, "✕", () => stopJob(v), "", "Stop…");
   if (problems) btn(btns, "Show problems", () => showProblems(v.id));
   if (old) btn(btns, "Verify files", () => verifyBox(ver ? place : v.dest,
-    ver || (v.checks && (v.checks.dest || v.checks.source)) ? "Verify files again" : "Verify files"));
+    ver || (v.checks && (v.checks.dest || v.checks.source)) ? "Verify files again" : "Verify files", ver ? v.from : [v.id]));
   drawChecks(q(".checks"), v);
   const key = acts.map(b => b.title).join("|") + "/" + btns.map(b => b.textContent).join("|");
   if (fv[v.id]) { const was = fv[v.id].v.state; fv[v.id].v = v; if (was !== v.state) loadFiles(fv[v.id], false, true); }
@@ -1066,8 +1066,8 @@ function drawFiles(f, note) {
   f.box.querySelectorAll(".filters button").forEach(b => {
     b.setAttribute("aria-pressed", b.dataset.f === f.filter);
     b.querySelector(".n").textContent = f.counts && f.counts[b.dataset.f] != null ? "(" + f.counts[b.dataset.f] + ")" : "";
-    // "Not verified" only appears when some file was copied but never read back.
-    if (b.dataset.f === "unverified") b.hidden = !(f.counts && f.counts.unverified) && f.filter !== "unverified";
+    // A filter with nothing in it is hidden (All always shows; so does the chosen one).
+    if (b.dataset.f !== "all") b.hidden = !(f.counts && f.counts[b.dataset.f]) && f.filter !== b.dataset.f;
   });
   f.box.querySelector(".frows").replaceChildren(...f.rows.map(r => {
     const row = el("div", "frow"), t = el("div", "t");

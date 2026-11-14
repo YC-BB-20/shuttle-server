@@ -209,3 +209,33 @@ func TestCopyChecksAndSourceOnly(t *testing.T) {
 		t.Fatalf("after both: %+v", k)
 	}
 }
+
+// v0.2.28: two copies from different sources into one folder; a Verify asked
+// from one copy's row reads only that copy and its own source.
+func TestVerifyFromOneCopyOfSeveral(t *testing.T) {
+	root := t.TempDir()
+	a, b, dst := filepath.Join(root, "a"), filepath.Join(root, "b"), filepath.Join(root, "dst")
+	fa := makeTree(t, a, 1<<20)
+	os.MkdirAll(filepath.Join(b, "other"), 0o755)
+	os.WriteFile(filepath.Join(b, "other", "x.mov"), []byte("another source"), 0o644)
+	m := newManager(t, filepath.Join(root, "state"))
+	startRun(t, m)
+	ca, _ := m.Add(Spec{Source: a, Dest: dst, Check: "none", Hash: HashCheckLater})
+	waitState(t, m, ca.st.ID, "finished")
+	cb, _ := m.Add(Spec{Source: b, Dest: dst, Check: "none", Hash: HashCheckLater})
+	waitState(t, m, cb.st.ID, "finished")
+	if _, err := m.Add(Spec{Kind: KindVerify, Source: dst, S2: S2After}); err == nil || !strings.Contains(err.Error(), "different sources") {
+		t.Fatalf("whole folder: want refusal, got %v", err)
+	}
+	vj, err := m.Add(Spec{Kind: KindVerify, Source: dst, S2: S2After, From: []string{ca.st.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vj.st.Spec.Source != a || len(vj.st.Spec.From) != 1 {
+		t.Fatalf("spec %+v", vj.st.Spec)
+	}
+	v := waitState(t, m, vj.st.ID, "finished")
+	if v.Files != len(fa) || v.Strong != len(fa) || v.Failed != 0 {
+		t.Fatalf("%+v", v)
+	}
+}

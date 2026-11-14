@@ -58,6 +58,7 @@ type View struct {
 	Space      *SpaceShort `json:"space,omitempty"`       // paused because it may not fit: the question for the owner
 	Error      string      `json:"error,omitempty"`       // a Verify job stopped on its own: a folder is missing
 	Checks     *Checks     `json:"checks,omitempty"`      // a finished copy: what has been read back since
+	From       []string    `json:"from,omitempty"`        // a Verify job: the copies it compares with
 }
 
 type rateMemo struct {
@@ -244,7 +245,7 @@ func baseView(j *Job) (View, state, live) {
 		Verified: c.Verified, Identical: c.Identical, Failed: c.Failed, Strong: c.Strong, S2Warn: c.S2Warn, Copied: c.Copied, Hashed: c.Hashed,
 		Check: st.Spec.Check, VerifyNext: st.Spec.Verify, VerifyJob: st.VerifyJob, After: st.After,
 		Proven: c.BytesProven, SameVolume: st.SameVolume, Scanned: l.scanned, ScannedB: l.scannedBytes,
-		Progress: progress(st, c, l), Space: st.SpaceAsk, Error: st.Error}
+		Progress: progress(st, c, l), Space: st.SpaceAsk, Error: st.Error, From: st.Spec.From}
 	if st.Phase == "done" && st.Choice == "stopped" {
 		v.Progress = 0 // a stopped copy shows what is proven, not a full bar
 		if st.Bytes > 0 {

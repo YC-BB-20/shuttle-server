@@ -58,6 +58,9 @@ func (m *Manager) addVerify(s Spec) (*Job, error) {
 		from = append(from, st.ID)
 	}
 	m.mu.Unlock()
+	if len(s.From) > 0 { // asked from a row: only the copies that row stands for (v0.2.28)
+		from = slices.DeleteFunc(from, func(id string) bool { return !slices.Contains(s.From, id) })
+	}
 	if len(from) == 0 {
 		if running {
 			return nil, errors.New("the copy to this place has not finished yet; verify it once it has")
