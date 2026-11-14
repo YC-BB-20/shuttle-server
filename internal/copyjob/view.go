@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -56,6 +57,7 @@ type View struct {
 	ETA        int64       `json:"eta_seconds,omitempty"` // time left, when it can be estimated
 	Space      *SpaceShort `json:"space,omitempty"`       // paused because it may not fit: the question for the owner
 	Error      string      `json:"error,omitempty"`       // a Verify job stopped on its own: a folder is missing
+	Checks     *Checks     `json:"checks,omitempty"`      // a finished copy: what has been read back since
 }
 
 type rateMemo struct {
@@ -87,6 +89,16 @@ func progress(st state, c counts, l live) float64 {
 	size, done := float64(l.size), float64(l.done)
 	if st.Spec.isVerify() {
 		f := min(1, (float64(c.BytesProven+c.BytesFailed)+done)/float64(st.Bytes))
+		if st.Spec.S2 == S2Only && st.Spec.readsSource() {
+			if st.Phase != "source" {
+				return 0
+			}
+			part := 0.0
+			if size > 0 {
+				part = done / size
+			}
+			return min(1, (float64(l.s2done)+part)/float64(max(1, l.s2total)))
+		}
 		if st.Spec.S2 != S2After || !st.Spec.readsSource() {
 			return f
 		}
@@ -213,6 +225,7 @@ func (m *Manager) Views() []View {
 			if finished++; finished > 20 {
 				continue
 			}
+			withChecks(jobs, j, &v)
 		}
 		out = append(out, v)
 	}
@@ -247,6 +260,62 @@ func baseView(j *Job) (View, state, live) {
 	return v, st, l
 }
 
+// Checks says what has been read back for a finished copy, by the copy
+// itself or by Verify jobs over it since (v0.2.27): files whose copy was
+// read back and matched (Dest) and files whose source was read again and
+// matched (Source), each with when, out of Of files.
+type Checks struct {
+	Of       int       `json:"of"`
+	Dest     int       `json:"dest"`
+	DestAt   time.Time `json:"dest_at,omitzero"`
+	Source   int       `json:"source"`
+	SourceAt time.Time `json:"source_at,omitzero"`
+	Queued   bool      `json:"queued,omitempty"` // a Verify of this copy has not finished yet
+}
+
+// checksOf builds a copy's Checks from its own counts and from every Verify
+// job that compared with its stored hashes. Counts are the best single run,
+// never added up, and never more than the copy's files.
+func checksOf(jobs []*Job, st state, c counts) *Checks {
+	k := &Checks{Of: st.Files}
+	if n := c.Verified + c.Identical; n > 0 {
+		k.Dest, k.DestAt = n, st.Finished
+	}
+	if c.Strong > 0 {
+		k.Source, k.SourceAt = c.Strong, st.Finished
+	}
+	for _, o := range jobs {
+		o.mu.Lock()
+		ost, oc := o.st, o.c
+		o.mu.Unlock()
+		if !ost.Spec.isVerify() || !slices.Contains(ost.Spec.From, st.ID) || ost.Choice == "stopped" && ost.Phase == "done" && oc.Verified+oc.Strong == 0 {
+			continue
+		}
+		if ost.Phase != "done" {
+			k.Queued = true
+			continue
+		}
+		if n := min(oc.Verified, k.Of); n > k.Dest || n == k.Dest && n > 0 && ost.Finished.After(k.DestAt) {
+			k.Dest, k.DestAt = n, ost.Finished
+		}
+		if n := min(oc.Strong, k.Of); n > k.Source || n == k.Source && n > 0 && ost.Finished.After(k.SourceAt) {
+			k.Source, k.SourceAt = n, ost.Finished
+		}
+	}
+	return k
+}
+
+// withChecks adds Checks to the view of a finished or stopped copy.
+func withChecks(jobs []*Job, j *Job, v *View) {
+	if v.Kind == KindVerify || (v.State != "finished" && v.State != "stopped") {
+		return
+	}
+	j.mu.Lock()
+	st, c := j.st, j.c
+	j.mu.Unlock()
+	v.Checks = checksOf(jobs, st, c)
+}
+
 // History lists finished and stopped copies, newest first, skipping the
 // newest skip of them.
 func (m *Manager) History(skip, limit int) []View {
@@ -259,6 +328,7 @@ func (m *Manager) History(skip, limit int) []View {
 		if v.State == "" {
 			continue
 		}
+		withChecks(jobs, jobs[i], &v)
 		if skip > 0 {
 			skip--
 			continue
@@ -334,6 +404,8 @@ func rowStatus(st byte) string {
 		return "copied"
 	case stHashed:
 		return "hashed"
+	case stSrcOK:
+		return "source"
 	}
 	return "waiting"
 }
@@ -342,8 +414,8 @@ func filterOK(filter, status string) bool {
 	switch filter {
 	case "todo":
 		return status == "waiting" || status == "working" || status == "copied"
-	case "done": // verified: the copy was read back
-		return status == "proven" || status == "strong"
+	case "done": // verified: the copy was read back (or, in a source-only Verify, the source matched)
+		return status == "proven" || status == "strong" || status == "source"
 	case "unverified": // copied and hashed, never read back
 		return status == "hashed"
 	case "problems":
@@ -567,6 +639,8 @@ func (m *Manager) FileInfo(id string, i int) (FileInfo, error) {
 			fi.Proof = "The copy matches the hash stored when it was copied; the source has changed since"
 		case "proven":
 			fi.Proof = "Verified again: the copy read in full matches the hash stored when it was copied"
+		case "source":
+			fi.Proof = "The source read again matches the hash stored when it was copied; this check did not read the copy"
 		case "failed":
 			fi.Proof = "Does not match: see the problem below"
 		default:

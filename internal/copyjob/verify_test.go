@@ -163,3 +163,49 @@ func TestVerifyMissingFolderFails(t *testing.T) {
 		t.Fatalf("%+v", v)
 	}
 }
+
+// v0.2.27: a copy's Checks say what was read back since, and a source-only
+// Verify reads only the source.
+func TestCopyChecksAndSourceOnly(t *testing.T) {
+	root := t.TempDir()
+	src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
+	files := makeTree(t, src, 1<<20)
+	m := newManager(t, filepath.Join(root, "state"))
+	startRun(t, m)
+	c, err := m.Add(Spec{Source: src, Dest: dst, Check: "none", Hash: HashCheckLater})
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := waitState(t, m, c.st.ID, "finished")
+	checks := func() *Checks {
+		for _, x := range m.Views() {
+			if x.ID == c.st.ID {
+				return x.Checks
+			}
+		}
+		return nil
+	}
+	if k := checks(); k == nil || k.Of != v.Files || k.Dest != 0 || k.Source != 0 {
+		t.Fatalf("copy only: %+v", k)
+	}
+	so, err := m.Add(Spec{Kind: KindVerify, Source: dst, S2: S2Only})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sv := waitState(t, m, so.st.ID, "finished")
+	if sv.Strong != len(files) || sv.Verified != 0 || sv.Failed != 0 || sv.Progress != 1 {
+		t.Fatalf("source only: %+v", sv)
+	}
+	if k := checks(); k.Dest != 0 || k.Source != len(files) || k.SourceAt.IsZero() {
+		t.Fatalf("after source only: %+v", k)
+	}
+	fi, _ := m.FileInfo(so.st.ID, 0)
+	if fi.Status != "source" || fi.Hash.D1 != "" {
+		t.Fatalf("file info %+v", fi)
+	}
+	d, _ := m.Add(Spec{Kind: KindVerify, Source: dst})
+	waitState(t, m, d.st.ID, "finished")
+	if k := checks(); k.Dest != len(files) || k.Source != len(files) || k.Queued {
+		t.Fatalf("after both: %+v", k)
+	}
+}

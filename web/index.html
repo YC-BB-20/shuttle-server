@@ -57,6 +57,7 @@
   .card p { margin:2px 0; overflow-wrap:anywhere; }
   .bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin:6px 0 2px; }
   .bar > i { display:block; height:100%; background:var(--accent); width:0; }
+  .checks p { margin:6px 0; overflow-wrap:anywhere; } .checks .ok { color:var(--ok); } .checks button { margin-left:6px; padding:4px 10px; font-size:14px; }
   .warn { color:var(--warn); } .bad { color:var(--bad); } .mute { color:var(--mute); font-size:14px; }
   .path { font-family: ui-monospace, Menlo, monospace; font-size:13px; overflow-wrap:anywhere; }
   dialog { border:1px solid var(--line); border-radius:14px; background:var(--card); color:var(--fg); padding:0;
@@ -324,11 +325,12 @@
   <div class="foot"><button type="button" id="spaceCancel">Cancel job</button><button type="button" class="primary" id="spaceGo">Continue anyway</button></div>
 </dialog>
 <dialog id="verDlg">
-  <div class="head"><h2 id="verTitle">Verify copy</h2></div>
+  <div class="head"><h2 id="verTitle">Verify files</h2></div>
   <div class="body">
     <p class="mute" id="verWhat"></p>
     <label class="opt"><input type="radio" name="verHow" id="verDest" checked><span>Destinations only: read every copy back and compare it with the hash stored when it was copied</span></label>
     <label class="opt"><input type="radio" name="verHow" id="verSrc"><span>Destinations, then the source read again after the whole job: catches a bad read from the card or cable (the source disk must be connected)</span></label>
+    <label class="opt"><input type="radio" name="verHow" id="verOnly"><span>Source read again only: compared with the hash stored when it was copied; the copies are not read</span></label>
     <label class="opt"><input type="checkbox" id="verPaused"><span>Add paused, to start when you choose</span></label>
     <p class="mute">Nothing is changed on either side. If a folder is missing, the check stops and says which.</p>
     <p class="bad" id="verErr"></p>
@@ -551,20 +553,35 @@ function verify(path, opts) {
 }
 // The Verify pop-up of a row: destinations only, or then the source read
 // again after the whole job; optionally added paused.
+// What has been read back for a finished copy (v0.2.27): the destination,
+// and the source a second time, each with a button to do it now when missing.
+function drawChecks(box, v) {
+  const k = v.checks;
+  const key = k ? JSON.stringify(k) : "";
+  if (box.dataset.k === key) return;
+  box.dataset.k = key; box.hidden = !k;
+  if (!k) { box.replaceChildren(); return; }
+  const all = n => n >= k.of ? (k.of === 1 ? "the file matches" : "all " + k.of + " files match") : n + " of " + k.of + " files match";
+  const row = (done, at, okText, noText, btnText, s2) => {
+    const p = el("p", done >= k.of && k.of > 0 ? "ok" : "warn");
+    p.append((done >= k.of && k.of > 0 ? "✓ " : "✗ ") + (done ? okText + ": " + all(done) + (at ? " · " + when(at) : "") : noText));
+    if (done < k.of && !k.queued) {
+      const b = el("button", "", btnText); b.type = "button";
+      b.onclick = () => verify(v.dest, { s2 }).catch(e => alert(e.message)); p.append(" ", b);
+    }
+    return p;
+  };
+  box.replaceChildren(
+    row(k.dest, k.dest_at, "Destination read back", "Destination not read back yet", "Read destination now", ""),
+    row(k.source, k.source_at, "Source read a second time", "Source not read a second time yet", "Read source again now", "only"),
+    ...(k.queued ? [el("p", "mute", "A check of this copy is in the queue.")] : []));
+}
 function verifyBox(path, title) {
   $("verTitle").textContent = title; $("verWhat").textContent = "Checks " + path;
   $("verErr").textContent = ""; $("verDest").checked = true; $("verPaused").checked = false;
-  $("verGo").onclick = () => verify(path, { s2: $("verSrc").checked ? "after" : "", paused: $("verPaused").checked })
+  $("verGo").onclick = () => verify(path, { s2: $("verSrc").checked ? "after" : $("verOnly").checked ? "only" : "", paused: $("verPaused").checked })
     .then(() => $("verDlg").close()).catch(e => $("verErr").textContent = e.message);
   $("verDlg").showModal();
-}
-// A copy counts as verified once it, or a Verify job over its destination,
-// has read a copy back with a match.
-function everVerified(v) {
-  if (v.verified + v.identical > 0) return true;
-  const all = ((latest && latest.jobs) || []).concat(olderViews);
-  return all.some(o => o.kind === "verify" && o.state === "finished" && !o.error && o.verified > 0 &&
-    (o.dest === v.dest || o.dest.startsWith(v.dest + "/") || v.dest.startsWith(o.dest + "/")));
 }
 function openPicker() {
   const start = $(pickFor).value || "";
@@ -671,7 +688,7 @@ function card(v) {
     c.innerHTML = '<div class="r"><span class="ico"></span><div class="m"><div class="route"><span class="s"></span><span class="arr">→</span><span class="d"></span></div>' +
       '<div class="bar"><i></i></div><div class="sub"></div></div><div class="acts"></div></div>' +
       '<div class="detail"><p class="path from"></p><p class="path to"></p><p class="line"></p><div class="bar file"><i></i></div><p class="cspeed" hidden></p><p class="speed mute"></p><p class="fcounts" hidden></p>' +
-      '<p class="counts mute"></p><p class="warn same" hidden>Source and destination are on the same disk: this copy does not protect against that disk failing.</p><div class="btns"></div></div>';
+      '<p class="counts mute"></p><p class="warn same" hidden>Source and destination are on the same disk: this copy does not protect against that disk failing.</p><div class="checks" hidden></div><div class="btns"></div></div>';
     cards[v.id] = c;
     // Tapping a copy opens its details and files; tapping it again closes them.
     c.onclick = e => {
@@ -704,7 +721,7 @@ function card(v) {
   mb.style.background = v.missing ? "var(--bad)" : v.state === "running" ? "var(--" + kind + ")" :
     v.state === "finished" ? (problems ? "var(--bad)" : "var(--ok)") : "var(--mute)";
   // One status line.
-  const proven = v.verified + v.identical, only = !ver && v.check === "none", again = ver && (v.s2 === "now" || v.s2 === "after") && v.source !== v.dest;
+  const proven = v.verified + v.identical, only = !ver && v.check === "none", again = ver && (v.s2 === "now" || v.s2 === "after") && v.source !== v.dest, srcOnly = ver && v.s2 === "only" && v.source !== v.dest;
   let sub = "", subCls = "sub";
   if (v.state === "waiting") { sub = v.reason; subCls += v.missing ? " bad" : " warn"; }
   else if (v.state === "paused" && v.space) { sub = "Paused · may not fit on " + v.space.disk + " — your answer is needed"; subCls += " warn"; }
@@ -716,7 +733,7 @@ function card(v) {
   else if (v.state === "finished" && v.error) { sub = (v.finished ? when(v.finished) + " · " : "") + "Failed · " + v.error; subCls += " bad"; }
   else if (v.state === "finished") { sub = (v.finished ? when(v.finished) + " · " : "") + took(v.created, v.finished) + " · " + size(v.bytes) +
       (secs(v.created, v.finished) >= 1 && v.bytes ? " · " + rate(v.bytes / secs(v.created, v.finished)) + " average" : "") +
-      (ver ? " · " + (v.failed ? v.verified + " match, " + v.failed + " do not" : v.verified + (v.verified === 1 ? " file matches" : " files match")) :
+      (ver ? " · " + (srcOnly ? "source: " : "") + (v.failed ? (srcOnly ? v.strong : v.verified) + " match, " + v.failed + " do not" : (srcOnly ? v.strong : v.verified) + ((srcOnly ? v.strong : v.verified) === 1 ? " file matches" : " files match")) :
       problems ? " · " + (v.failed ? v.failed + " failed" : "") + (v.failed && v.s2_warnings ? ", " : "") + (v.s2_warnings ? v.s2_warnings + " source warnings" : "") :
       only ? " · " + (v.hashed + v.identical) + " files copied, not verified" : " · " + proven + " files verified");
     if (problems) subCls += " warn"; }
@@ -726,6 +743,8 @@ function card(v) {
   let line = "";
   if (v.state === "running" && !scanning) line = "Now: " + v.file + " — " + v.stage + (v.file_size ? ", " + size(v.file_done) + " of " + size(v.file_size) : "");
   else if (v.state === "finished" && v.error) line = v.error + (v.verified ? " " + v.verified + " files were checked and match before it stopped." : "");
+  else if (v.state === "finished" && srcOnly) line = v.failed ? "Some source files do not match the hashes stored when they were copied — see the files marked Error. Nothing was changed." :
+      "Every source file read again matches the hash stored when it was copied. The copies were not read in this check.";
   else if (v.state === "finished" && ver) line = v.failed ? "Some files do not match the stored hashes — see the files marked Error. Nothing was changed." :
       "Every file read in full matches the hash stored when it was copied" + (again ? ", and the source read again matches too." : ".") + (v.skipped ? " " + v.skipped + " files had no stored hash (never verified by the copy) and were not checked." : "");
   else if (v.state === "finished" && only) line = problems ? "Finished with problems — see the files marked Error." : "Finished. Every file is copied and hashed; no copy was read back." +
@@ -734,7 +753,8 @@ function card(v) {
   else if (v.state === "paused" && v.space) line = v.space.message + " Continue anyway, or cancel the job.";
   else if (v.state === "paused") line = "Paused by you. Resume continues exactly where it stopped.";
   else if (!old && v.state !== "running") line = "Added " + when(v.created);
-  if (ver && !old) line += (line ? " · " : "") + "Read in full and compared with the hashes stored when it was copied" + (again ? (v.s2 === "after" ? ", then the source is read again once every copy is checked" : ", with the source read again beside it") : "") + ". Nothing is changed.";
+  if (srcOnly && !old) line += (line ? " · " : "") + "The source read in full and compared with the hashes stored when it was copied; the copies are not read. Nothing is changed.";
+  else if (ver && !old) line += (line ? " · " : "") + "Read in full and compared with the hashes stored when it was copied" + (again ? (v.s2 === "after" ? ", then the source is read again once every copy is checked" : ", with the source read again beside it") : "") + ". Nothing is changed.";
   q(".line").textContent = line;
   q(".bar.file").hidden = v.state !== "running" || scanning;
   q(".bar.file > i").style.width = v.state === "running" ? pct(v.file_done, v.file_size) + "%" : "0%";
@@ -745,7 +765,7 @@ function card(v) {
     [ver && rate(v.rate) && "Speed " + rate(v.rate), rate(v.source_rate) && "source disk reading " + rate(v.source_rate), rate(v.dest_rate) && "destination disk " + rate(v.dest_rate)].filter(Boolean).join(" · ") || (ver ? "Measuring speed…" : "");
   q(".fcounts").hidden = ver || old || scanning;
   if (!ver && !old && !scanning) q(".fcounts").textContent = only ? "Copied " + (v.hashed + v.identical + v.failed) + " of " + v.files + " · not read back" : fileCounts(v);
-  q(".counts").textContent = ver ? "Matching " + v.verified + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
+  q(".counts").textContent = srcOnly ? "Source matching " + v.strong + " of " + v.files + " files" + (v.failed ? " · do not match: " + v.failed : "") + (v.skipped ? " · no stored hash: " + v.skipped : "") : ver ? "Matching " + v.verified + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
     (again ? " · source read again and matching: " + v.strong : "") + (v.failed ? " · do not match: " + v.failed : "") + (v.skipped ? " · no stored hash: " + v.skipped : "") : only ? "Copied " + (v.hashed + v.identical) + " of " + v.files + " files, not verified" + (v.identical ? " · " + v.identical + " were already there (compared)" : "") +
     (v.failed ? " · failed: " + v.failed : "") + (v.skipped ? " · not copied (links etc.): " + v.skipped : "") : "Verified " + proven + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
     (v.copied ? " · copied, check to come: " + v.copied : "") +
@@ -765,8 +785,8 @@ function card(v) {
   }
   if (!old) btn(acts, "✕", () => stopJob(v), "", "Stop…");
   if (problems) btn(btns, "Show problems", () => showProblems(v.id));
-  if (old && !ver) { const t = everVerified(v) ? "Verify again" : "Verify copy"; btn(btns, t, () => verifyBox(v.dest, t)); }
-  if (old && ver) btn(btns, "Verify again", () => verifyBox(place, "Verify again"));
+  if (old) btn(btns, "Verify files", () => verifyBox(ver ? place : v.dest, "Verify files"));
+  drawChecks(q(".checks"), v);
   const key = acts.map(b => b.title).join("|") + "/" + btns.map(b => b.textContent).join("|");
   if (fv[v.id]) { const was = fv[v.id].v.state; fv[v.id].v = v; if (was !== v.state) loadFiles(fv[v.id], false, true); }
   if (c.dataset.btns !== key) { c.dataset.btns = key; q(".acts").replaceChildren(...acts); q(".detail .btns").replaceChildren(...btns); }
@@ -1007,7 +1027,7 @@ $("moreHist").onclick = () => {
 // Files of one copy: filters, paged rows, the file being worked on with its
 // own bar. Refreshed every 2 s while the copy runs and the page is visible.
 const fv = {};
-const fileLabel = { waiting: "Waiting", proven: "Verified", strong: "Verified · read twice", failed: "Error", warning: "Source warning", copied: "Copied · check to come", hashed: "Copied · not verified" };
+const fileLabel = { waiting: "Waiting", proven: "Verified", strong: "Verified · read twice", failed: "Error", warning: "Source warning", copied: "Copied · check to come", hashed: "Copied · not verified", source: "Source matches" };
 // A file being worked on: "Copying" (purple) while it is written, "Verifying"
 // (pink) while the destination or the source is read back.
 function workChip(r) {
@@ -1015,7 +1035,7 @@ function workChip(r) {
   const checking = /^Reading back|^Checking/.test(r.stage || "");
   return el("span", "chip " + (checking ? "verifying" : "copying"), checking ? "Verifying" : /^Reading the source/.test(r.stage || "") ? "Reading" : "Copying");
 }
-const fileChip = { proven: "ok", strong: "ok", failed: "bad", warning: "waiting", working: "copying", copied: "copying", hashed: "waiting" };
+const fileChip = { proven: "ok", strong: "ok", failed: "bad", warning: "waiting", working: "copying", copied: "copying", hashed: "waiting", source: "ok" };
 function toggleFiles(v, c) {
   if (fv[v.id]) { fv[v.id].box.remove(); delete fv[v.id]; return; }
   const box = el("div", "files");

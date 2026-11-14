@@ -72,7 +72,7 @@ func (m *Manager) addVerify(s Spec) (*Job, error) {
 		return nil, errors.New("verifying on a network server is not supported yet")
 	}
 	src, srcVol := root, v.ID
-	if s.S2 == S2After { // the source read again after every copy is checked
+	if s.S2 == S2After || s.S2 == S2Only { // the source read again, after the copies or alone
 		if src, err = m.sourceOf(root, from); err != nil {
 			return nil, err
 		}
@@ -94,7 +94,7 @@ func (m *Manager) addVerify(s Spec) (*Job, error) {
 	}
 	s2 := ""
 	if src != root {
-		s2 = S2After
+		s2 = s.S2
 	}
 	cs := m.Settings()
 	now := time.Now()
@@ -175,10 +175,14 @@ func (m *Manager) queueVerify(cj *Job) {
 // source is read again in a second pass over the whole job.
 const S2After = "after"
 
+// S2Only (Verify jobs, v0.2.27): only the source is read again and compared
+// with the hash stored when it was copied; the copies are not read.
+const S2Only = "only"
+
 // readsSource: this Verify job reads the source again (S2), beside the copy
 // ("now", a copy's own Verify item) or after all of it (S2After).
 func (s Spec) readsSource() bool {
-	return s.isVerify() && (s.S2 == "now" || s.S2 == S2After) && s.Source != s.Dest
+	return s.isVerify() && (s.S2 == "now" || s.S2 == S2After || s.S2 == S2Only) && s.Source != s.Dest
 }
 
 // sourceOf finds the source folder that matches place for the copies that
@@ -476,6 +480,12 @@ func (j *Job) runVerify(ctx context.Context, e env, accepting func() bool) error
 		return fmt.Errorf("journal: %w", err)
 	}
 	defer jr.Close()
+	if j.st.Phase == "verify" && j.st.Spec.S2 == S2Only && j.st.Spec.readsSource() {
+		j.mu.Lock()
+		j.st.Phase = "source" // nothing to read at the destination
+		j.mu.Unlock()
+		j.save()
+	}
 	if j.st.Phase == "verify" {
 		if err := j.verifyPhase(ctx, e, jr, accepting); err != nil {
 			return err
@@ -502,14 +512,19 @@ func (j *Job) runVerify(ctx context.Context, e env, accepting func() bool) error
 }
 
 // verifySourcePhase reads the source again for every file whose copy
-// matched, after the whole job's copies were read back (S2After). A file
-// already settled (source read, failed, warning) is skipped, so a resumed
-// job carries on where it stopped.
+// matched, after the whole job's copies were read back (S2After), or for
+// every file when only the source is read (S2Only). A file already settled
+// (source read, failed, warning) is skipped, so a resumed job carries on
+// where it stopped.
 func (j *Job) verifySourcePhase(ctx context.Context, e env, jr *Journal, accepting func() bool) error {
+	want := stVerified
+	if j.st.Spec.S2 == S2Only {
+		want = stPending
+	}
 	j.mu.Lock()
 	todo := 0
 	for _, st := range j.status {
-		if st == stVerified {
+		if st == want {
 			todo++
 		}
 	}
@@ -523,9 +538,9 @@ func (j *Job) verifySourcePhase(ctx context.Context, e env, jr *Journal, accepti
 	for it.Next() {
 		en := it.E
 		j.mu.Lock()
-		want := en.I < len(j.status) && j.status[en.I] == stVerified
+		ok := en.I < len(j.status) && j.status[en.I] == want
 		j.mu.Unlock()
-		if !want {
+		if !ok {
 			continue
 		}
 		for !accepting() {
@@ -549,6 +564,12 @@ func (j *Job) verifySourcePhase(ctx context.Context, e env, jr *Journal, accepti
 		out := s2Verdict(en, sp, res)
 		if out.St == "failed" {
 			out.C, out.D1 = en.H, en.H
+		}
+		if want == stPending { // source only: the copy was not read
+			out.D1, out.C = "", en.H
+			if out.St == "s2ok" {
+				out.St = "srcok"
+			}
 		}
 		out.T, out.Ms = time.Now().Unix(), time.Since(start).Milliseconds()
 		jr.Append(out)

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.27 — 13 November 2026
+
+- **The row button is now "Verify files"**, on copies and on Verify items alike. Its pop-up adds a third choice: **Source read again only**, which compares the source with the hashes stored when it was copied, without reading the copies.
+- **A finished copy says what has been checked.** Its details show two lines: whether the destination was read back, and whether the source was read a second time, each with how many files match and when — counting the copy itself and every Verify run over it since. A check that is missing or incomplete has a button beside it to do it now (**Read destination now**, **Read source again now**). While a check of the copy is in the queue, the buttons wait.
+
 ## 0.2.26 — 13 November 2026
 
 - **"Verified" in a file list counts only files whose copy was read back.** A copy-only job used to show every file under Verified while each row said "Copied · not verified". Those files now sit under a new **Not verified** filter, shown only when there are some.

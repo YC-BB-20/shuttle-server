@@ -32,6 +32,7 @@ const (
 	stS2Warn   byte = 4 // S2 differed: source changed or unstable
 	stCopied   byte = 5 // copied and hashed (C), still under its temporary name, check pass to come
 	stHashed   byte = 6 // copy only: copied, hashed (C) and given its real name, never read back
+	stSrcOK    byte = 7 // a source-only Verify (S2Only): the source read again matches C; the copy was not read
 )
 
 // Spec is what the owner asked for.
@@ -263,6 +264,9 @@ func (j *Job) apply(r Rec) {
 		}
 	case "s2ok":
 		j.status[r.I] = stStrong
+		j.c.Strong++
+	case "srcok": // a source-only Verify job (S2Only), v0.2.27
+		j.status[r.I] = stSrcOK
 		j.c.Strong++
 	case "s2changed", "s2unstable":
 		j.status[r.I] = stS2Warn
