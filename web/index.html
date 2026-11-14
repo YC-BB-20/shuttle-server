@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Shuttle Server</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a64d8'/%3E%3Cpath d='M22 46V18m0 0l-8 8m8-8l8 8M42 18v28m0 0l-8-8m8 8l8-8' stroke='%23fff' stroke-width='5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%237a3cc8'/%3E%3Cpath d='M22 46V18m0 0l-8 8m8-8l8 8M42 18v28m0 0l-8-8m8 8l8-8' stroke='%23fff' stroke-width='5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
   :root { color-scheme: light dark; --bg:#f5f5f7; --card:#fff; --fg:#1d1d1f; --mute:#6e6e73; --line:#d2d2d7;
-          --ok:#1f8a3b; --warn:#b25e00; --bad:#c62828; --accent:#0a64d8; --copy:#8e44d6; --verify:#d63384; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#111; --card:#1c1c1e; --fg:#f5f5f7; --mute:#a1a1a6; --line:#38383a; --copy:#b07ae8; --verify:#f06aa8; } }
+          --ok:#1f8a3b; --warn:#b25e00; --bad:#c62828; --accent:#7a3cc8; --copy:#8e44d6; --verify:#d63384; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111; --card:#1c1c1e; --fg:#f5f5f7; --mute:#a1a1a6; --line:#38383a; --copy:#b07ae8; --verify:#f06aa8; --accent:#8a4fe0; } }
   * { box-sizing: border-box; }
   html, body { max-width:100%; overflow-x:hidden; overflow-x:clip; overscroll-behavior-x:none; margin:0; }
   body { font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--fg);
@@ -195,7 +195,7 @@
   .job.old { padding:8px 12px; }
   .filters button .n { opacity:.75; font-variant-numeric:tabular-nums; }
   .filters select { flex:none; font-size:14px; padding:3px 6px; }
-  .qf { margin-bottom:2px; } .qfinfo { font-size:13px; margin:0 0 6px; } .qfinfo:empty { display:none; }
+  .qf { margin-bottom:2px; } .qfinfo { font-size:13px; margin:12px 0 8px; } .qfinfo:empty { display:none; }
   .resources { margin-top:18px; }
 </style>
 </head>
@@ -218,7 +218,7 @@
       <dl class="mlines" id="monLines"></dl>
     </div>
   </div>
-  <div class="jobs-head"><h2>Queue</h2><div class="row"><button type="button" id="verBtn" title="Read a copied folder or file again and compare it with the hashes stored when it was copied">Verify…</button><button class="primary" type="button" id="newBtn">New copy</button></div></div>
+  <div class="jobs-head"><h2>Queue</h2><div class="row"><button class="primary" type="button" id="newBtn">New copy</button></div></div>
   <div class="filters qf" id="qf" title="Click to show or hide each kind of entry (running and waiting items are always shown)">
     <button type="button" data-k="done">Completed <span class="n"></span></button><button type="button" data-k="skipped" title="Copies where every file was already at the destination">Skipped <span class="n"></span></button><button type="button" data-k="stopped">Stopped <span class="n"></span></button><button type="button" data-k="failed" title="Finished with files that failed or need attention">Failed <span class="n"></span></button><button type="button" data-k="paused" title="Copies and verifies you paused">Paused <span class="n"></span></button>
     <button type="button" id="qfActive">Active only</button>
@@ -534,13 +534,6 @@ document.querySelectorAll("[data-pick]").forEach(b => b.onclick = () => {
   $("pickTitle").textContent = pickFor === "src" ? "Choose what to copy" : "Choose where to copy to";
   openPicker();
 });
-// Verify: pick a folder (Use this folder) or tap a file; it is read again in
-// full and compared with the hashes stored when Shuttle copied it.
-$("verBtn").onclick = () => {
-  pickFor = "ver"; $("pickTitle").textContent = "Choose what to verify"; chosen = new Set();
-  const last = ((latest && latest.jobs) || []).concat(olderViews).filter(v => v.kind !== "verify").reduce((a, v) => !a || v.created > a.created ? v : a, null);
-  browse(last ? last.dest : "", true); $("pickDlg").showModal();
-};
 function verify(path) {
   return post("/api/jobs", { kind: "verify", source: path });
 }

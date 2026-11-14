@@ -53,3 +53,18 @@ func TestPageSystemFilesSetting(t *testing.T) {
 		}
 	}
 }
+
+func TestPagePurpleAccentNoVerifyButton(t *testing.T) {
+	s := string(IndexHTML)
+	if strings.Contains(s, "0a64d8") {
+		t.Error("page still uses the old blue accent")
+	}
+	if strings.Contains(s, `id="verBtn"`) {
+		t.Error("page still has the top Verify… button")
+	}
+	for _, want := range []string{`--accent:#7a3cc8;`, `--accent:#8a4fe0;`, `.qfinfo { font-size:13px; margin:12px 0 8px; }`, `"Verify again"`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}
