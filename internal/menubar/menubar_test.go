@@ -89,7 +89,10 @@ func alive(pid int) bool {
 	}
 	b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
 	if err != nil {
-		return true // no /proc (macOS): trust kill
+		// No /proc at all (macOS): trust kill. With /proc, a missing entry
+		// means the process exited between the two checks.
+		_, perr := os.Stat("/proc/self")
+		return perr != nil
 	}
 	f := strings.Fields(string(b))
 	return len(f) > 2 && f[2] != "Z"
