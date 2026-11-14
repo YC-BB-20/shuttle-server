@@ -66,6 +66,9 @@
   dialog[open] { display:flex; flex-direction:column; overflow:hidden; }
   dialog .head, dialog .foot { flex:none; }
   dialog::backdrop { background:rgba(0,0,0,.4); }
+  /* File info: as wide as the app itself (main is 960px), and taller, so long names and paths wrap less. */
+  #infoDlg { width:min(960px, calc(100vw - 24px)); max-height:min(90vh, 1000px); max-height:min(90dvh, 1000px); }
+  #infoDlg .head h2 { min-width:0; overflow-wrap:anywhere; }
   dialog .head { display:flex; align-items:center; padding:12px 16px; border-bottom:1px solid var(--line); }
   dialog .head h2 { flex:1; margin:0; font-size:17px; }
   dialog .body { padding:12px 16px; overflow:auto; flex:1 1 auto; min-height:0; }
@@ -318,7 +321,7 @@
     <div id="ckMore">
       <label>When to check</label>
       <div id="whenBox">
-        <label class="opt"><input type="radio" name="when" id="whenFile" checked><span>As each file is copied</span></label>
+        <label class="opt"><input type="radio" name="when" id="whenFile" checked><span>After each file is copied</span></label>
         <label class="opt"><input type="radio" name="when" id="whenEnd"><span>After all files are copied</span></label>
       </div>
       <label class="opt"><input type="checkbox" id="ckSep"><span>Check in a separate queue item, after the copy</span></label>
@@ -917,7 +920,7 @@ function card(v) {
   else if (v.state === "paused" && v.space) { sub = "Paused · may not fit on " + v.space.disk + " — your answer is needed"; subCls += " warn"; }
   else if (v.state === "running" && scanning && ver) sub = "Reading the stored hashes — " + v.scanned + " files so far";
   else if (v.state === "running" && scanning) sub = "Scanning the source — " + v.scanned + " files, " + size(v.scanned_bytes) + " so far";
-  else if (v.state === "running") sub = [ver && verNow(v), pc, size((v.progress || 0) * v.bytes) + " of " + size(v.bytes), v.eta_seconds ? left(v.eta_seconds) : "working out the time left", ver ? rate(v.rate) : rate(v.copy_rate) && "copy speed " + rate(v.copy_rate)].filter(Boolean).join(" · ");
+  else if (v.state === "running") sub = [ver && verNow(v), pc, size((v.progress || 0) * v.bytes) + " of " + size(v.bytes), v.eta_seconds ? left(v.eta_seconds) : "working out the time left", ver ? rate(v.rate) : rate(v.copy_rate) && "average copy speed " + rate(v.copy_rate)].filter(Boolean).join(" · ");
   else if (v.state === "paused") sub = v.after ? "Paused · press ▶ and it starts when the copy above has finished" : pc + " · Paused by you";
   else if (v.state === "queued") sub = v.after ? "Starts when the copy above has finished" : "Waiting for the job before it to finish";
   else if (v.state === "finished" && v.error) { sub = (v.finished ? when(v.finished) + " · " : "") + "Failed · " + v.error; subCls += " bad"; }
@@ -925,7 +928,7 @@ function card(v) {
       (secs(v.created, v.finished) >= 1 && v.bytes ? " · " + rate(v.bytes / secs(v.created, v.finished)) + " average" : "") +
       (ver ? " · " + (srcOnly ? "source: " : "") + (v.failed ? (srcOnly ? v.strong : v.verified) + " match, " + v.failed + " do not" : (srcOnly ? v.strong : v.verified) + ((srcOnly ? v.strong : v.verified) === 1 ? " file matches" : " files match")) :
       problems ? " · " + (v.failed ? v.failed + " failed" : "") + (v.failed && v.s2_warnings ? ", " : "") + (v.s2_warnings ? v.s2_warnings + " source warnings" : "") :
-      v.checks ? " · " + proofLine(v.checks) : only ? " · " + (v.hashed + v.identical) + " files copied, not verified" : " · " + proven + " files verified");
+      v.checks ? " · " + proofLine(v.checks) : only ? " · " + ((v.hashed || 0) + v.identical) + " files copied, not verified" : " · " + proven + " files verified");
     if (problems) subCls += " warn"; }
   else sub = (v.finished ? when(v.finished) + " · " : "") + "Stopped by you · " + proven + (ver ? " files checked and matching" : " files verified and kept");
   q(".sub").textContent = sub; q(".sub").className = subCls;
@@ -952,13 +955,13 @@ function card(v) {
   q(".bar.file > i").style.width = v.state === "running" ? pct(v.file_done, v.file_size) + "%" : "0%";
   const live = v.state === "running" && !scanning;
   q(".cspeed").hidden = !live || ver;
-  if (live && !ver) { q(".cspeed").replaceChildren(el("small", "", "Copy speed "), document.createTextNode(rate(v.copy_rate) || "measuring…")); }
+  if (live && !ver) { q(".cspeed").replaceChildren(el("small", "", "Average copy speed "), document.createTextNode(rate(v.copy_rate) || "measuring…")); }
   q(".speed").textContent = !live ? "" :
     [ver && rate(v.rate) && "Speed " + rate(v.rate), rate(v.source_rate) && "source disk reading " + rate(v.source_rate), rate(v.dest_rate) && "destination disk " + rate(v.dest_rate)].filter(Boolean).join(" · ") || (ver ? "Measuring speed…" : "");
   q(".fcounts").hidden = ver || old || scanning;
-  if (!ver && !old && !scanning) q(".fcounts").textContent = only ? "Copied " + (v.hashed + v.identical + v.failed) + " of " + v.files + " · not read back" : fileCounts(v);
+  if (!ver && !old && !scanning) q(".fcounts").textContent = only ? "Copied " + ((v.hashed || 0) + v.identical + v.failed) + " of " + v.files + " · not read back" : fileCounts(v);
   q(".counts").textContent = srcOnly ? "Source matching " + v.strong + " of " + v.files + " files" + (v.failed ? " · do not match: " + v.failed : "") + (v.skipped ? " · no stored hash: " + v.skipped : "") : ver ? "Matching " + v.verified + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
-    (again ? " · source read again and matching: " + v.strong : "") + (v.failed ? " · do not match: " + v.failed : "") + (v.skipped ? " · no stored hash: " + v.skipped : "") : only ? "Copied " + (v.hashed + v.identical) + " of " + v.files + " files" + (v.checks && v.checks.dest ? ", read back later: " + v.checks.dest : ", not verified") + (v.identical ? " · " + v.identical + " were already there (compared)" : "") +
+    (again ? " · source read again and matching: " + v.strong : "") + (v.failed ? " · do not match: " + v.failed : "") + (v.skipped ? " · no stored hash: " + v.skipped : "") : only ? "Copied " + ((v.hashed || 0) + v.identical) + " of " + v.files + " files" + (v.checks && v.checks.dest ? ", read back later: " + v.checks.dest : ", not verified") + (v.identical ? " · " + v.identical + " were already there (compared)" : "") +
     (v.failed ? " · failed: " + v.failed : "") + (v.skipped ? " · not copied (links etc.): " + v.skipped : "") : "Verified " + proven + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
     (v.copied ? " · copied, check to come: " + v.copied : "") +
     (v.identical ? " · " + v.identical + " were already there" : "") + (v.s2 === "now" ? " · read twice: " + v.strong : "") +
@@ -1026,7 +1029,7 @@ function renderMonitor(list) {
     rows.push([run.kind === "verify" ? "This verify" : "This copy", base(run.source) + " → " + base(run.dest) + " · " + (run.phase === "scan" ? "scanning, " + run.scanned + " files so far" :
       rp + "% · " + (run.state === "waiting" ? (run.missing ? "waiting for the disk" : "waiting") : run.eta_seconds ? left(run.eta_seconds) : "working out the time left")), run.phase === "scan" ? null : rp]);
     if (run.state === "running" && run.phase !== "scan" && run.kind !== "verify") {
-      rows.push(["Copy speed", rate(run.copy_rate) || "measuring…", null, "big"]);
+      rows.push(["Average copy speed", rate(run.copy_rate) || "measuring…", null, "big"]);
       rows.push(["Files", fileCounts(run)]);
     }
     if (run.state === "running" && run.file && run.phase !== "scan") {

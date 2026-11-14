@@ -41,7 +41,7 @@ type View struct {
 	S2Warn     int         `json:"s2_warnings"`
 	Proven     int64       `json:"bytes_proven"`
 	Copied     int         `json:"copied,omitempty"`      // copy-then-check: copied, waiting for the check pass
-	Hashed     int         `json:"hashed,omitempty"`      // copy only: copied and hashed, not read back
+	Hashed     int         `json:"hashed"`                // copy only: copied and hashed, not read back
 	Check      string      `json:"check,omitempty"`       // "none": copy only in this job
 	VerifyNext string      `json:"verify_next,omitempty"` // "run" or "paused": a Verify job follows this copy
 	After      string      `json:"after,omitempty"`       // a Verify job that starts when this copy has finished
@@ -53,7 +53,7 @@ type View struct {
 	DstRate    int64       `json:"dest_rate"`
 	Progress   float64     `json:"progress"`              // 0 to 1, all reads and writes the job needs
 	Rate       int64       `json:"rate,omitempty"`        // overall bytes of the job finished per second, smoothed
-	CopyRate   int64       `json:"copy_rate,omitempty"`   // speed of the copy pass alone, while it runs
+	CopyRate   int64       `json:"copy_rate,omitempty"`   // average speed of all copying in this run, 0 until measured
 	ETA        int64       `json:"eta_seconds,omitempty"` // time left, when it can be estimated
 	Space      *SpaceShort `json:"space,omitempty"`       // paused because it may not fit: the question for the owner
 	Error      string      `json:"error,omitempty"`       // a Verify job stopped on its own: a folder is missing
@@ -68,8 +68,6 @@ type rateMemo struct {
 	sr, dr   int64
 	work     float64 // progress in bytes at t
 	rate     float64 // smoothed
-	cb, cns  int64   // copy-pass bytes and time at t
-	crate    float64 // copy-pass speed, smoothed
 }
 
 // progress is how far a job is, 0 to 1, counting the passes it makes: with
@@ -188,7 +186,6 @@ func (m *Manager) Views() []View {
 			r := memo[j]
 			if r == nil {
 				r = &rateMemo{t: now, src: j.srcBytes.Load(), dst: j.dstBytes.Load(), work: v.Progress * float64(st.Bytes)}
-				r.cb, r.cns = j.copyClock(now)
 				memo[j] = r
 			}
 			work := v.Progress * float64(st.Bytes)
@@ -200,20 +197,10 @@ func (m *Manager) Views() []View {
 				} else {
 					r.rate = 0.85*r.rate + 0.15*w // smooth: big files finish in jumps
 				}
-				// Copy speed counts only time spent copying; keep the last value
-				// while the job is reading back or re-reading.
-				if cb, cns := j.copyClock(now); cns-r.cns >= int64(200*time.Millisecond) {
-					w := float64(cb-r.cb) / (float64(cns-r.cns) / 1e9)
-					if r.crate == 0 || dt > 10 {
-						r.crate = w
-					} else {
-						r.crate = 0.7*r.crate + 0.3*w
-					}
-					r.cb, r.cns = cb, cns
-				}
 				r.t, r.src, r.dst, r.work = now, s, d, work
 			}
-			v.SrcRate, v.DstRate, v.Rate, v.CopyRate = r.sr, r.dr, int64(r.rate), int64(r.crate)
+			v.SrcRate, v.DstRate, v.Rate = r.sr, r.dr, int64(r.rate)
+			v.CopyRate = copyAverage(j.copyClock(now))
 			if r.rate > 0 && st.Phase != "scan" {
 				v.ETA = int64((1 - v.Progress) * float64(st.Bytes) / r.rate)
 			}
@@ -814,4 +801,19 @@ func (m *Manager) FileInfo(id string, i int) (FileInfo, error) {
 		fi.Proof = "Not yet: this file has not been copied"
 	}
 	return fi, nil
+}
+
+// copyMeasure is how long a job must have spent copying before its average
+// copy speed is shown; until then the page says "measuring".
+const copyMeasure = 2 * time.Second
+
+// copyAverage is the copy speed averaged over all the copying this run has
+// done: bytes written by copy passes divided by the time spent in them. Time
+// spent reading back, re-reading or comparing files already there is left
+// out, so it neither drags the average down nor resets it.
+func copyAverage(bytes, ns int64) int64 {
+	if ns < int64(copyMeasure) || bytes <= 0 {
+		return 0
+	}
+	return int64(float64(bytes) / (float64(ns) / 1e9))
 }

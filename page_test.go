@@ -152,3 +152,20 @@ func TestPageNewFolderInPicker(t *testing.T) {
 		}
 	}
 }
+
+// v0.2.36: the file info pop-up is as wide as the app on a wide screen, still
+// fits a phone, and the copy speed is shown as an average.
+func TestPageWideFileInfoAndAverageSpeed(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`#infoDlg { width:min(960px, calc(100vw - 24px));`, `#infoDlg .head h2 { min-width:0; overflow-wrap:anywhere; }`,
+		`"Average copy speed "`, `(v.hashed || 0) + v.identical`, `<span>After each file is copied</span>`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	if strings.Contains(s, "As each file is copied") {
+		t.Error(`"As each file is copied" should read "After each file is copied"`)
+	}
+}

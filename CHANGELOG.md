@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.36 — 13 November 2026
+
+- **Copy speed is now the average of the whole copy,** shown as "Average copy speed": everything copied so far divided by the time spent copying. It no longer stays on "measuring…" on jobs with many files; it says that only for the first couple of seconds of copying. Time spent reading back or comparing files already there is left out, so it neither lowers the average nor resets it.
+- Copy-only jobs no longer show "Copied NaN of 11".
+- **File info is wider:** on a wide screen it uses the full width of the app, and it is taller, so long names and paths wrap less. Unchanged on the iPhone.
+- New copy: "As each file is copied" now reads **"After each file is copied"**.
+
 ## 0.2.35 — 13 November 2026
 
 - **New folder** when choosing where to copy to. In the destination picker, press **New folder**, type a name and press **Make folder**; the picker opens the new folder, ready for **Use this folder**. It only ever makes a new, empty folder: a name that is already there is refused, never replaced. It is not offered on read-only disks or network servers, and Shuttle refuses to make one on a camera card.

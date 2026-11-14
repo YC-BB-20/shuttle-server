@@ -838,3 +838,18 @@ func TestHideHistoryEntry(t *testing.T) {
 		t.Error("destination emptied")
 	}
 }
+
+// The copy speed is the average over all the copying the run has done, shown
+// once there has been enough of it to measure, and kept while the job reads
+// back or compares (the copy clock only moves while copying).
+func TestCopyAverage(t *testing.T) {
+	if got := copyAverage(1<<30, int64(time.Second)); got != 0 {
+		t.Fatalf("under the measuring time: %d, want 0", got)
+	}
+	if got := copyAverage(0, int64(10*time.Second)); got != 0 {
+		t.Fatalf("nothing copied: %d, want 0", got)
+	}
+	if got := copyAverage(3400_000_000, int64(10*time.Second)); got != 340_000_000 {
+		t.Fatalf("average %d, want 340000000", got)
+	}
+}
