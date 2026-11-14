@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.37 — 13 November 2026
+
+- **New copy** now sits on the left of the Queue title, a little bigger.
+- An empty queue now just says "Nothing in the queue."
+
 ## 0.2.36 — 13 November 2026
 
 - **Copy speed is now the average of the whole copy,** shown as "Average copy speed": everything copied so far divided by the time spent copying. It no longer stays on "measuring…" on jobs with many files; it says that only for the first couple of seconds of copying. Time spent reading back or comparing files already there is left out, so it neither lowers the average nor resets it.

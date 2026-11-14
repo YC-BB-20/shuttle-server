@@ -169,3 +169,13 @@ func TestPageWideFileInfoAndAverageSpeed(t *testing.T) {
 		t.Error(`"As each file is copied" should read "After each file is copied"`)
 	}
 }
+
+func TestPageNewCopyBeforeQueueTitle(t *testing.T) {
+	s := string(IndexHTML)
+	if !strings.Contains(s, `<div class="jobs-head"><button class="primary big" type="button" id="newBtn">New copy</button><h2>Queue</h2></div>`) {
+		t.Error("New copy should sit on the left, before the Queue title")
+	}
+	if !strings.Contains(s, `<p class="mute" id="noJobs">Nothing in the queue.</p>`) || strings.Contains(s, "Press New copy") {
+		t.Error("empty-queue message should be just \"Nothing in the queue.\"")
+	}
+}
