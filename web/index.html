@@ -194,12 +194,10 @@
   .status.monitor .pcrow b { font-size:30px; font-variant-numeric:tabular-nums; }
   .status.monitor .pcrow span { color:var(--mute); font-weight:400; font-size:15px; }
   .status.monitor .bar.main { height:12px; border-radius:6px; margin:8px 0 10px; }
-  .mlines { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:4px 12px; font-weight:400; font-size:14px; }
-  .mlines dt { color:var(--mute); } .mlines dd { margin:0; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
-  .mlines .bar { height:4px; margin:3px 0 0; }
-  .mlines .brate { display:flex; align-items:center; gap:12px; margin-top:3px; }
-  .mlines .brate .bar { flex:1 1 auto; min-width:0; margin:0; }
-  .mlines .brate b { flex:none; font-size:22px; font-weight:600; line-height:1.1; font-variant-numeric:tabular-nums; }
+  .status.monitor .mcopy { margin-top:8px; font-weight:400; font-size:14px; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+  .status.monitor .pcrow #monOf { flex:1 1 0; min-width:0; }
+  .status.monitor .pcrow #monRate { flex:none; margin-left:auto; }
+  @media (max-width:700px) { .status.monitor .pcrow #monOf { flex:1 1 100%; order:3; } }
   .qhead h2 .qcount { color:var(--mute); font-size:14px; font-weight:400; margin-left:8px; white-space:nowrap; }
   .status.alarm { border-color:var(--bad); }
   .status.alarm > span:first-child { color:var(--bad); }
@@ -289,9 +287,9 @@
   <div id="tabStatus">
   <div class="status monitor" id="headline"><span>Loading…</span><small id="sub"></small>
     <div id="mon" hidden>
-      <div class="pcrow"><b id="monPc"></b><span id="monOf"></span></div>
+      <div class="mcopy" id="monCopy"></div>
+      <div class="pcrow"><b id="monPc"></b><span id="monOf"></span><b id="monRate"></b></div>
       <div class="bar main"><i id="monBar"></i></div>
-      <dl class="mlines" id="monLines"></dl>
     </div>
   </div>
   <div class="qhead"><button class="primary big" type="button" id="newBtn">New copy</button><h2>Queue<span class="qcount" id="qCount"></span></h2>
@@ -1152,8 +1150,8 @@ function fileCounts(v) {
   const copied = Math.min(toCopy, v.verified + v.failed + (v.copied || 0) + (v.hashed || 0) + copyDone);
   return "Copied " + copied + " of " + toCopy + " · Verified " + (v.verified + already) + " of " + v.files + (already ? " · " + already + " already there (verified, not copied)" : "");
 }
-// The panel on top: the whole queue and the job running now, its speed
-// at the right end of its bar. Files are shown only in the queue and history.
+// The panel on top: the whole queue in one bar, the job running now above
+// it and its speed on the % line. Files are shown only in the queue and history.
 function renderMonitor(list) {
   const active = list.filter(v => !["finished", "stopped"].includes(v.state));
   // v0.2.52: how many copies and verifies wait sits beside the Queue title, not in the panel.
@@ -1176,25 +1174,12 @@ function renderMonitor(list) {
   $("monBar").style.width = p + "%";
   $("monBar").style.background = run && run.missing ? "var(--bad)" : run && run.state === "running" ? "var(--copy)" : "var(--mute)";
   $("monBar").parentNode.classList.toggle("vbar", !!(run && run.state === "running" && !run.missing && run.kind === "verify"));
-  // v0.2.52: only the running job; its speed sits at the right end of its bar.
-  // File details live in the queue and the history.
-  const rows = [];
-  if (run) {
-    const rp = Math.round((run.progress || 0) * 100);
-    rows.push([run.kind === "verify" ? "This verify" : "This copy", base(run.source) + " → " + base(run.dest) + " · " + (run.phase === "scan" ? "scanning, " + run.scanned + " files so far" :
-      rp + "% · " + (run.state === "waiting" ? (run.missing ? "waiting for the disk" : "waiting") : run.eta_seconds ? left(run.eta_seconds) : "working out the time left")), run.phase === "scan" ? null : rp,
-      run.state === "running" && run.phase !== "scan" ? (rate(run.kind === "verify" ? run.rate : run.copy_rate) || "measuring…") : ""]);
-  }
-  const dl = $("monLines"); dl.replaceChildren();
-  rows.forEach(([k, t, bar, spd]) => {
-    dl.append(el("dt", "", k));
-    const d = el("dd", "", t);
-    if (bar != null) {
-      const b = el("div", "bar" + (run.kind === "verify" && run.state === "running" ? " vbar" : "")), i = el("i"); i.style.width = bar + "%"; i.style.background = $("monBar").style.background; b.append(i);
-      const line = el("div", "brate"); line.append(b); if (spd) line.append(el("b", "", spd)); d.append(line);
-    }
-    dl.append(d);
-  });
+  // v0.2.53: one bar (the queue's). Above it, the job running now; at the
+  // right end of the % line, its speed. File details live in the queue and history.
+  const rp = run ? Math.round((run.progress || 0) * 100) : 0;
+  $("monCopy").textContent = run ? base(run.source) + " → " + base(run.dest) + " · " + (run.phase === "scan" ? "scanning, " + run.scanned + " files so far" :
+    rp + "% · " + (run.state === "waiting" ? (run.missing ? "waiting for the disk" : "waiting") : run.eta_seconds ? left(run.eta_seconds) : "working out the time left")) : "";
+  $("monRate").textContent = run && run.state === "running" && run.phase !== "scan" ? (rate(run.kind === "verify" ? run.rate : run.copy_rate) || "measuring…") : "";
 }
 // After an update the server is new but an open tab still runs the old page:
 // reload as soon as the version changes, waiting while a pop-up is open so

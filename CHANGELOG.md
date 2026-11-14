@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.53 — 14 November 2026
+
+- **One progress bar on the Status panel.** The running copy's line (name, %, time left) now sits above "X GB of Y GB", and its speed is at the right end of the big % line, in the same large type. The second bar is gone, since it showed the same thing.
+
 ## 0.2.52 — 14 November 2026
 
 - **Status panel slimmed down:** it shows only the job that is running. Its speed now sits at the right end of its bar, in line with it, and the bar is shorter to make room.

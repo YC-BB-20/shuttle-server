@@ -338,20 +338,23 @@ func TestPageVerifyColoursAndSync(t *testing.T) {
 	}
 }
 
-// v0.2.52: the Status panel shows only the running job, its speed at the right
-// end of its bar; the queue count sits beside the Queue title; no file lines.
+// v0.2.53: the Status panel has one bar; the running job's line sits above the
+// % line, its speed at the right of the % line in the same font; queue count
+// beside the Queue title; no file lines.
 func TestPageStatusPanelSlim(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
 		`<h2>Queue<span class="qcount" id="qCount"></span></h2>`, `$("qCount").textContent = [nc ?`,
-		`.mlines .brate { display:flex;`, `.mlines .brate .bar { flex:1 1 auto; min-width:0;`,
-		`rate(run.kind === "verify" ? run.rate : run.copy_rate) || "measuring…"`, `if (spd) line.append(el("b", "", spd));`,
+		`<div class="mcopy" id="monCopy"></div>`, `<div class="pcrow"><b id="monPc"></b><span id="monOf"></span><b id="monRate"></b></div>`,
+		`.status.monitor .pcrow #monRate { flex:none; margin-left:auto; }`,
+		`.qhead h2 .qcount { color:var(--mute);`, `.status.monitor .pcrow #monOf { flex:1 1 100%; order:3; }`,
+		`rate(run.kind === "verify" ? run.rate : run.copy_rate) || "measuring…"`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
 		}
 	}
-	for _, gone := range []string{`rows.push(["This file"`, `rows.push(["Files"`, `rows.push(["Average copy speed"`, `[["Queue", [nc`} {
+	for _, gone := range []string{`id="monLines"`, `rows.push(["This file"`, `rows.push(["Files"`, `rows.push(["Average copy speed"`, `[["Queue", [nc`, `"This copy"`} {
 		if strings.Contains(s, gone) {
 			t.Errorf("Status panel still has %q", gone)
 		}
