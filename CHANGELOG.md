@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.43 — 13 November 2026
+
+- **New copy moved to the front** of the Queue header: New copy, then "Queue", then the filters, all on one line. On a narrow screen such as the iPhone the filters still move to their own line below.
+
 ## 0.2.42 — 13 November 2026
 
 v0.2.41 was never installable (one test failed); 0.2.42 includes it.
