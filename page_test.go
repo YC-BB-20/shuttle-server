@@ -98,3 +98,17 @@ func TestPageVerifyKindsDisksProof(t *testing.T) {
 		}
 	}
 }
+
+// v0.2.32: a Storage tab lists disks with connection and use, and offers
+// copying from or to each.
+func TestPageStorageTab(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`id="tabStorageBtn"`, `id="tabStorage"`, `fetch("/api/storage")`, `function diskCard(d)`,
+		`"Copy from here"`, `"Copy to here"`, `function diskUse(path)`, `!d.read_only && !d.camera`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}

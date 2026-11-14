@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.32 — 13 November 2026
+
+- **Storage page.** A new Storage tab lists this Mac's own disk and every connected disk: how it is connected (USB with its speed and USB generation, Thunderbolt, internal, SD card slot), the drive's name, file system, solid state or spinning, free space, read-only disks, and whether it looks like a camera card. It shows what Shuttle is doing with each disk right now, and has **Copy from here** and **Copy to here** buttons that open New copy with the disk filled in. A disk on a slow USB 2 link is marked. The page only reads; nothing is written to any disk.
+
 ## 0.2.31 — 13 November 2026
 
 - **A copy keeps up with later Verify jobs.** A copy made without checks, then verified later, now says so on its own row: "destination read back ✓ · source not read again", and once a source check has run too, "source read twice ✓". Its file list changes with it: files go from "Copied · not verified" to "Verified", then "Verified · read twice"; a file a later check found damaged shows as Error.

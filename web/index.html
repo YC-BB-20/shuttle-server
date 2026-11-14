@@ -201,6 +201,13 @@
   .filters select { flex:none; font-size:14px; padding:3px 6px; }
   .qf { margin:14px 0 4px; } .job.hid { opacity:.55; } .job.hid .s::after { content:" · hidden"; font-weight:400; color:var(--mute); } .qfinfo { font-size:13px; margin:12px 0 8px; } .qfinfo:empty { display:none; }
   .resources { margin-top:18px; }
+  .disks { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap:12px; }
+  .disks > .card { min-width:0; display:flex; flex-direction:column; gap:4px; }
+  .disk h3 { margin:0; font-size:16px; display:flex; gap:8px; align-items:baseline; min-width:0; }
+  .disk h3 b { overflow-wrap:anywhere; min-width:0; }
+  .disk .conn { font-size:14px; } .disk .conn b { color:var(--accent); }
+  .disk p { margin:0; } .disk .btns { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
+  .disk .use { font-size:13px; }
 </style>
 </head>
 <body>
@@ -208,7 +215,7 @@
   <h1>Shuttle Server <span class="ver" id="ver"></span></h1>
   <button type="button" class="upd" id="updTop" hidden></button>
   <span class="live" id="live">Connecting</span>
-  <nav class="tabs" role="tablist"><button type="button" role="tab" id="tabStatusBtn" aria-selected="true">Status</button><button type="button" role="tab" id="tabSettingsBtn" aria-selected="false">Settings</button></nav>
+  <nav class="tabs" role="tablist"><button type="button" role="tab" id="tabStatusBtn" aria-selected="true">Status</button><button type="button" role="tab" id="tabStorageBtn" aria-selected="false">Storage</button><button type="button" role="tab" id="tabSettingsBtn" aria-selected="false">Settings</button></nav>
   <button id="aboutBtn" type="button">About</button>
 </header>
 <main>
@@ -238,6 +245,11 @@
   <p class="mute" id="noDoneF" hidden>No finished or stopped copies match the filters.</p>
   <div class="hist" id="done"></div>
   <p><button type="button" id="moreHist" hidden>Show older copies</button></p>
+  </div>
+  <div id="tabStorage" hidden>
+    <div class="jobs-head"><h2>Storage</h2><div class="row"><button type="button" id="stoRefresh">Refresh</button></div></div>
+    <p class="mute" id="stoNote">Every disk connected to this Mac. Shuttle only reads here: nothing is written to a disk by this page.</p>
+    <div class="disks" id="disks"></div>
   </div>
   <div id="tabSettings" class="settings" hidden>
   <section class="card"><h2>Data folder</h2><p class="path" id="data"></p><p class="mute">Temp: <span class="path" id="temp"></span></p></section>
@@ -394,15 +406,76 @@ function render() {
   if (s.update) renderUpdate(s.update, s);
 }
 function showTab(name) {
-  const settings = name === "settings";
-  $("tabStatus").hidden = settings; $("tabSettings").hidden = !settings;
-  $("tabStatusBtn").setAttribute("aria-selected", !settings); $("tabSettingsBtn").setAttribute("aria-selected", settings);
-  if (location.hash !== (settings ? "#settings" : "")) history.replaceState(null, "", settings ? "#settings" : location.pathname);
+  const settings = name === "settings", sto = name === "storage";
+  $("tabStatus").hidden = settings || sto; $("tabSettings").hidden = !settings; $("tabStorage").hidden = !sto;
+  $("tabStatusBtn").setAttribute("aria-selected", !settings && !sto); $("tabSettingsBtn").setAttribute("aria-selected", settings); $("tabStorageBtn").setAttribute("aria-selected", sto);
+  const h = settings || sto ? "#" + name : "";
+  if (location.hash !== h) history.replaceState(null, "", h || location.pathname);
+  if (sto) loadStorage();
   if (settings && !$("histList").childElementCount) loadHistory();
 }
 $("tabStatusBtn").onclick = () => showTab("status");
 $("tabSettingsBtn").onclick = () => showTab("settings");
-showTab(location.hash === "#settings" ? "settings" : "status");
+$("tabStorageBtn").onclick = () => showTab("storage");
+
+// Storage (v0.2.32): every connected disk, how it is connected, how full,
+// what Shuttle is doing with it, and buttons to copy from or to it.
+let stoTimer = 0, stoBusy = false;
+function loadStorage() {
+  if (stoBusy) return; stoBusy = true; clearTimeout(stoTimer);
+  if (!$("disks").childElementCount) $("stoNote").textContent = "Asking the Mac about its disks…";
+  fetch("/api/storage").then(r => r.json()).then(d => {
+    $("stoNote").textContent = "Every disk connected to this Mac. Shuttle only reads here: nothing is written to a disk by this page." +
+      (d.pending ? " Still reading the connection speeds…" : "");
+    $("disks").replaceChildren(...(d.disks || []).map(diskCard));
+    if (d.pending && !$("tabStorage").hidden) stoTimer = setTimeout(loadStorage, 3000);
+  }).catch(() => { $("stoNote").textContent = "The list of disks could not be read. Press Refresh to try again."; })
+    .finally(() => { stoBusy = false; });
+}
+$("stoRefresh").onclick = loadStorage;
+// Which jobs use a disk, from the queue the page already has.
+function diskUse(path) {
+  const on = p => p && (p === path || p.startsWith(path + "/"));
+  const act = ((latest && latest.jobs) || []).filter(v => v.state !== "finished" && v.state !== "stopped");
+  const w = [];
+  act.forEach(v => {
+    const what = v.kind === "verify" ? verKind(v).toLowerCase() : "copy";
+    const st = v.state === "running" ? "now" : v.state;
+    if (on(v.source)) w.push((v.kind === "verify" ? "Read by a " + what : "Source of a copy") + " (" + st + ")");
+    if (on(v.dest) && v.dest !== v.source) w.push((v.kind === "verify" ? "Read by a " + what : "Destination of a copy") + " (" + st + ")");
+  });
+  return w;
+}
+function diskCard(d) {
+  const c = el("section", "card disk");
+  const h = el("h3"); h.append(el("b", "", d.name), el("span", "mute", d.kind === "internal" ? "this Mac's own disk" : d.kind === "server" ? "network server" : d.ejectable === false ? "" : "external"));
+  c.append(h, el("p", "path mute", d.path));
+  if (d.note) { c.append(el("p", "warn", d.note)); return c; }
+  const conn = el("p", "conn");
+  const cn = d.connection || (d.kind === "internal" ? "Internal" : "Connection not reported");
+  conn.append(el("b", "", cn), d.speed ? " · " + d.speed : "", d.detail ? " · " + d.detail : "");
+  c.append(conn);
+  if (/USB 2/.test(d.detail || "")) conn.className = "conn warn";
+  const facts = [d.model, d.file_system, d.solid_state === true ? "solid state" : d.solid_state === false ? "spinning disk" : "", d.device].filter(Boolean);
+  if (facts.length) c.append(el("p", "mute", facts.join(" · ")));
+  if (d.total) {
+    const used = d.total - d.free, bar = el("div", "bar"), i = el("i"); i.style.width = pct(used, d.total) + "%"; bar.append(i);
+    c.append(el("p", "", size(d.free) + " free of " + size(d.total)), bar);
+  }
+  if (d.read_only) c.append(el("p", "warn", "Read-only: Shuttle can copy from it, not to it" + (/ntfs/i.test(d.file_system || "") ? " (macOS cannot write NTFS)." : ".")));
+  if (d.camera) c.append(el("p", "", "Looks like a camera card (" + d.camera + "). Shuttle only ever reads a camera card."));
+  const use = diskUse(d.path);
+  c.append(el("p", "use " + (use.length ? "" : "mute"), use.length ? use.join(" · ") : "Not used by any job right now"));
+  const btns = el("div", "btns");
+  const b = (t, f, cls) => { const x = el("button", cls || "", t); x.type = "button"; x.onclick = f; btns.append(x); };
+  if (d.kind !== "server") {
+    b("Copy from here", () => { showTab("status"); $("src").value = d.path; $("newBtn").onclick(); });
+    if (!d.read_only && !d.camera) b("Copy to here", () => { showTab("status"); $("dst").value = d.path; $("newBtn").onclick(); });
+  }
+  c.append(btns);
+  return c;
+}
+showTab(location.hash === "#settings" ? "settings" : location.hash === "#storage" ? "storage" : "status");
 
 function loadHistory() {
   $("histNote").textContent = "Loading…"; $("histNote").className = "mute";
