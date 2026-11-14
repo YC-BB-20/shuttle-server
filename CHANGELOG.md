@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.48 — 14 November 2026
+
+- **Copy size while choosing the source.** The picker shows how much a copy of the open folder would be, for example "This whole folder: 412.3 GB in 18,204 files"; tick files or folders and it shows the size of just those ("The 3 chosen: …"). New copy shows "Copy size: …" under the source.
+- Counted the way the copy itself counts: system files left out as set in Settings, links not counted. A big card shows "Counting… so far" while it adds up. Only names and sizes are read, one count at a time, and a count nobody is looking at stops by itself.
+
 ## 0.2.47 — 14 November 2026
 
 - **Storage is live.** While the Storage tab is open it updates itself every 3 seconds: disks plugged in or out, and free space, show without pressing Refresh. Refresh now also reads the hardware again from scratch.

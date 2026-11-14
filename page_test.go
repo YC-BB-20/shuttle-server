@@ -262,3 +262,16 @@ func TestPageStorageLive(t *testing.T) {
 		}
 	}
 }
+
+// v0.2.48: the picker and New copy show the copy size while it is counted.
+func TestPageCopySize(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`id="pickSize"`, `id="srcSize"`, `function askSize(path, only, out, lead)`, `"/api/size?path="`, `"Counting… "`,
+		`"Copy size: "`, `"This whole folder: "`, `useLabel(); pickSize();`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}

@@ -39,6 +39,7 @@
   .tabs { display:flex; gap:4px; background:var(--line); border-radius:9px; padding:2px; }
   .tabs button { border:0; background:transparent; padding:4px 12px; border-radius:7px; }
   .tabs button[aria-selected=true] { background:var(--card); font-weight:600; }
+  .sizeline { min-height:1.4em; margin:0 0 6px; font-variant-numeric:tabular-nums; }
   [hidden] { display:none !important; }
   .settings > section { margin-bottom:12px; }
   .sechead { font-size:15px; margin:4px 0 8px; }
@@ -345,6 +346,7 @@
     <label for="src">Copy from (source)</label>
     <div class="row"><input type="text" id="src" placeholder="/Volumes/CARD_A001"><button type="button" data-pick="src">Choose…</button></div>
     <p class="mute" id="srcOnly" hidden><span></span> <button type="button" id="srcAll">Use the whole folder</button></p>
+    <p class="mute sizeline" id="srcSize"></p>
     <label for="dst">Copy to (a new or existing folder on the destination)</label>
     <div class="row"><input type="text" id="dst" placeholder="/Volumes/BACKUP_1/Day 01/A001"><button type="button" data-pick="dst">Choose…</button></div>
     <label>Proof</label>
@@ -373,6 +375,7 @@
     <div class="places" id="places"></div>
     <nav class="crumbs" id="crumbs" aria-label="Where you are"></nav>
     <p class="mute" id="pickHint"></p>
+    <p class="sizeline" id="pickSize"></p>
     <div class="list" id="pickList"></div>
     <form class="newdir" id="newDirBox" hidden><input type="text" id="newDirName" placeholder="New folder name" maxlength="200" autocomplete="off" aria-label="New folder name"><button type="submit" class="primary">Make folder</button><button type="button" id="newDirCancel">Cancel</button></form>
     <p class="err" id="pickErr"></p>
@@ -677,6 +680,7 @@ $("newBtn").onclick = () => {
   proofForm();
   loadSys();
   $("newDlg").showModal();
+  $("srcSize").textContent = ""; srcSize();
 };
 $("startBtn").onclick = () => {
   $("newErr").textContent = "";
@@ -746,8 +750,37 @@ function setOnly(names, at) {
   srcOnly = names; srcOnlyAt = at || "";
   $("srcOnly").hidden = !names.length;
   $("srcOnly").firstChild.textContent = names.length ? "Only " + names.length + " chosen: " + names.slice(0, 4).join(", ") + (names.length > 4 ? ", …" : "") : "";
+  srcSize();
 }
 $("srcAll").onclick = () => setOnly([]);
+// Copy size (v0.2.48): counted by Shuttle in the background with the same
+// rules as the copy's own scan, shown while it counts. One count at a time;
+// asking about something else replaces it.
+let sizeTimer = 0, sizeKey = "";
+const nf = n => Number(n).toLocaleString();
+function askSize(path, only, out, lead) {
+  clearTimeout(sizeTimer);
+  if (!path || path[0] !== "/") { sizeKey = ""; out.textContent = ""; return; }
+  const key = path + "\n" + only.join("\n");
+  if (sizeKey !== key) out.textContent = "Counting…";
+  sizeKey = key;
+  const tick = () => {
+    if (sizeKey !== key || !($("pickDlg").open || $("newDlg").open)) return;
+    fetch("/api/size?path=" + encodeURIComponent(path) + only.map(n => "&only=" + encodeURIComponent(n)).join("")).then(r => r.json()).then(c => {
+      if (sizeKey !== key) return;
+      out.textContent = c.error ? c.error : (c.done ? lead : "Counting… ") + size(c.bytes) + " in " + nf(c.files) + (c.files === 1 ? " file" : " files") +
+        (c.done ? "" : " so far") + (c.skipped ? " · " + nf(c.skipped) + " links or unreadable items are not copied" : "");
+      if (!c.done && !c.error) sizeTimer = setTimeout(tick, 700);
+    }).catch(() => { if (sizeKey === key) sizeTimer = setTimeout(tick, 2000); });
+  };
+  sizeTimer = setTimeout(tick, 250);
+}
+$("pickDlg").addEventListener("close", () => { if ($("newDlg").open) srcSize(); });
+function srcSize() { const p = $("src").value.trim(); askSize(p, p === srcOnlyAt ? srcOnly : [], $("srcSize"), "Copy size: "); }
+function pickSize() {
+  if (pickFor !== "src") { $("pickSize").textContent = ""; return; }
+  askSize(pickAt, [...chosen], $("pickSize"), chosen.size ? "The " + chosen.size + " chosen: " : "This whole folder: ");
+}
 $("src").oninput = () => setOnly([]);
 document.querySelectorAll("[data-pick]").forEach(b => b.onclick = () => {
   pickFor = b.dataset.pick;
@@ -841,7 +874,7 @@ function browse(path, keep) {
       const row = el("div", "pick");
       if (pickFor === "src") {
         const cb = el("input"); cb.type = "checkbox"; cb.checked = chosen.has(f.name); cb.setAttribute("aria-label", "Choose " + f.name);
-        cb.onchange = () => { cb.checked ? chosen.add(f.name) : chosen.delete(f.name); useLabel(); };
+        cb.onchange = () => { cb.checked ? chosen.add(f.name) : chosen.delete(f.name); useLabel(); pickSize(); };
         row.append(cb);
         if (f.file) { const l = el("label", "", "📄 " + f.name); l.onclick = () => { cb.checked = !cb.checked; cb.onchange(); }; row.append(l, el("span", "sz", size(f.size))); return row; }
       }
@@ -864,6 +897,7 @@ function browse(path, keep) {
     $("newDirBtn").style.visibility = d.error || d.note || (here && (here.read_only || here.kind === "server")) ? "hidden" : "";
     $("newDirBox").hidden = true;
     useLabel();
+    $("pickSize").textContent = ""; pickSize();
   }).catch(() => { $("pickErr").textContent = "Could not reach Shuttle Server."; });
 }
 $("newDirBtn").onclick = () => { $("newDirBox").hidden = false; $("newDirName").value = ""; $("pickErr").textContent = ""; $("newDirName").focus(); };
@@ -876,8 +910,8 @@ $("newDirBox").onsubmit = e => {
 $("pickUse").onclick = () => {
   if (pickFor === "ver") { verify(pickAt).then(() => $("pickDlg").close()).catch(e => $("pickErr").textContent = e.message); return; }
   $(pickFor).value = pickAt;
-  if (pickFor === "src") setOnly([...chosen], pickAt);
   $("pickDlg").close();
+  if (pickFor === "src") setOnly([...chosen], pickAt);
 };
 
 // Confirmations

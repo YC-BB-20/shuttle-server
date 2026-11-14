@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/YC-BB-20/shuttle-server/internal/events"
+	"github.com/YC-BB-20/shuttle-server/internal/location"
 )
 
 func newTest() (*Server, *events.Hub) {
@@ -217,4 +218,72 @@ func TestStorageSharedPort(t *testing.T) {
 	if len(ds[0].Shares) != 1 || ds[0].Shares[0] != "B" || len(ds[1].Shares) != 2 || ds[2].Shares != nil {
 		t.Fatalf("%v %v %v", ds[0].Shares, ds[1].Shares, ds[2].Shares)
 	}
+}
+
+// v0.2.48: the copy size of a folder or of chosen names, counted with the
+// copy's own rules (system files left out, links not copied).
+func TestCopySize(t *testing.T) {
+	s, _ := newTest()
+	ts := httptest.NewServer(s.HTTP().Handler)
+	defer ts.Close()
+	d := t.TempDir()
+	os.MkdirAll(filepath.Join(d, "A001", "sub"), 0o755)
+	os.MkdirAll(filepath.Join(d, "B002"), 0o755)
+	os.WriteFile(filepath.Join(d, "A001", "clip1.mov"), make([]byte, 1000), 0o644)
+	os.WriteFile(filepath.Join(d, "A001", "sub", "clip2.mov"), make([]byte, 500), 0o644)
+	os.WriteFile(filepath.Join(d, "A001", ".DS_Store"), make([]byte, 77), 0o644)
+	os.WriteFile(filepath.Join(d, "B002", "clip3.mov"), make([]byte, 30), 0o644)
+	os.Symlink(filepath.Join(d, "B002"), filepath.Join(d, "A001", "link"))
+	ask := func(q string) SizeCount {
+		var c SizeCount
+		for i := 0; i < 100; i++ {
+			res, err := http.Get(ts.URL + "/api/size?path=" + url.QueryEscape(d) + q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			json.NewDecoder(res.Body).Decode(&c)
+			res.Body.Close()
+			if c.Done || c.Error != "" {
+				return c
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Fatalf("never finished: %+v", c)
+		return c
+	}
+	if c := ask(""); c.Files != 3 || c.Bytes != 1530 || c.Skipped != 1 {
+		t.Errorf("whole folder: %+v", c)
+	}
+	if c := ask("&only=A001"); c.Files != 2 || c.Bytes != 1500 {
+		t.Errorf("A001 chosen: %+v", c)
+	}
+	if c := ask("&only=B002&only=A001"); c.Files != 3 {
+		t.Errorf("both chosen: %+v", c)
+	}
+	res, _ := http.Get(ts.URL + "/api/size?path=relative")
+	var c SizeCount
+	json.NewDecoder(res.Body).Decode(&c)
+	res.Body.Close()
+	if c.Error == "" || c.Done {
+		t.Errorf("relative path: %+v", c)
+	}
+}
+
+// Asking about another folder replaces the count under way.
+func TestCopySizeOneAtATime(t *testing.T) {
+	var z sizer
+	a, b := t.TempDir(), t.TempDir()
+	os.WriteFile(filepath.Join(b, "x"), make([]byte, 9), 0o644)
+	z.ask(a, nil, location.Folder{Dir: a})
+	z.ask(b, nil, location.Folder{Dir: b})
+	for i := 0; i < 100; i++ {
+		if c := z.ask(b, nil, location.Folder{Dir: b}); c.Done {
+			if c.Path != b || c.Bytes != 9 {
+				t.Fatalf("%+v", c)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("never finished")
 }

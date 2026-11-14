@@ -30,6 +30,7 @@ type Server struct {
 	Restart func()
 	Quit    func()
 	Speed   *speedtest.Tester // nil in safe mode
+	sizes   sizer             // the copy size being counted for the picker
 }
 
 // Updates are the update commands.
@@ -70,6 +71,7 @@ func (s *Server) HTTP() *http.Server {
 	mux.HandleFunc("GET /api/browse", s.browse)
 	mux.HandleFunc("POST /api/mkdir", s.always(s.mkdir))
 	mux.HandleFunc("GET /api/storage", s.storageList)
+	mux.HandleFunc("GET /api/size", s.copySize)
 	mux.HandleFunc("GET /api/speedtest", s.speedStatus)
 	mux.HandleFunc("POST /api/speedtest/{action}", s.always(s.speedAction))
 	mux.HandleFunc("GET /api/jobs/{id}/problems", s.problems)
