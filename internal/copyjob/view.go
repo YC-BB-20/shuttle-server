@@ -52,6 +52,8 @@ type View struct {
 	SrcRate    int64       `json:"source_rate"`
 	DstRate    int64       `json:"dest_rate"`
 	Progress   float64     `json:"progress"`              // 0 to 1, all reads and writes the job needs
+	CopiedPart float64     `json:"copied_part"`           // a copy: 0 to 1 of its bytes written so far (the purple layer)
+	ProvenPart float64     `json:"proven_part"`           // a copy: 0 to 1 of its bytes read back and matching (the pink layer)
 	Rate       int64       `json:"rate,omitempty"`        // overall bytes of the job finished per second, smoothed
 	CopyRate   int64       `json:"copy_rate,omitempty"`   // average speed of all copying in this run, 0 until measured
 	ETA        int64       `json:"eta_seconds,omitempty"` // time left, when it can be estimated
@@ -154,6 +156,42 @@ func progress(st state, c counts, l live) float64 {
 	return 0.75 + 0.25*min(1, float64(c.Strong+c.S2Warn)/float64(max(1, c.Verified+c.Identical)))
 }
 
+// layers is a copy's bar in two parts (v0.2.54): how much of it is written
+// and how much is read back and matching, both from 0 to 1 of the job's bytes.
+// The file being worked on counts as it goes: while it is copied it grows the
+// written part, while it is read back it grows the proven part.
+func layers(st state, c counts, l live) (copied, proven float64) {
+	if st.Spec.isVerify() || st.Phase == "scan" {
+		return 0, 0
+	}
+	if st.Bytes <= 0 {
+		if st.Phase == "done" {
+			return 1, 1
+		}
+		return 0, 0
+	}
+	b := float64(st.Bytes)
+	cb, pb := float64(max(c.BytesCopied, c.BytesProven)), float64(c.BytesProven)
+	has := func(p string) bool { return strings.HasPrefix(l.stage, p) }
+	switch {
+	case st.Phase == "done" && st.Choice != "stopped":
+		cb = b
+	case has("Copying"):
+		cb += float64(l.done)
+	case has("Reading back"), has("Checking"):
+		if !st.Spec.checkLater() { // copy-then-check already counted it in the copy pass
+			cb += float64(l.size)
+		}
+		pb += float64(l.done)
+	case st.Phase == "s2", st.Phase == "source":
+		cb = b // the earlier scheme's second source read: every file is written
+	}
+	if st.Spec.copyOnly() {
+		pb = 0
+	}
+	return min(1, cb/b), min(1, pb/b, cb/b)
+}
+
 var memo = map[*Job]*rateMemo{}
 
 // Views lists jobs, newest first: everything unfinished plus the last 20
@@ -234,6 +272,7 @@ func baseView(j *Job) (View, state, live) {
 		Check: st.Spec.Check, VerifyNext: st.Spec.Verify, VerifyJob: st.VerifyJob, After: st.After,
 		Proven: c.BytesProven, SameVolume: st.SameVolume, Scanned: l.scanned, ScannedB: l.scannedBytes,
 		Progress: progress(st, c, l), Space: st.SpaceAsk, Error: st.Error, From: st.Spec.From, Hidden: st.Hidden}
+	v.CopiedPart, v.ProvenPart = layers(st, c, l)
 	if st.Phase == "done" && st.Choice == "stopped" {
 		v.Progress = 0 // a stopped copy shows what is proven, not a full bar
 		if st.Bytes > 0 {

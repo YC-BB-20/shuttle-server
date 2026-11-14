@@ -360,3 +360,21 @@ func TestPageStatusPanelSlim(t *testing.T) {
 		}
 	}
 }
+
+// v0.2.54: one bar per copy in two layers, written in purple and proven in
+// pink over it, on the job card and on the Status bar.
+func TestPageTwoLayerBars(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`.bar > i.pv { position:absolute; left:0; top:0; background:var(--verify); }`, `function provenLayer(bar, part)`,
+		`if (layered) mb.style.width = (v.copied_part || 0) * 100 + "%";`, `provenLayer(q(".r .bar"), layered ? v.proven_part : 0);`,
+		`provenLayer($("monBar").parentNode,`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	if strings.Contains(s, `$("monBar").parentNode.classList.toggle("vbar"`) {
+		t.Error("the Status bar should use the two layers, not turn pink while verifying")
+	}
+}

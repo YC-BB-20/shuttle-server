@@ -58,6 +58,9 @@
   .card p { margin:2px 0; overflow-wrap:anywhere; }
   .bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin:6px 0 2px; }
   .bar > i { display:block; height:100%; background:var(--accent); width:0; }
+  /* v0.2.54: a copy's bar has two layers on one track, written (purple) and proven (pink over it). */
+  .bar { position:relative; }
+  .bar > i.pv { position:absolute; left:0; top:0; background:var(--verify); }
   .checks .checking { color:var(--verify, var(--accent)); }
   .checks p { margin:6px 0; overflow-wrap:anywhere; } .checks .ok { color:var(--ok); } .checks button { margin-left:6px; padding:4px 10px; font-size:14px; }
   .warn { color:var(--warn); } .bad { color:var(--bad); } .mute { color:var(--mute); font-size:14px; }
@@ -763,6 +766,12 @@ proofForm();
 // Picker: Home, this computer's disk and every connected disk and server on
 // top; the path as buttons; for the source, files and folders can be ticked.
 let pickFor = "", pickAt = "", chosen = new Set(), srcOnly = [], srcOnlyAt = "";
+// The pink layer over a bar's purple: what is read back and matching (v0.2.54).
+function provenLayer(bar, part) {
+  let pv = bar.querySelector(":scope > i.pv");
+  if (!pv) { pv = el("i", "pv"); bar.append(pv); }
+  pv.style.width = Math.max(0, Math.min(1, part || 0)) * 100 + "%";
+}
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 function setOnly(names, at) {
   srcOnly = names; srcOnlyAt = at || "";
@@ -1042,6 +1051,10 @@ function card(v) {
   q(".r .bar").classList.toggle("vbar", vnow && ver); q(".bar.file").classList.toggle("vbar", vnow);
   mb.style.background = v.missing ? "var(--bad)" : v.state === "running" ? "var(--" + kind + ")" :
     v.state === "finished" ? (problems ? "var(--bad)" : "var(--ok)") : "var(--mute)";
+  // A copy at work: purple grows as files are written, pink follows as each is read back and matches.
+  const layered = !ver && !scanning && v.check !== "none" && !v.missing && ["running", "paused", "waiting", "queued"].includes(v.state);
+  if (layered) mb.style.width = (v.copied_part || 0) * 100 + "%";
+  provenLayer(q(".r .bar"), layered ? v.proven_part : 0);
   // One status line.
   const proven = v.verified + v.identical, only = !ver && v.check === "none", again = ver && (v.s2 === "now" || v.s2 === "after") && v.source !== v.dest, srcOnly = ver && v.s2 === "only" && v.source !== v.dest;
   let sub = "", subCls = "sub";
@@ -1171,9 +1184,14 @@ function renderMonitor(list) {
   const qleft = r > 0 ? (total - done) / r : 0;
   $("monOf").textContent = [size(done) + " of " + size(total) + (unknown ? " (+" + unknown + (unknown === 1 ? " item" : " items") + " not sized yet: still listing its files)" : ""),
     qleft ? left(qleft) + " for the whole queue" : run && run.state === "running" ? "working out the time left" : ""].filter(Boolean).join(" · ");
-  $("monBar").style.width = p + "%";
+  // v0.2.54: two layers, as on each copy: written in purple, read back and matching in pink over it.
+  let wrote = 0, proved = 0;
+  active.forEach(v => { const b = sizeOf(v); if (!b || v.phase === "scan") return;
+    if (v.kind === "verify") { wrote += (v.progress || 0) * b; proved += (v.progress || 0) * b; }
+    else { wrote += (v.copied_part || 0) * b; proved += (v.check === "none" ? 0 : v.proven_part || 0) * b; } });
+  $("monBar").style.width = (total ? wrote / total * 100 : 0) + "%";
   $("monBar").style.background = run && run.missing ? "var(--bad)" : run && run.state === "running" ? "var(--copy)" : "var(--mute)";
-  $("monBar").parentNode.classList.toggle("vbar", !!(run && run.state === "running" && !run.missing && run.kind === "verify"));
+  provenLayer($("monBar").parentNode, run && run.missing ? 0 : total ? proved / total : 0);
   // v0.2.53: one bar (the queue's). Above it, the job running now; at the
   // right end of the % line, its speed. File details live in the queue and history.
   const rp = run ? Math.round((run.progress || 0) * 100) : 0;

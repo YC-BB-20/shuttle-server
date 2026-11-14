@@ -853,3 +853,35 @@ func TestCopyAverage(t *testing.T) {
 		t.Fatalf("average %d, want 340000000", got)
 	}
 }
+
+// v0.2.54: a copy's bar has two layers, written and proven, each growing with
+// the file being worked on.
+func TestLayersWrittenAndProven(t *testing.T) {
+	st := state{Phase: "copy", Bytes: 1000, Files: 2, Spec: Spec{Hash: HashDuringCopy, S2: "now"}}
+	// File 1 (400) half copied: written 200, nothing proven.
+	if c, p := layers(st, counts{}, live{stage: "Copying (the source is hashed as it is read)", size: 400, done: 200}); c != 0.2 || p != 0 {
+		t.Fatal(c, p)
+	}
+	// File 1 written, being read back a quarter: written 400, proven 100.
+	if c, p := layers(st, counts{}, live{stage: "Reading back the destination and the source", size: 400, done: 100}); c != 0.4 || p != 0.1 {
+		t.Fatal(c, p)
+	}
+	// File 1 proven, file 2 (600) half copied: written 700, proven 400.
+	if c, p := layers(st, counts{BytesProven: 400}, live{stage: "Copying", size: 600, done: 300}); c != 0.7 || p != 0.4 {
+		t.Fatal(c, p)
+	}
+	// Copy then check: both files written first, the check pass grows only proven.
+	cl := state{Phase: "check", Bytes: 1000, Files: 2, Spec: Spec{Hash: HashCheckLater, S2: "now"}}
+	if c, p := layers(cl, counts{BytesCopied: 1000}, live{stage: "Reading back the destination and the source", size: 400, done: 200}); c != 1 || p != 0.2 {
+		t.Fatal(c, p)
+	}
+	// Copy only: never a proven layer.
+	co := state{Phase: "copy", Bytes: 1000, Files: 1, Spec: Spec{Hash: HashDuringCopy, Check: "none"}}
+	if c, p := layers(co, counts{BytesCopied: 500}, live{}); c != 0.5 || p != 0 {
+		t.Fatal(c, p)
+	}
+	// A Verify job has no layers: its bar is its progress, in pink.
+	if c, p := layers(state{Phase: "verify", Bytes: 1000, Spec: Spec{Kind: KindVerify}}, counts{}, live{}); c != 0 || p != 0 {
+		t.Fatal(c, p)
+	}
+}

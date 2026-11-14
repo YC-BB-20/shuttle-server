@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.54 — 14 November 2026
+
+- **One bar, two colours, like the offload apps.** A copy's bar grows in purple as each file is written, then pink fills the same stretch as that file is read back and matches. While the next file copies, purple moves ahead again and pink catches up behind it. On each copy in the queue and on the Status bar (where a Verify job counts as pink).
+
 ## 0.2.53 — 14 November 2026
 
 - **One progress bar on the Status panel.** The running copy's line (name, %, time left) now sits above "X GB of Y GB", and its speed is at the right end of the big % line, in the same large type. The second bar is gone, since it showed the same thing.
