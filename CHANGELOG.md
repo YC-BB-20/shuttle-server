@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.31 — 13 November 2026
+
+- **A copy keeps up with later Verify jobs.** A copy made without checks, then verified later, now says so on its own row: "destination read back ✓ · source not read again", and once a source check has run too, "source read twice ✓". Its file list changes with it: files go from "Copied · not verified" to "Verified", then "Verified · read twice"; a file a later check found damaged shows as Error.
+- **A Verify says which kind it is:** "Destination verification", "Source verification" or "Destination + source verification", and while it runs, what it is reading now.
+- **Disk names on every row,** beside each folder name ("TEST2 · BB2"; "this Mac" for the internal disk).
+
 ## 0.2.30 — 13 November 2026
 
 - **More room around the Queue filters.** Space above the filter row and a little more between the buttons.

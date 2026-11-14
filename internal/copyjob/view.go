@@ -438,23 +438,27 @@ func (m *Manager) Files(id, filter string, from, limit int) (FilePage, error) {
 	if limit <= 0 || limit > MaxFilePage {
 		limit = MaxFilePage
 	}
+	listMu.Lock()
+	defer listMu.Unlock()
+	table, later := m.mergedStatus(j)
 	j.mu.Lock()
 	phase, l := j.st.Phase, j.live
-	page.Counts = map[string]int{"all": len(j.status), "todo": 0, "done": 0, "unverified": 0, "problems": 0}
-	for _, st := range j.status { // the compact table: a byte per file, no disk read
+	j.mu.Unlock()
+	page.Counts = map[string]int{"all": len(table), "todo": 0, "done": 0, "unverified": 0, "problems": 0}
+	for _, st := range table { // the compact table: a byte per file
 		for _, f := range []string{"todo", "done", "unverified", "problems"} {
 			if filterOK(f, rowStatus(st)) {
 				page.Counts[f]++
 			}
 		}
 	}
-	j.mu.Unlock()
 	if phase == "scan" {
 		page.Note = "The source is still being scanned; the file list appears when the scan finishes."
 		return page, nil
 	}
-	listMu.Lock()
-	defer listMu.Unlock()
+	if later {
+		page.Note = "Includes what later Verify jobs of this copy found."
+	}
 	it, err := openManifest(j.path("manifest.jsonl"))
 	if err != nil {
 		return page, errors.New("the file list cannot be read")
@@ -466,12 +470,10 @@ func (m *Manager) Files(id, filter string, from, limit int) (FilePage, error) {
 		if e.I < from {
 			continue
 		}
-		j.mu.Lock()
 		st := stPending
-		if e.I < len(j.status) {
-			st = j.status[e.I]
+		if e.I < len(table) {
+			st = table[e.I]
 		}
-		j.mu.Unlock()
 		r := FileRow{I: e.I, Path: e.P, Size: e.S, Status: rowStatus(st)}
 		if l.file == e.P && l.stage != "" && phase != "done" {
 			r.Status, r.Stage, r.Done = "working", l.stage, l.done
@@ -495,8 +497,147 @@ func (m *Manager) Files(id, filter string, from, limit int) (FilePage, error) {
 			}
 			return true
 		})
+		for _, k := range need {
+			if page.Rows[k].Why == "" {
+				page.Rows[k].Why = "a later Verify of this copy found a problem with this file; open that Verify in the history to see why"
+			}
+		}
 	}
 	return page, nil
+}
+
+// Flags of one file in a merged table: what has been proven about it.
+const (
+	mfDest    byte = 1 << iota // the copy was read back and matches
+	mfSrc                      // the source was read a second time and matches
+	mfFailed                   // the latest check of it failed
+	mfWarn                     // the source changed after the copy
+	mfTouched                  // a later Verify job checked it
+)
+
+// mergedStatus is a copy's file table with the results of every later
+// Verify job of that copy laid on top (v0.2.31), so a copy made without
+// checks shows "Verified" once a Verify read its destination back, and
+// "Verified · read twice" once another read its source again. Verify jobs
+// are taken oldest first, so the latest result of each check wins. Only
+// Verify jobs of this one copy count; their manifests list a subset of the
+// copy's files in the same order, so both are walked side by side and
+// nothing held grows beyond the copy's own byte-per-file table. Later says
+// whether any Verify job contributed. The caller holds listMu.
+func (m *Manager) mergedStatus(j *Job) ([]byte, bool) {
+	j.mu.Lock()
+	table := slices.Clone(j.status)
+	id, dest, isVer := j.st.ID, j.st.Spec.Dest, j.st.Spec.isVerify()
+	j.mu.Unlock()
+	if isVer || len(table) == 0 {
+		return table, false
+	}
+	m.mu.Lock()
+	jobs := append([]*Job(nil), m.jobs...)
+	m.mu.Unlock()
+	var flags []byte
+	for _, o := range jobs {
+		o.mu.Lock()
+		ost, ostatus := o.st, slices.Clone(o.status)
+		o.mu.Unlock()
+		if !ost.Spec.isVerify() || len(ost.Spec.From) != 1 || ost.Spec.From[0] != id || ost.Phase == "scan" || len(ostatus) == 0 {
+			continue
+		}
+		if flags == nil {
+			flags = make([]byte, len(table))
+			for i, st := range table {
+				switch st {
+				case stVerified:
+					flags[i] = mfDest
+				case stStrong:
+					flags[i] = mfDest | mfSrc
+				case stSrcOK:
+					flags[i] = mfSrc
+				case stFailed:
+					flags[i] = mfFailed
+				case stS2Warn:
+					flags[i] = mfDest | mfWarn
+				}
+			}
+		}
+		layVerify(j.path("manifest.jsonl"), o.path("manifest.jsonl"), dest, ost.Spec.Dest, ostatus, flags)
+	}
+	if flags == nil {
+		return table, false
+	}
+	later := false
+	for i, f := range flags {
+		if f&mfTouched == 0 {
+			continue
+		}
+		later = true
+		switch {
+		case f&mfFailed != 0:
+			table[i] = stFailed
+		case f&mfWarn != 0:
+			table[i] = stS2Warn
+		case f&(mfDest|mfSrc) == mfDest|mfSrc:
+			table[i] = stStrong
+		case f&mfDest != 0:
+			table[i] = stVerified
+		case f&mfSrc != 0 && table[i] != stVerified:
+			table[i] = stSrcOK
+		}
+	}
+	return table, later
+}
+
+// layVerify walks one Verify job's manifest beside its copy's and adds what
+// the Verify found for each file to flags, indexed by the copy's files.
+func layVerify(copyManifest, verManifest, copyDest, verDest string, vstatus, flags []byte) {
+	vit, err := openManifest(verManifest)
+	if err != nil {
+		return
+	}
+	defer vit.Close()
+	cit, err := openManifest(copyManifest)
+	if err != nil {
+		return
+	}
+	defer cit.Close()
+	for vit.Next() {
+		ve := vit.E
+		if ve.I < 0 || ve.I >= len(vstatus) {
+			continue
+		}
+		ci := -1
+		for cit.Next() {
+			rel, err := filepath.Rel(verDest, filepath.Join(copyDest, filepath.FromSlash(cit.E.P)))
+			if err == nil && filepath.ToSlash(rel) == ve.P {
+				ci = cit.E.I
+				break
+			}
+		}
+		if ci < 0 {
+			return // the copy's list ran out: nothing more lines up
+		}
+		if ci >= len(flags) {
+			continue
+		}
+		f := flags[ci]
+		switch vstatus[ve.I] {
+		case stPending:
+			continue
+		case stVerified:
+			f = f&^mfFailed | mfDest
+		case stStrong:
+			f = f&^(mfFailed|mfWarn) | mfDest | mfSrc
+		case stSrcOK:
+			f = f&^mfFailed | mfSrc
+		case stFailed:
+			f |= mfFailed
+		case stS2Warn:
+			f = f&^mfFailed | mfDest | mfWarn
+		default:
+			continue
+		}
+		flags[ci] = f | mfTouched
+	}
 }
 
 // Event is one step in a file's story, from the journal.

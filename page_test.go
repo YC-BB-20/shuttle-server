@@ -83,3 +83,18 @@ func TestPageHideHistory(t *testing.T) {
 		}
 	}
 }
+
+// v0.2.31: a Verify names its kind and what it reads now; rows show disks;
+// a finished copy's row says what has been read back since.
+func TestPageVerifyKindsDisksProof(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`"Source verification"`, `"Destination + source verification"`, `"Destination verification"`,
+		`const diskOf = p =>`, `el("span", "dk", " · " + diskOf(place))`, `[ver && verNow(v), pc,`,
+		`function proofLine(k)`, `v.checks ? " · " + proofLine(v.checks)`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}

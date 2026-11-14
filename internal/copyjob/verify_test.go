@@ -239,3 +239,47 @@ func TestVerifyFromOneCopyOfSeveral(t *testing.T) {
 		t.Fatalf("%+v", v)
 	}
 }
+
+// v0.2.31: a copy made without checks shows in its own file list what later
+// Verify jobs found: the destination read back, then the source read again.
+func TestCopyFileListShowsLaterVerifies(t *testing.T) {
+	root := t.TempDir()
+	src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
+	files := makeTree(t, src, 1<<20)
+	m := newManager(t, filepath.Join(root, "state"))
+	startRun(t, m)
+	c, _ := m.Add(Spec{Source: src, Dest: dst, Check: "none", Hash: HashCheckLater})
+	waitState(t, m, c.st.ID, "finished")
+	list := func(want string) {
+		t.Helper()
+		p, err := m.Files(c.st.ID, "all", 0, 200)
+		if err != nil || len(p.Rows) != len(files) {
+			t.Fatalf("%v %+v", err, p)
+		}
+		for _, r := range p.Rows {
+			if r.Status != want {
+				t.Fatalf("want %s, got %+v", want, r)
+			}
+		}
+	}
+	list("hashed")
+	d, _ := m.Add(Spec{Kind: KindVerify, Source: dst, From: []string{c.st.ID}})
+	waitState(t, m, d.st.ID, "finished")
+	list("proven")
+	if p, _ := m.Files(c.st.ID, "unverified", 0, 200); p.Counts["done"] != len(files) || p.Counts["unverified"] != 0 || len(p.Rows) != 0 || p.Note == "" {
+		t.Fatalf("counts after the destination check: %+v", p)
+	}
+	s, _ := m.Add(Spec{Kind: KindVerify, Source: dst, S2: S2Only, From: []string{c.st.ID}})
+	waitState(t, m, s.st.ID, "finished")
+	list("strong")
+	// A copy damaged since: the next destination check marks it failed.
+	for name := range files {
+		os.WriteFile(filepath.Join(dst, name), []byte("changed"), 0o644)
+		break
+	}
+	d2, _ := m.Add(Spec{Kind: KindVerify, Source: dst, From: []string{c.st.ID}})
+	waitState(t, m, d2.st.ID, "finished")
+	if p, _ := m.Files(c.st.ID, "problems", 0, 200); len(p.Rows) != 1 || p.Rows[0].Why == "" {
+		t.Fatalf("damaged copy: %+v", p)
+	}
+}

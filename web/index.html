@@ -183,6 +183,7 @@
   .route { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); gap:6px; max-width:560px; align-items:baseline; font-size:15px; font-weight:600; }
   .route > span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
   .route > .arr { color:var(--mute); font-weight:400; }
+  .route .dk { color:var(--mute); font-weight:400; font-size:13px; }
   .job .bar { height:4px; margin:4px 0 2px; }
   .job .sub { font-size:13px; color:var(--mute); overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
   .job .sub.bad { color:var(--bad); } .job .sub.warn { color:var(--warn); }
@@ -562,6 +563,21 @@ function verify(path, opts) {
 // again after the whole job; optionally added paused.
 // What has been read back for a finished copy (v0.2.27): the destination,
 // and the source a second time, each with a button to do it now when missing.
+// The disk a path is on: the name under /Volumes, or this Mac's own disk.
+const diskOf = p => { const m = /^\/Volumes\/([^/]+)/.exec(p || ""); return m ? m[1] : "this Mac"; };
+// Which kind of Verify a job is (v0.2.31), named on its row.
+const verKind = v => v.s2 === "only" ? "Source verification" : (v.s2 === "now" || v.s2 === "after") && v.source !== v.dest ? "Destination + source verification" : "Destination verification";
+const verKindHelp = v => v.s2 === "only" ? "The source is read again and compared with the hashes stored when it was copied; the copies are not read" :
+  (v.s2 === "now" || v.s2 === "after") && v.source !== v.dest ? "Every copy is read back, and the source read again, and compared with the stored hashes" : "Every copy is read back from the destination and compared with the stored hashes";
+// What a Verify is doing right now, from its stage.
+const verNow = v => /source/i.test(v.stage || "") && !/destination/i.test(v.stage || "") ? "Reading the source again" : /destination and the source/i.test(v.stage || "") ? "Reading the destination and the source" : "Reading the destination back";
+// A finished copy's proof in one short line: destination read back, source
+// read a second time, by the copy itself or by later Verify jobs.
+function proofLine(k) {
+  if (!k || !k.of) return "";
+  const part = (n, yes, no) => n >= k.of ? yes + " ✓" : n ? yes + " " + n + " of " + k.of : no;
+  return part(k.dest, "destination read back", "destination not read back") + " · " + part(k.source, "source read twice", "source not read again") + (k.queued ? " · a check is queued" : "");
+}
 function drawChecks(box, v) {
   const k = v.checks;
   const key = k ? JSON.stringify(k) : "";
@@ -713,8 +729,10 @@ function card(v) {
   const ver = v.kind === "verify", kind = ver ? "verify" : "copy";
   c.classList.toggle("verify", ver);
   const place = ver && v.verify_file ? v.dest + "/" + v.verify_file : v.dest;
-  q(".s").textContent = ver ? "Verify" : base(v.source) + (v.only ? " (" + v.only + " chosen)" : ""); q(".s").title = ver ? "Read again and compared with the stored hashes" : v.source;
-  q(".d").textContent = base(place); q(".d").title = place;
+  // Folder names with their disk beside them; a Verify says which kind it is.
+  q(".s").replaceChildren(ver ? verKind(v) : base(v.source) + (v.only ? " (" + v.only + " chosen)" : ""), ...(ver ? [] : [el("span", "dk", " · " + diskOf(v.source))]));
+  q(".s").title = ver ? verKindHelp(v) : v.source;
+  q(".d").replaceChildren(base(place), el("span", "dk", " · " + diskOf(place))); q(".d").title = place;
   q(".from").textContent = ver ? "Checks " + place : "From " + v.source; q(".to").textContent = ver ? "" : "To " + v.dest;
   // Icon: what state it is in, at a glance.
   const ico = q(".ico");
@@ -734,7 +752,7 @@ function card(v) {
   else if (v.state === "paused" && v.space) { sub = "Paused · may not fit on " + v.space.disk + " — your answer is needed"; subCls += " warn"; }
   else if (v.state === "running" && scanning && ver) sub = "Reading the stored hashes — " + v.scanned + " files so far";
   else if (v.state === "running" && scanning) sub = "Scanning the source — " + v.scanned + " files, " + size(v.scanned_bytes) + " so far";
-  else if (v.state === "running") sub = [pc, size((v.progress || 0) * v.bytes) + " of " + size(v.bytes), v.eta_seconds ? left(v.eta_seconds) : "working out the time left", ver ? rate(v.rate) : rate(v.copy_rate) && "copy speed " + rate(v.copy_rate)].filter(Boolean).join(" · ");
+  else if (v.state === "running") sub = [ver && verNow(v), pc, size((v.progress || 0) * v.bytes) + " of " + size(v.bytes), v.eta_seconds ? left(v.eta_seconds) : "working out the time left", ver ? rate(v.rate) : rate(v.copy_rate) && "copy speed " + rate(v.copy_rate)].filter(Boolean).join(" · ");
   else if (v.state === "paused") sub = v.after ? "Paused · press ▶ and it starts when the copy above has finished" : pc + " · Paused by you";
   else if (v.state === "queued") sub = v.after ? "Starts when the copy above has finished" : "Waiting for the job before it to finish";
   else if (v.state === "finished" && v.error) { sub = (v.finished ? when(v.finished) + " · " : "") + "Failed · " + v.error; subCls += " bad"; }
@@ -742,7 +760,7 @@ function card(v) {
       (secs(v.created, v.finished) >= 1 && v.bytes ? " · " + rate(v.bytes / secs(v.created, v.finished)) + " average" : "") +
       (ver ? " · " + (srcOnly ? "source: " : "") + (v.failed ? (srcOnly ? v.strong : v.verified) + " match, " + v.failed + " do not" : (srcOnly ? v.strong : v.verified) + ((srcOnly ? v.strong : v.verified) === 1 ? " file matches" : " files match")) :
       problems ? " · " + (v.failed ? v.failed + " failed" : "") + (v.failed && v.s2_warnings ? ", " : "") + (v.s2_warnings ? v.s2_warnings + " source warnings" : "") :
-      only ? " · " + (v.hashed + v.identical) + " files copied, not verified" : " · " + proven + " files verified");
+      v.checks ? " · " + proofLine(v.checks) : only ? " · " + (v.hashed + v.identical) + " files copied, not verified" : " · " + proven + " files verified");
     if (problems) subCls += " warn"; }
   else sub = (v.finished ? when(v.finished) + " · " : "") + "Stopped by you · " + proven + (ver ? " files checked and matching" : " files verified and kept");
   q(".sub").textContent = sub; q(".sub").className = subCls;
@@ -754,9 +772,11 @@ function card(v) {
       "Every source file read again matches the hash stored when it was copied. The copies were not read in this check.";
   else if (v.state === "finished" && ver) line = v.failed ? "Some files do not match the stored hashes — see the files marked Error. Nothing was changed." :
       "Every file read in full matches the hash stored when it was copied" + (again ? ", and the source read again matches too." : ".") + (v.skipped ? " " + v.skipped + " files had no stored hash (never verified by the copy) and were not checked." : "");
+  else if (v.state === "finished" && only && v.checks && (v.checks.dest || v.checks.source)) line = problems ? "Finished with problems — see the files marked Error." :
+      "Copied without checks; later Verify jobs have since checked it: " + proofLine(v.checks) + ". The file list shows each file's result.";
   else if (v.state === "finished" && only) line = problems ? "Finished with problems — see the files marked Error." : "Finished. Every file is copied and hashed; no copy was read back." +
       (v.verify_next ? " The check is its own item in the queue." : " Not proof enough to erase a card.");
-  else if (v.state === "finished") line = problems ? "Finished with problems — see the files marked Error." : "Finished. Every file is verified" + (v.s2 === "now" ? " twice (source read again)." : " (the copy read back; the source was not read again).");
+  else if (v.state === "finished") line = problems ? "Finished with problems — see the files marked Error." : "Finished. Every file is verified" + (v.s2 === "now" || (v.checks && v.checks.source >= v.checks.of) ? " twice (source read again" + (v.s2 === "now" ? ")." : " by a later Verify).") : " (the copy read back; the source was not read again).");
   else if (v.state === "paused" && v.space) line = v.space.message + " Continue anyway, or cancel the job.";
   else if (v.state === "paused") line = "Paused by you. Resume continues exactly where it stopped.";
   else if (!old && v.state !== "running") line = "Added " + when(v.created);
@@ -773,7 +793,7 @@ function card(v) {
   q(".fcounts").hidden = ver || old || scanning;
   if (!ver && !old && !scanning) q(".fcounts").textContent = only ? "Copied " + (v.hashed + v.identical + v.failed) + " of " + v.files + " · not read back" : fileCounts(v);
   q(".counts").textContent = srcOnly ? "Source matching " + v.strong + " of " + v.files + " files" + (v.failed ? " · do not match: " + v.failed : "") + (v.skipped ? " · no stored hash: " + v.skipped : "") : ver ? "Matching " + v.verified + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
-    (again ? " · source read again and matching: " + v.strong : "") + (v.failed ? " · do not match: " + v.failed : "") + (v.skipped ? " · no stored hash: " + v.skipped : "") : only ? "Copied " + (v.hashed + v.identical) + " of " + v.files + " files, not verified" + (v.identical ? " · " + v.identical + " were already there (compared)" : "") +
+    (again ? " · source read again and matching: " + v.strong : "") + (v.failed ? " · do not match: " + v.failed : "") + (v.skipped ? " · no stored hash: " + v.skipped : "") : only ? "Copied " + (v.hashed + v.identical) + " of " + v.files + " files" + (v.checks && v.checks.dest ? ", read back later: " + v.checks.dest : ", not verified") + (v.identical ? " · " + v.identical + " were already there (compared)" : "") +
     (v.failed ? " · failed: " + v.failed : "") + (v.skipped ? " · not copied (links etc.): " + v.skipped : "") : "Verified " + proven + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
     (v.copied ? " · copied, check to come: " + v.copied : "") +
     (v.identical ? " · " + v.identical + " were already there" : "") + (v.s2 === "now" ? " · read twice: " + v.strong : "") +
