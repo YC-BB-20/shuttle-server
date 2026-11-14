@@ -142,6 +142,7 @@ type Job struct {
 	dir string
 
 	mu     sync.Mutex
+	saveMu sync.Mutex // orders writes of job.json
 	st     state
 	status []byte
 	// already marks files that were found at the destination and compared,
@@ -193,6 +194,10 @@ type live struct {
 func (j *Job) path(name string) string { return filepath.Join(j.dir, name) }
 
 func (j *Job) save() error {
+	// One save at a time, snapshot and write together, so an older snapshot
+	// can never land after a newer one (a Hide right after a finish was lost).
+	j.saveMu.Lock()
+	defer j.saveMu.Unlock()
 	j.mu.Lock()
 	b, err := json.MarshalIndent(j.st, "", "  ")
 	j.mu.Unlock()

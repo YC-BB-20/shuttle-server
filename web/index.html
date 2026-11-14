@@ -772,25 +772,24 @@ function drawChecks(box, v) {
   box.dataset.k = key; box.hidden = !k;
   if (!k) { box.replaceChildren(); return; }
   const all = n => n >= k.of ? (k.of === 1 ? "the file matches" : "all " + k.of + " files match") : n + " of " + k.of + " files match";
-  const row = (done, at, okText, noText, btnText, s2) => {
+  const row = (done, at, okText, noText) => {
     const p = el("p", done >= k.of && k.of > 0 ? "ok" : "warn");
     p.append((done >= k.of && k.of > 0 ? "✓ " : "✗ ") + (done ? okText + ": " + all(done) + (at ? " · " + when(at) : "") : noText));
-    if (done < k.of && !k.queued && !k.checking) {
-      const b = el("button", "", btnText); b.type = "button";
-      b.onclick = () => verify(v.dest, { s2, from: [v.id] }).catch(e => alert(e.message)); p.append(" ", b);
-    }
     return p;
   };
   box.replaceChildren(
-    row(k.dest, k.dest_at, "Destination read back", "Destination not read back yet", "Read destination now", ""),
-    row(k.source, k.source_at, "Source read a second time", "Source not read a second time yet", "Read source again now", "only"),
+    row(k.dest, k.dest_at, "Destination read back", "Destination not read back yet"),
+    row(k.source, k.source_at, "Source read a second time", "Source not read a second time yet"),
     ...(k.checking ? [el("p", "checking", "↻ Checking now: " + (k.check_src ? "reading the destination back and the source again" : "reading the destination back") + " — " +
       k.check_done + " of " + k.check_of + " files done" + (k.check_done ? (k.check_match === k.check_done ? ", all matching so far" : ", " + (k.check_done - k.check_match) + " do not match") : "") + ".")] : []),
     ...(k.queued ? [el("p", "mute", "A check of this copy is in the queue.")] : []));
 }
-function verifyBox(path, title, from) {
+// Every re-read starts here. pick chooses the option first: "dest", "src"
+// (destinations, then the source) or "only" (the source only), from what the
+// copy still lacks.
+function verifyBox(path, title, from, pick) {
   $("verTitle").textContent = title; $("verWhat").textContent = "Checks " + path;
-  $("verErr").textContent = ""; $("verDest").checked = true; $("verPaused").checked = false;
+  $("verErr").textContent = ""; $({ src: "verSrc", only: "verOnly" }[pick] || "verDest").checked = true; $("verPaused").checked = false;
   $("verGo").onclick = () => verify(path, { from, s2: $("verSrc").checked ? "after" : $("verOnly").checked ? "only" : "", paused: $("verPaused").checked })
     .then(() => $("verDlg").close()).catch(e => $("verErr").textContent = e.message);
   $("verDlg").showModal();
@@ -1021,8 +1020,10 @@ function card(v) {
   }
   if (!old) btn(acts, "✕", () => stopJob(v), "", "Stop…");
   if (problems) btn(btns, "Show problems", () => showProblems(v.id));
+  // What the copy still lacks decides the option chosen first: the copy read back, then the source read again.
+  const lack = !ver && v.checks && v.checks.of ? (v.checks.dest < v.checks.of ? (v.checks.source < v.checks.of ? "src" : "dest") : v.checks.source < v.checks.of ? "only" : "") : "";
   if (old) btn(btns, "Verify files", () => verifyBox(ver ? place : v.dest,
-    ver || (v.checks && (v.checks.dest || v.checks.source)) ? "Verify files again" : "Verify files", ver ? v.from : [v.id]));
+    ver || (v.checks && (v.checks.dest || v.checks.source)) ? "Verify files again" : "Verify files", ver ? v.from : [v.id], lack));
   // Hide from history: an ✕ at the right end of the row, shown once the row is opened (↺ brings a hidden one back).
   if (old) btn(acts, v.hidden ? "↺" : "✕", () => setHidden(v, !v.hidden), "hidebtn", v.hidden ? "Show in history" : "Hide from history");
   drawChecks(q(".checks"), v);

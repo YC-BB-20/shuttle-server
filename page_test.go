@@ -62,7 +62,7 @@ func TestPagePurpleAccentNoVerifyButton(t *testing.T) {
 	if strings.Contains(s, `id="verBtn"`) {
 		t.Error("page still has the top Verify… button")
 	}
-	for _, want := range []string{`--accent:#7a3cc8;`, `--accent:#8a4fe0;`, `.qfinfo { font-size:13px; margin:12px 0 8px; }`, `"Verify files"`, `"Read destination now"`, `"Read source again now"`, `"Verify files again"`, `Add job as paused`, `<b>Destinations, then the source read again</b>`} {
+	for _, want := range []string{`--accent:#7a3cc8;`, `--accent:#8a4fe0;`, `.qfinfo { font-size:13px; margin:12px 0 8px; }`, `"Verify files"`, `"Verify files again"`, `Add job as paused`, `<b>Destinations, then the source read again</b>`} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
 		}
@@ -197,10 +197,17 @@ func TestPageLiveChecksAndVerifyRows(t *testing.T) {
 	for _, want := range []string{
 		`proven: "Destination verified", strong: "Fully verified"`, `checkwait: "Copied · check queued"`,
 		`f.v.checks && f.v.checks.checking`, `"↻ Checking now: "`, `"↳ Checks the copy "`,
-		`.job.verify { margin-left:28px;`, `const fileHeads = { done: "Files verified:"`, `.job.open .acts .hidebtn { display:inline-block; }`, `btn(acts, v.hidden ? "↺" : "✕", () => setHidden(v, !v.hidden), "hidebtn"`,
+		`.job.verify { margin-left:28px;`, `const fileHeads = { done: "Files verified:"`, `.job.open .acts .hidebtn { display:inline-block; }`, `function verifyBox(path, title, from, pick)`, `btn(acts, v.hidden ? "↺" : "✕", () => setHidden(v, !v.hidden), "hidebtn"`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
 		}
+	}
+}
+
+func TestPageNoRereadButtonsInChecks(t *testing.T) {
+	s := string(IndexHTML)
+	if strings.Contains(s, "Read destination now") || strings.Contains(s, "Read source again now") {
+		t.Error("re-reads start only from Verify files")
 	}
 }

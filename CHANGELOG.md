@@ -1,8 +1,13 @@
 # Changelog
 
-## 0.2.41 — 13 November 2026
+## 0.2.42 — 13 November 2026
+
+v0.2.41 was never installable (one test failed); 0.2.42 includes it.
+
 
 - **No duplicate filters in a file list.** When every file is in the same group — all verified, say — the All / Verified buttons are replaced by one heading, **"Files verified:"**, above the list (likewise "Files in progress:", "Files not verified:", "Files with problems:"). The buttons come back as soon as the files differ.
+- **Every re-read starts from Verify files.** The "Read destination now" and "Read source again now" buttons beside a copy's checks are gone; the ✓/✗ lines stay as the record. Verify files now opens with the right option already chosen from what the copy still lacks: both reads if neither is done, the copy read back if only that is missing, "Source read again only" if only the source is.
+- Fixed: hiding a history entry right as its copy finished could be undone by the copy's own last save. A job's saves now take turns.
 - **Hide from history is now an ✕** at the right end of a finished row, shown once you open the row. A hidden row shows ↺ there to bring it back.
 
 ## 0.2.40 — 13 November 2026
