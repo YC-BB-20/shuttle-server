@@ -156,7 +156,9 @@
   .frow .why { font-size:13px; color:var(--bad); overflow-wrap:anywhere; }
   .frow .bar { margin:4px 0 0; }
   .chip.ok { color:var(--ok); border-color:var(--ok); }
-  .foot { display:flex; gap:8px; justify-content:flex-end; padding:12px 16px; border-top:1px solid var(--line); }
+  .newdir { display:flex; gap:8px; margin:8px 0; min-width:0; }
+  .newdir input { flex:1; min-width:0; }
+  .foot { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; padding:12px 16px; border-top:1px solid var(--line); }
   pre { white-space:pre-wrap; overflow-wrap:anywhere; font: 14px/1.45 ui-monospace, Menlo, monospace; margin:0; }
   /* Overall progress, on top: the whole queue, the copy running now, the file in it. */
   .status.monitor .pcrow { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-top:10px; }
@@ -336,9 +338,10 @@
     <nav class="crumbs" id="crumbs" aria-label="Where you are"></nav>
     <p class="mute" id="pickHint"></p>
     <div class="list" id="pickList"></div>
+    <form class="newdir" id="newDirBox" hidden><input type="text" id="newDirName" placeholder="New folder name" maxlength="200" autocomplete="off" aria-label="New folder name"><button type="submit" class="primary">Make folder</button><button type="button" id="newDirCancel">Cancel</button></form>
     <p class="err" id="pickErr"></p>
   </div>
-  <div class="foot"><button type="button" id="pickUp">Up one level</button><button type="button" class="primary" id="pickUse">Use this folder</button></div>
+  <div class="foot"><button type="button" id="pickUp">Up one level</button><button type="button" id="newDirBtn">New folder</button><button type="button" class="primary" id="pickUse">Use this folder</button></div>
 </dialog>
 <dialog id="spdDlg">
   <div class="head"><h2 id="spdTitle">Disk speed test</h2><button type="button" data-close>Close</button></div>
@@ -806,9 +809,21 @@ function browse(path, keep) {
     }));
     if (!d.folders.length && !d.error) $("pickList").replaceChildren(el("p", "mute", pickFor === "src" ? "  This folder is empty." : "  No folders inside."));
     $("pickUp").onclick = () => browse(d.parent); $("pickUp").disabled = !!d.top;
+    // New folder: only where copies go, and not on a read-only disk or a server.
+    const here = d.places.find(p => p.kind !== "home" && (d.path === p.path || d.path.startsWith(p.path + "/")) && p.kind !== "internal") ||
+      d.places.find(p => p.kind === "internal");
+    $("newDirBtn").hidden = pickFor !== "dst" || !!d.error || !!d.note || !!(here && (here.read_only || here.kind === "server"));
+    $("newDirBox").hidden = true;
     useLabel();
   }).catch(() => { $("pickErr").textContent = "Could not reach Shuttle Server."; });
 }
+$("newDirBtn").onclick = () => { $("newDirBox").hidden = false; $("newDirName").value = ""; $("pickErr").textContent = ""; $("newDirName").focus(); };
+$("newDirCancel").onclick = () => { $("newDirBox").hidden = true; };
+$("newDirBox").onsubmit = e => {
+  e.preventDefault();
+  post("/api/mkdir", { parent: pickAt, name: $("newDirName").value })
+    .then(r => browse(r.path)).catch(err => $("pickErr").textContent = err.message);
+};
 $("pickUse").onclick = () => {
   if (pickFor === "ver") { verify(pickAt).then(() => $("pickDlg").close()).catch(e => $("pickErr").textContent = e.message); return; }
   $(pickFor).value = pickAt;

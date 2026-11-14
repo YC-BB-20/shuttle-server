@@ -140,3 +140,15 @@ func TestPageSeparateCheckOnlyAfterAll(t *testing.T) {
 		t.Error("the when-to-check choice must stay visible with a separate check")
 	}
 }
+
+func TestPageNewFolderInPicker(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`id="newDirBtn"`, `id="newDirBox"`, `post("/api/mkdir", { parent: pickAt, name: $("newDirName").value })`,
+		`$("newDirBtn").hidden = pickFor !== "dst"`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}

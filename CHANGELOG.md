@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.35 — 13 November 2026
+
+- **New folder** when choosing where to copy to. In the destination picker, press **New folder**, type a name and press **Make folder**; the picker opens the new folder, ready for **Use this folder**. It only ever makes a new, empty folder: a name that is already there is refused, never replaced. It is not offered on read-only disks or network servers, and Shuttle refuses to make one on a camera card.
+
 ## 0.2.34 — 13 November 2026
 
 - New copy: **"Check in a separate queue item"** is shown only when **"After all files are copied"** is chosen. With "As each file is copied" it is hidden and off, since that check happens during the copy itself.

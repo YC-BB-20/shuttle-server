@@ -165,3 +165,44 @@ func TestCrumbsStartAtTheDisk(t *testing.T) {
 		t.Fatalf("%+v", cr)
 	}
 }
+
+func TestMkdirMakesOneNewFolderOnly(t *testing.T) {
+	s, _ := newTest()
+	dir := t.TempDir()
+	t.Setenv("HOME", filepath.Dir(dir))
+	h := s.HTTP().Handler
+	mk := func(parent, name string) (int, map[string]string) {
+		b, _ := json.Marshal(map[string]string{"parent": parent, "name": name})
+		req := httptest.NewRequest("POST", "/api/mkdir", strings.NewReader(string(b)))
+		req.Host = "localhost:8470"
+		req.Header.Set("X-Shuttle", "1")
+		req.Header.Set("Origin", "http://localhost:8470")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		var out map[string]string
+		json.Unmarshal(rec.Body.Bytes(), &out)
+		return rec.Code, out
+	}
+	code, out := mk(dir, "  Day 1 ")
+	if code != http.StatusOK || out["path"] != filepath.Join(dir, "Day 1") || !isDir(filepath.Join(dir, "Day 1")) {
+		t.Fatalf("make: %d %v", code, out)
+	}
+	os.WriteFile(filepath.Join(dir, "Day 1", "keep.txt"), []byte("x"), 0o600)
+	if code, _ := mk(dir, "Day 1"); code != http.StatusBadRequest {
+		t.Errorf("existing name: got %d", code)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "Day 1", "keep.txt")); err != nil {
+		t.Error("an existing folder's contents were touched")
+	}
+	for _, bad := range []string{"", ".hidden", "..", "a/b", "a:b", "x\x01"} {
+		if code, _ := mk(dir, bad); code != http.StatusBadRequest {
+			t.Errorf("name %q: got %d", bad, code)
+		}
+	}
+	if code, _ := mk("/etc", "nope"); code != http.StatusBadRequest {
+		t.Errorf("outside home and disks: got %d", code)
+	}
+	if code, _ := mk(filepath.Join(dir, "missing"), "x"); code != http.StatusBadRequest {
+		t.Errorf("missing parent: got %d", code)
+	}
+}

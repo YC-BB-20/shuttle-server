@@ -67,6 +67,7 @@ func (s *Server) HTTP() *http.Server {
 	mux.HandleFunc("GET /api/about", s.json(s.About))
 	mux.HandleFunc("GET /api/events", s.events)
 	mux.HandleFunc("GET /api/browse", s.browse)
+	mux.HandleFunc("POST /api/mkdir", s.always(s.mkdir))
 	mux.HandleFunc("GET /api/storage", s.storageList)
 	mux.HandleFunc("GET /api/speedtest", s.speedStatus)
 	mux.HandleFunc("POST /api/speedtest/{action}", s.always(s.speedAction))
