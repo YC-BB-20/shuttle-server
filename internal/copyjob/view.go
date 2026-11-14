@@ -386,6 +386,53 @@ type FilePage struct {
 	// Counts holds how many files each filter shows: all, todo, done (verified),
 	// unverified (copied, not read back), problems.
 	Counts map[string]int `json:"counts"`
+	// Folders are the folders directly inside the folder asked for, when the
+	// list is shown as folders (v0.2.46). Rows then hold only the files
+	// directly inside it. Only on the first page.
+	Folders []FolderRow `json:"folders,omitempty"`
+	// MoreFolders: there were more folders than MaxFolders; the rest are left out.
+	MoreFolders bool `json:"more_folders,omitempty"`
+}
+
+// FolderRow is one folder of a job's file list, with how its files stand,
+// counting every file inside it at any depth.
+type FolderRow struct {
+	Name     string `json:"name"`
+	Path     string `json:"path"`  // relative to the job's top, with "/"
+	Files    int    `json:"files"` // every file inside, at any depth
+	Match    int    `json:"match"` // of those, the ones the chosen filter shows
+	Strong   int    `json:"strong"`
+	Dest     int    `json:"dest"`   // destination read back, source not read again
+	Source   int    `json:"source"` // only the source read again
+	Todo     int    `json:"todo"`
+	Hashed   int    `json:"hashed"` // copied, never read back
+	Problems int    `json:"problems"`
+}
+
+// MaxFolders bounds how many folders one level of the list returns, so a
+// folder holding thousands of folders cannot make a page grow without end.
+const MaxFolders = 500
+
+// add counts one file of status in a folder row.
+func (f *FolderRow) add(status string, match bool) {
+	f.Files++
+	if match {
+		f.Match++
+	}
+	switch status {
+	case "strong", "already2":
+		f.Strong++
+	case "proven", "already":
+		f.Dest++
+	case "source":
+		f.Source++
+	case "hashed":
+		f.Hashed++
+	case "failed", "warning":
+		f.Problems++
+	default:
+		f.Todo++
+	}
 }
 
 // MaxFilePage bounds one page of the file list.
@@ -448,7 +495,25 @@ func filterOK(filter, status string) bool {
 // (all, todo, done, unverified, problems). It reads the manifest from disk and holds only
 // the page in memory.
 func (m *Manager) Files(id, filter string, from, limit int) (FilePage, error) {
+	return m.FilesIn(id, filter, false, "", from, limit)
+}
+
+// FilesIn is Files, optionally as folders: with tree set, only the files
+// directly inside dir (relative, "" for the top) are listed, and the first
+// page also lists the folders directly inside dir with counts of every file
+// within them. The manifest is read once; the folders held are bounded by
+// MaxFolders.
+func (m *Manager) FilesIn(id, filter string, tree bool, dir string, from, limit int) (FilePage, error) {
 	page := FilePage{Rows: []FileRow{}, Next: -1}
+	dir = strings.Trim(dir, "/")
+	prefix := ""
+	if dir != "" {
+		prefix = dir + "/"
+	}
+	var folders map[string]*FolderRow
+	if tree && from == 0 {
+		folders = map[string]*FolderRow{}
+	}
 	j := m.find(id)
 	if j == nil {
 		return page, errors.New("this copy no longer exists")
@@ -499,8 +564,35 @@ func (m *Manager) Files(id, filter string, from, limit int) (FilePage, error) {
 		} else if vfile == e.P && vstage != "" {
 			r.Status, r.Stage, r.Done = "working", vstage, vdone // a Verify of this copy is reading it now
 		}
+		if tree {
+			if !strings.HasPrefix(e.P, prefix) {
+				continue
+			}
+			if k := strings.IndexByte(e.P[len(prefix):], '/'); k >= 0 {
+				if folders != nil {
+					name := e.P[len(prefix) : len(prefix)+k]
+					fr := folders[name]
+					if fr == nil && len(folders) < MaxFolders {
+						fr = &FolderRow{Name: name, Path: prefix + name}
+						folders[name] = fr
+					} else if fr == nil {
+						page.MoreFolders = true
+					}
+					if fr != nil {
+						fr.add(r.Status, filterOK(filter, r.Status))
+					}
+				}
+				continue
+			}
+		}
 		if !filterOK(filter, r.Status) {
 			continue
+		}
+		if len(page.Rows) == limit && folders != nil {
+			if page.Next < 0 {
+				page.Next = e.I
+			}
+			continue // keep counting the folders
 		}
 		if len(page.Rows) == limit {
 			page.Next = e.I
@@ -511,6 +603,10 @@ func (m *Manager) Files(id, filter string, from, limit int) (FilePage, error) {
 		}
 		page.Rows = append(page.Rows, r)
 	}
+	for _, fr := range folders {
+		page.Folders = append(page.Folders, *fr)
+	}
+	slices.SortFunc(page.Folders, func(a, b FolderRow) int { return strings.Compare(a.Name, b.Name) })
 	if len(need) > 0 {
 		ReadJournal(j.path("journal.log"), 0, func(rec Rec) bool {
 			if k, ok := need[rec.I]; ok && rec.Err != "" {
@@ -740,6 +836,9 @@ type FileInfo struct {
 	JobDone bool `json:"job_done,omitempty"`
 	// JobDest is the copy's destination folder, what Verify files checks.
 	JobDest string `json:"job_dest"`
+	// From: for a file of a Verify, the copies that Verify checks, so a new
+	// Verify set up from here checks the same ones (v0.2.46).
+	From []string `json:"from,omitempty"`
 }
 
 // FileVerify is what one Verify run read for one file.
@@ -845,6 +944,12 @@ func (m *Manager) FileInfo(id string, i int) (FileInfo, error) {
 	}
 	listMu.Lock()
 	defer listMu.Unlock()
+	if !spec.isVerify() {
+		// With what later Verify jobs of this copy found, as in the file list (v0.2.46).
+		if table, _ := m.mergedStatus(j); i >= 0 && i < len(table) {
+			st = table[i]
+		}
+	}
 	it, err := openManifest(j.path("manifest.jsonl"))
 	if err != nil {
 		return fi, errors.New("the file list cannot be read")
@@ -912,7 +1017,7 @@ func (m *Manager) FileInfo(id string, i int) (FileInfo, error) {
 	fi.Busy = m.running != nil
 	jobs := append([]*Job(nil), m.jobs...)
 	m.mu.Unlock()
-	fi.JobDone, fi.JobDest = phase == "done", spec.Dest
+	fi.JobDone, fi.JobDest, fi.From = phase == "done", spec.Dest, spec.From
 	fi.Verifies = []FileVerify{}
 	if !spec.isVerify() {
 		fi.Verifies, fi.VerifyQueued = verifiesOf(jobs, id, fi.Dest)
@@ -955,6 +1060,10 @@ func (m *Manager) FileInfo(id string, i int) (FileInfo, error) {
 		fi.Proof = "Verified against what was read, with a warning about the source"
 	case "copied":
 		fi.Proof = "Not yet: copied, waiting for the check pass; it keeps a temporary name until then"
+	case "source":
+		fi.Proof = "The source read a second time matches; the copy has not been read back yet"
+	case "checkwait":
+		fi.Proof = "Not yet: copied and hashed; a Verify of this copy in the queue will check it"
 	case "hashed":
 		fi.Proof = "Not verified: copied and hashed as it was read, but the copy was not read back"
 		if spec.Verify != "" {

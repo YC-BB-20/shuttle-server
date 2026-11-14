@@ -229,7 +229,10 @@
   .job .detail { margin:8px 0 2px 40px; cursor:auto; font-size:14px; }
   .job:not(.open) .detail { display:none; }
   .job .detail p { margin:2px 0; }
-  .job .detail .btns { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .job .detail .btns, .job .detail .fpage { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .job .detail .brow { display:flex; gap:8px; flex-wrap:wrap; min-width:0; }
+  .files .frow.folder .t > span:first-child { font-weight:600; }
+  .files .fmore { margin:4px 0 4px 0; }
   .job .files { border-top:0; margin-top:8px; padding-top:0; }
   .job.old { padding:8px 12px; }
   .filters button .n { opacity:.75; font-variant-numeric:tabular-nums; }
@@ -913,7 +916,7 @@ function card(v) {
     c.innerHTML = '<div class="r"><span class="ico"></span><div class="m"><div class="route"><span class="s"></span><span class="arr">→</span><span class="d"></span></div><div class="of" hidden></div>' +
       '<div class="bar"><i></i></div><div class="sub"></div></div><div class="acts"></div></div>' +
       '<div class="detail"><p class="path from"></p><p class="path to"></p><p class="line"></p><div class="bar file"><i></i></div><p class="cspeed" hidden></p><p class="speed mute"></p><p class="fcounts" hidden></p>' +
-      '<p class="counts mute"></p><p class="warn same" hidden>Source and destination are on the same disk: this copy does not protect against that disk failing.</p><div class="checks" hidden></div><div class="btns"></div></div>';
+      '<p class="counts mute"></p><p class="warn same" hidden>Source and destination are on the same disk: this copy does not protect against that disk failing.</p><div class="checks" hidden></div><div class="brow"><div class="btns"></div><div class="fpage"></div></div></div>';
     cards[v.id] = c;
     // Tapping a copy opens its details and files; tapping it again closes them.
     c.onclick = e => {
@@ -1022,8 +1025,9 @@ function card(v) {
   if (problems) btn(btns, "Show problems", () => showProblems(v.id));
   // What the copy still lacks decides the option chosen first: the copy read back, then the source read again.
   const lack = !ver && v.checks && v.checks.of ? (v.checks.dest < v.checks.of ? (v.checks.source < v.checks.of ? "src" : "dest") : v.checks.source < v.checks.of ? "only" : "") : "";
-  if (old) btn(btns, "Verify files", () => verifyBox(ver ? place : v.dest,
-    ver || (v.checks && (v.checks.dest || v.checks.source)) ? "Verify files again" : "Verify files", ver ? v.from : [v.id], lack));
+  // Verify files only on a copy; a Verify's row just shows what it found (v0.2.46).
+  if (old && !ver) btn(btns, "Verify files", () => verifyBox(v.dest,
+    v.checks && (v.checks.dest || v.checks.source) ? "Verify files again" : "Verify files", [v.id], lack));
   // Hide from history: an ✕ at the right end of the row, shown once the row is opened (↺ brings a hidden one back).
   if (old) btn(acts, v.hidden ? "↺" : "✕", () => setHidden(v, !v.hidden), "hidebtn", v.hidden ? "Show in history" : "Hide from history");
   drawChecks(q(".checks"), v);
@@ -1312,33 +1316,106 @@ function workChip(r) {
   return el("span", "chip " + (checking ? "verifying" : "copying"), (checking ? "Verifying" : /^Reading the source/.test(r.stage || "") ? "Reading" : "Copying") + (r.size ? " " + Math.floor(pct(r.done, r.size)) + "%" : ""));
 }
 const fileChip = { checkwait: "waiting", already: "ok", already2: "ok", proven: "ok", strong: "ok", failed: "bad", warning: "waiting", working: "copying", copied: "copying", hashed: "waiting", source: "ok" };
+// The file list. With more than treeMin files it is shown as folders, closed
+// until clicked, each with how many files it holds and how they stand; a
+// folder holding nothing but one folder opens by itself (v0.2.46). Show more
+// / Show fewer sit beside Verify files.
+const treeMin = 20, filePage = 50;
 function toggleFiles(v, c) {
-  if (fv[v.id]) { fv[v.id].box.remove(); delete fv[v.id]; return; }
+  if (fv[v.id]) { fv[v.id].box.remove(); c.querySelector(".fpage").replaceChildren(); delete fv[v.id]; return; }
   const box = el("div", "files");
   // One file: no filters, the one row says it all.
   const one = v.files <= 1;
-  const f = fv[v.id] = { v, box, filter: !one && (v.failed || v.s2_warnings) ? "problems" : "all", rows: [], next: -1, busy: false };
+  const f = fv[v.id] = { v, box, card: c, filter: !one && (v.failed || v.s2_warnings) ? "problems" : "all", rows: [], next: -1, busy: false,
+    tree: v.files > treeMin, nodes: {}, open: new Set(), auto: new Set() };
   const bar = el("div", "filters"); bar.hidden = one;
   [["all", "All"], ["todo", "In progress"], ["done", "Verified"], ["unverified", "Not verified"], ["problems", "Error"]].forEach(([k, t]) => {
     const b = el("button", "", t + " "); b.type = "button"; b.dataset.f = k; b.append(el("span", "n", ""));
-    b.onclick = () => { f.filter = k; loadFiles(f, false); }; bar.append(b);
+    b.onclick = () => { f.filter = k; f.nodes = {}; loadFiles(f, false); }; bar.append(b);
   });
-  const more = el("button", "", "Show more"); more.type = "button"; more.onclick = () => loadFiles(f, true);
-  box.append(bar, el("p", "fhead"), el("div", "frows"), el("p", "mute note"), more);
+  box.append(bar, el("p", "fhead"), el("div", "frows"), el("p", "mute note"));
   c.querySelector(".detail").append(box); loadFiles(f, false);
 }
-function loadFiles(f, append, refresh) {
-  if (f.busy) return; f.busy = true;
-  const from = append ? f.next : 0, limit = refresh ? Math.min(200, Math.max(50, f.rows.length)) : 50;
-  fetch("/api/jobs/" + f.v.id + "/files?filter=" + f.filter + "&from=" + from + "&limit=" + limit).then(r => r.json()).then(p => {
-    f.rows = append ? f.rows.concat(p.rows || []) : (p.rows || []); f.next = p.next; f.counts = p.counts;
-    drawFiles(f, p.note);
-  }).catch(() => {}).finally(() => { f.busy = false; });
+const filesURL = (f, dir, from, limit) => "/api/jobs/" + f.v.id + "/files?filter=" + f.filter + "&from=" + from + "&limit=" + limit + (f.tree ? "&tree=1&dir=" + encodeURIComponent(dir) : "");
+// One folder's files and folders; append adds its next page.
+function getDir(f, dir, append, limit) {
+  const n = f.nodes[dir];
+  return fetch(filesURL(f, dir, append && n ? n.next : 0, limit)).then(r => r.json()).then(p => {
+    const rows = append && n ? n.rows.concat(p.rows || []) : (p.rows || []);
+    f.nodes[dir] = { rows, next: p.next, folders: append && n ? n.folders : (p.folders || []), more: append && n ? n.more : p.more_folders };
+    return p;
+  });
 }
-// When one filter holds every file, the filter buttons say nothing new: a
-// plain heading ("Files verified:") replaces them.
+function loadFiles(f, append, refresh, fewer) {
+  if (f.busy) return; f.busy = true;
+  const root = f.nodes[""], have = root ? root.rows.length : 0;
+  const limit = refresh ? Math.min(200, Math.max(filePage, have)) : filePage;
+  const open = refresh ? [...f.open].filter(d => f.nodes[d]) : [];
+  getDir(f, "", append && !fewer, fewer ? filePage : limit).then(p => {
+    f.counts = p.counts; f.note = p.note;
+    const r = f.nodes[""];
+    // A top holding only one folder opens it at once.
+    if (f.tree && !r.rows.length && r.folders.length === 1 && !f.auto.has(r.folders[0].path)) { f.auto.add(r.folders[0].path); f.open.add(r.folders[0].path); open.push(r.folders[0].path); }
+    return open.reduce((pr, d) => pr.then(() => getDir(f, d, false, Math.min(200, Math.max(filePage, (f.nodes[d] || { rows: [] }).rows.length)))), Promise.resolve());
+  }).then(() => drawFiles(f)).catch(() => {}).finally(() => { f.busy = false; });
+}
+function openDir(f, dir) {
+  if (f.open.has(dir)) { f.open.delete(dir); drawFiles(f); return; }
+  f.open.add(dir);
+  getDir(f, dir, false, filePage).then(p => {
+    const n = f.nodes[dir];
+    if (!n.rows.length && n.folders.length === 1) { f.open.add(n.folders[0].path); return getDir(f, n.folders[0].path, false, filePage); }
+  }).then(() => drawFiles(f)).catch(() => {});
+}
+// A folder's standing in a few words, from the counts of every file in it.
+function folderChip(fr) {
+  if (fr.problems) return el("span", "chip bad", fr.problems + (fr.problems === 1 ? " error" : " errors"));
+  if (fr.todo) return el("span", "chip copying", (fr.files - fr.todo) + " of " + fr.files + " done");
+  if (fr.hashed) return el("span", "chip waiting", fr.hashed === fr.files ? "Not verified" : fr.hashed + " not verified");
+  if (fr.strong === fr.files) return el("span", "chip ok", "Fully verified");
+  if (fr.source === fr.files) return el("span", "chip ok", "Source verified");
+  return el("span", "chip ok", fr.source ? "Verified" : "Destination verified");
+}
 const fileHeads = { done: "Files verified:", todo: "Files in progress:", unverified: "Files not verified:", problems: "Files with problems:" };
-function drawFiles(f, note) {
+function fileRow(f, r, depth) {
+  const row = el("div", "frow"), t = el("div", "t");
+  row.tabIndex = 0; row.onclick = () => fileInfo(f.v.id, r.i); row.onkeydown = e => { if (e.key === "Enter") row.onclick(); };
+  if (depth) row.style.paddingLeft = (depth * 18 + 12) + "px";
+  const name = el("span", "", f.tree ? r.path.split("/").pop() : r.path); name.title = r.path;
+  t.append(name, el("span", "sz", size(r.size)), workChip(r));
+  row.append(t);
+  if (r.status === "working") {
+    row.title = r.stage + (r.size ? " — " + size(r.done) + " of " + size(r.size) : "");
+    const b = el("div", "bar edge"), i = el("i"); i.style.width = pct(r.done, r.size) + "%"; b.append(i); row.append(b);
+  }
+  if (r.why) row.append(el("div", "why", r.why));
+  return row;
+}
+// Rows of one folder: its folders first (closed unless opened), then its files.
+function dirRows(f, dir, depth) {
+  const n = f.nodes[dir]; if (!n) return [];
+  const out = [];
+  n.folders.filter(fr => f.filter === "all" || fr.match).forEach(fr => {
+    const open = f.open.has(fr.path), row = el("div", "frow folder"), t = el("div", "t");
+    row.tabIndex = 0; row.onclick = () => openDir(f, fr.path); row.onkeydown = e => { if (e.key === "Enter") row.onclick(); };
+    row.setAttribute("aria-expanded", open);
+    if (depth) row.style.paddingLeft = (depth * 18 + 12) + "px";
+    const name = el("span", "", (open ? "▾ " : "▸ ") + fr.name); name.title = fr.path;
+    const cnt = f.filter === "all" || fr.match === fr.files ? fr.files : fr.match + " of " + fr.files;
+    t.append(name, el("span", "sz", cnt + (fr.files === 1 ? " file" : " files")), folderChip(fr));
+    row.append(t); out.push(row);
+    if (open) out.push(...dirRows(f, fr.path, depth + 1));
+  });
+  if (n.more) out.push(el("p", "mute", "More folders than can be listed here."));
+  out.push(...n.rows.map(r => fileRow(f, r, depth)));
+  if (dir && n.next >= 0) {
+    const b = el("button", "fmore", "Show more in " + dir.split("/").pop()); b.type = "button";
+    if (depth) b.style.marginLeft = (depth * 18) + "px";
+    b.onclick = () => getDir(f, dir, true, filePage).then(() => drawFiles(f)); out.push(b);
+  }
+  return out;
+}
+function drawFiles(f) {
   const c = f.counts || {}, same = c.all > 1 && f.filter === "all" ? Object.keys(fileHeads).find(k => c[k] === c.all) : "";
   f.box.querySelector(".fhead").textContent = same ? fileHeads[same] : "";
   if (f.v.files > 1) f.box.querySelector(".filters").hidden = !!same;
@@ -1348,29 +1425,18 @@ function drawFiles(f, note) {
     // A filter with nothing in it is hidden (All always shows; so does the chosen one).
     if (b.dataset.f !== "all") b.hidden = !(f.counts && f.counts[b.dataset.f]) && f.filter !== b.dataset.f;
   });
-  f.box.querySelector(".frows").replaceChildren(...f.rows.map(r => {
-    const row = el("div", "frow"), t = el("div", "t");
-    row.tabIndex = 0; row.onclick = () => fileInfo(f.v.id, r.i); row.onkeydown = e => { if (e.key === "Enter") row.onclick(); };
-    const name = el("span", "", r.path); name.title = r.path;
-    t.append(name, el("span", "sz", size(r.size)), workChip(r));
-    row.append(t);
-    if (r.status === "working") {
-      row.title = r.stage + (r.size ? " — " + size(r.done) + " of " + size(r.size) : "");
-      const b = el("div", "bar edge"), i = el("i"); i.style.width = pct(r.done, r.size) + "%"; b.append(i); row.append(b);
-    }
-    if (r.why) row.append(el("div", "why", r.why));
-    return row;
-  }));
-  f.box.querySelector(".frows").hidden = !f.rows.length;
-  f.box.querySelector(".note").textContent = note || (f.rows.length ? "" : "No files here.");
-  f.box.querySelector(".files > button").hidden = f.next < 0;
+  const rows = dirRows(f, "", 0), root = f.nodes[""] || { rows: [], next: -1 };
+  f.rows = root.rows; f.next = root.next;
+  f.box.querySelector(".frows").replaceChildren(...rows);
+  f.box.querySelector(".frows").hidden = !rows.length;
+  f.box.querySelector(".note").textContent = f.note || (rows.length ? "" : "No files here.");
+  // Show more / Show fewer, beside Verify files.
+  const pg = [];
+  if (root.next >= 0) { const b = el("button", "", "Show more files"); b.type = "button"; b.onclick = () => loadFiles(f, true); pg.push(b); }
+  if (root.rows.length > filePage) { const b = el("button", "", "Show fewer files"); b.type = "button"; b.onclick = () => loadFiles(f, false, false, true); pg.push(b); }
+  f.card.querySelector(".fpage").replaceChildren(...pg);
 }
 // File info: what the file is, where it went, its hashes and its story.
-const hashName = { c: "Source — full read, as it was copied", s1: "Source — full read on its own, before the copy", d1: "Destination — full read of the copy", s2: "Source — second full read after the copy (safety check)" };
-// A file already at the destination was not copied: the source was read on
-// its own and compared with the file that was there.
-const alreadyHashName = { s1: "Source — full read, compared with the file already there (not copied)", d1: "Destination — full read of the file already there", s2: "Source — second full read (safety check)" };
-const verifyHashName = { c: "Stored when it was copied", d1: "Destination — full read now", s2: "Source — read again now" };
 function kv(pairs) {
   const dl = el("dl", "kv");
   pairs.filter(p => p[1] !== "" && p[1] != null).forEach(([k, v]) => { dl.append(el("dt", "", k)); const d = el("dd"); if (v instanceof Node) d.append(v); else d.textContent = v; dl.append(d); });
@@ -1406,12 +1472,13 @@ function proofSlots(fi) {
   const ref = first ? fi.hash[first] : "";
   const vd = !fi.hash.d1 && newest("d1"), vs2 = !fi.hash.s2 && newest("s2");
   const d1 = fi.hash.d1 || vd && vd.d1 || "", s2 = fi.hash.s2 || vs2 && vs2.s2 || "";
-  const src = fi.already ? "Source — full read, compared with the file already there (not copied)" : first === "s1" ? "Source — full read on its own, before the copy" : "Source — hashed while it was copied";
+  const ver = fi.kind === "verify";
+  const src = ver ? "Source — hashed when it was copied (stored)" : fi.already ? "Source — full read, compared with the file already there (not copied)" : first === "s1" ? "Source — full read on its own, before the copy" : "Source — hashed while it was copied";
   const setUp = pick => {
     const w = el("div", "mute");
     if (fi.verify_queued) w.textContent = "A Verify of this copy is in the queue.";
-    else if (!fi.job_done) w.textContent = "Can be verified once the copy has finished.";
-    else { const b = el("button", "", "Verify…"); b.type = "button"; b.onclick = () => verifyBox(fi.job_dest, "Verify files", [infoAt.id], pick); w.append(b); }
+    else if (!fi.job_done) w.textContent = ver ? "Can be done once this Verify has finished." : "Can be verified once the copy has finished.";
+    else { const b = el("button", "", "Verify…"); b.type = "button"; b.onclick = () => verifyBox(fi.job_dest, "Verify files", ver ? fi.from : [infoAt.id], pick); w.append(b); }
     return w;
   };
   const slot = (label, h, from, side, pick, none) => {
@@ -1423,7 +1490,7 @@ function proofSlots(fi) {
       else if (ref && side !== "first") v.append(el("span", "match", "  ✓ same as the first"));
       v.append(el("div", "mute", from));
       d.append(v);
-      if (side !== "first" || fi.hash.c) d.append(againButton(fi, side === "first" ? "source" : side));
+      if (side !== "first" || fi.hash.c && !ver) d.append(againButton(fi, side === "first" ? "source" : side));
     } else {
       v.append(el("span", "warn", none)); d.append(v);
       if (pick) d.append(setUp(pick));
@@ -1432,9 +1499,9 @@ function proofSlots(fi) {
   };
   const by = r => "by a Verify, " + new Date(r.time).toLocaleString();
   const rows = [
-    slot(src, ref, fi.already ? "when the copy found the file already there" : "during the copy", "first", "", "Not made yet: it is made as the file is copied."),
-    slot("Destination — full read of the copy", d1, fi.hash.d1 ? "by the copy itself" : vd ? by(vd) : "", "dest", s2 ? "dest" : "src", "Not done: the copy has not been read back."),
-    slot("Source — second full read (safety check)", s2, fi.hash.s2 ? "by the copy itself" : vs2 ? by(vs2) : "", "source", d1 ? "only" : "src", "Not done: the source has not been read a second time."),
+    slot(src, ref, ver ? "stored when the copy was made" : fi.already ? "when the copy found the file already there" : "during the copy", "first", "", ver ? "No hash was stored for this file." : "Not made yet: it is made as the file is copied."),
+    slot("Destination — full read of the copy", d1, ver ? "by this Verify" : fi.hash.d1 ? "by the copy itself" : vd ? by(vd) : "", "dest", s2 ? "dest" : "src", "Not done: the copy has not been read back."),
+    slot("Source — second full read (safety check)", s2, ver ? "by this Verify" : fi.hash.s2 ? "by the copy itself" : vs2 ? by(vs2) : "", "source", d1 ? "only" : "src", "Not done: the source has not been read a second time."),
   ];
   const older = vs.filter(r => r !== vd && r !== vs2 || r.err).map(r => {
     const d = el("div", "hrow"); d.append(el("div", "mute", "Verify — " + new Date(r.time).toLocaleString()));
@@ -1452,7 +1519,7 @@ function proofSlots(fi) {
     if (r.changed) v.append(el("div", "warn", "The source's size or modified time has changed since it was copied."));
     d.append(v); return d;
   });
-  return [el("h3", "", "Fingerprints (XXH128 hashes)"), el("p", "mute", "Three separate full reads: the source as it was copied, the copy read back, and the source read again. All must be the same for the copy to be fully verified."),
+  return [el("h3", "", "Fingerprints (XXH128 hashes)"), el("p", "mute", ver ? "What this Verify read, against the hash stored when the file was copied. All three must be the same for the copy to be fully verified." : "Three separate full reads: the source as it was copied, the copy read back, and the source read again. All must be the same for the copy to be fully verified."),
     ...rows, ...(older.length ? [el("h3", "", "Earlier checks")] : []), ...older, ...rech, el("p", "bad againmsg", "")];
 }
 function fileInfo(id, i) {
@@ -1476,29 +1543,7 @@ function loadInfo() {
     const dest = fi.dest_exists ? (fi.dest_size === fi.size ? "there, same size" : "there, but " + size(fi.dest_size) + " — not the same size") : "not there yet";
     body.push(el("h3", "", "Where"), kv(fi.kind === "verify" ? [["File", el("span", "path", fi.dest)], ["At the destination", dest]] :
       [["From", el("span", "path", fi.source)], ["To", el("span", "path", fi.dest)], ["At the destination", dest]]));
-    const hs = Object.entries(fi.kind === "verify" ? verifyHashName : fi.already ? alreadyHashName : hashName).filter(([k]) => fi.hash[k]);
-    if (fi.kind !== "verify") body.push(...proofSlots(fi));
-    else if (hs.length) {
-      const ref = fi.hash.c || fi.hash.s1;
-      body.push(el("h3", "", "Fingerprints (XXH128 hashes)"), el("p", "mute", fi.kind === "verify" ? "The copy was read again in full; its fingerprint must equal the one stored when it was copied." :
-        "Each line is a separate full read of the file. All must be the same for the copy to count as verified."),
-        ...hs.map(([k, label]) => {
-          const d = el("div", "hrow"); d.append(el("div", "mute", label)); const v = el("div"); v.append(el("span", "hash", fi.hash[k]));
-          if (ref && k !== "c" && !(k === "s1" && !fi.hash.c)) v.append(el("span", fi.hash[k] === ref ? "match" : "nomatch", fi.hash[k] === ref ? "  ✓ same as the first" : "  ✗ differs"));
-          d.append(v);
-          const side = k === "d1" ? "dest" : fi.kind === "verify" ? (k === "s2" ? "source" : "") : "source";
-          if (side) d.append(againButton(fi, side));
-          return d;
-        }),
-        ...(fi.rechecks || []).map(r => {
-          const d = el("div", "hrow"); d.append(el("div", "mute", (r.which === "dest" ? "Destination" : "Source") + " — read again " + new Date(r.time).toLocaleString()));
-          const v = el("div");
-          if (r.error) v.append(el("span", "bad", r.error));
-          else { v.append(el("span", "hash", r.hash)); if (ref) v.append(el("span", r.hash === ref ? "match" : "nomatch", r.hash === ref ? "  ✓ same as the first" : "  ✗ differs")); }
-          if (r.changed) v.append(el("div", "warn", "The source's size or modified time has changed since it was copied."));
-          d.append(v); return d;
-        }), el("p", "bad againmsg", ""));
-    } else body.push(el("h3", "", "Fingerprints (XXH128 hashes)"), el("p", "mute", "None yet."));
+    body.push(...proofSlots(fi));
     const story = el("ol", "story");
     (fi.events || []).forEach(e => {
       const li = el("li"); li.append(el("div", "mute", new Date(e.time).toLocaleString() + (e.ms ? " · took " + (e.ms < 1000 ? e.ms + " ms" : (e.ms / 1000).toFixed(1) + " s") : "") +

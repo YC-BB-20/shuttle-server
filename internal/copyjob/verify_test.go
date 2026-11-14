@@ -311,3 +311,51 @@ func TestFileInfoShowsVerifyReads(t *testing.T) {
 		t.Fatalf("verify reads: %+v, c %s", fi.Verifies, fi.Hash.C)
 	}
 }
+
+// The file list as folders: one level at a time, each folder with counts of
+// every file inside it (v0.2.46).
+func TestFilesAsFolders(t *testing.T) {
+	root := t.TempDir()
+	src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
+	makeTree(t, src, 1<<20) // 8 files: card/CLIP00 (3), CLIP01 (3), CLIP02 (2)
+	os.WriteFile(filepath.Join(src, "top.txt"), []byte("x"), 0o644)
+	m := newManager(t, filepath.Join(root, "state"))
+	startRun(t, m)
+	c, _ := m.Add(Spec{Source: src, Dest: dst, Check: "none", Hash: HashCheckLater})
+	waitState(t, m, c.st.ID, "finished")
+	p, err := m.FilesIn(c.st.ID, "all", true, "", 0, 50)
+	if err != nil || len(p.Folders) != 1 || p.Folders[0].Name != "card" || p.Folders[0].Files != 8 || p.Folders[0].Hashed != 8 || len(p.Rows) != 1 || p.Rows[0].Path != "top.txt" {
+		t.Fatalf("top: %+v %v", p, err)
+	}
+	d, _ := m.Add(Spec{Kind: KindVerify, Source: dst, From: []string{c.st.ID}})
+	waitState(t, m, d.st.ID, "finished")
+	p, _ = m.FilesIn(c.st.ID, "all", true, "card", 0, 50)
+	if len(p.Folders) != 3 || p.Folders[1].Path != "card/CLIP01" || p.Folders[1].Files != 3 || p.Folders[1].Dest != 3 || len(p.Rows) != 0 {
+		t.Fatalf("card: %+v", p)
+	}
+	p, _ = m.FilesIn(c.st.ID, "all", true, "card/CLIP02", 0, 50)
+	if len(p.Folders) != 0 || len(p.Rows) != 2 {
+		t.Fatalf("CLIP02: %+v", p)
+	}
+	// Paging in a folder still counts its folders.
+	p, _ = m.FilesIn(c.st.ID, "all", true, "card/CLIP00", 0, 1)
+	if len(p.Rows) != 1 || p.Next < 0 {
+		t.Fatalf("paged: %+v", p)
+	}
+}
+
+// File info says what later Verify jobs found, as the file list does (v0.2.46).
+func TestFileInfoStateIncludesVerifies(t *testing.T) {
+	root := t.TempDir()
+	src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
+	makeTree(t, src, 1<<20)
+	m := newManager(t, filepath.Join(root, "state"))
+	startRun(t, m)
+	c, _ := m.Add(Spec{Source: src, Dest: dst, Check: "none", Hash: HashCheckLater})
+	waitState(t, m, c.st.ID, "finished")
+	d, _ := m.Add(Spec{Kind: KindVerify, Source: dst, From: []string{c.st.ID}})
+	waitState(t, m, d.st.ID, "finished")
+	if fi, _ := m.FileInfo(c.st.ID, 0); fi.Status != "proven" || !strings.HasPrefix(fi.Proof, "Verified") {
+		t.Fatalf("%s: %s", fi.Status, fi.Proof)
+	}
+}

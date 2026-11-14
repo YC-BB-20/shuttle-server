@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.46 — 13 November 2026
+
+- **Files shown as folders.** A copy or Verify with more than 20 files lists its folders closed; click one to open it. Each folder says how many files it holds and how they stand, for example "72 files · Destination verified", or "3 errors", "40 of 72 done", "Not verified". A folder that holds nothing but one folder opens by itself.
+- **Show more files / Show fewer files** now sit beside Verify files; a long folder has its own "Show more in …".
+- **Verify files only on a copy.** A Verify's row just shows what it found; its files open the same way.
+- **A Verify's file info shows the three reads too:** the hash stored when the file was copied, what this Verify read, and an empty "Source — second full read" line with a Verify… button when the source was not read again.
+- **File info states what later Verify jobs found**, as the file list does (it said "Copied · not verified" for a file a Verify had since read back).
+
 ## 0.2.45 — 13 November 2026
 
 - **A Verify sits under the copy it checks, not under whatever is above it.** Each Verify row is placed directly under its own copy, set in with the pink edge. A Verify whose copy is not in the same list (filtered out, still in the queue while the copy is in the history, or checking several copies) is shown on its own, not set in, so it never looks attached to an unrelated copy.

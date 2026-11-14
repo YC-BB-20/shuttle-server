@@ -52,6 +52,7 @@ type Actions interface {
 	SetHidden(id string, hidden bool) error
 	Problems(id string, limit int) []copyjob.Problem
 	Files(id, filter string, from, limit int) (copyjob.FilePage, error)
+	FilesIn(id, filter string, tree bool, dir string, from, limit int) (copyjob.FilePage, error)
 	History(skip, limit int) []copyjob.View
 	FileInfo(id string, i int) (copyjob.FileInfo, error)
 	AskRecheck(id string, i int, which string) error

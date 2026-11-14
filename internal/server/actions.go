@@ -131,7 +131,7 @@ func (s *Server) files(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	from, _ := strconv.Atoi(q.Get("from"))
 	limit, _ := strconv.Atoi(q.Get("limit"))
-	p, err := s.Jobs.Files(r.PathValue("id"), q.Get("filter"), from, limit)
+	p, err := s.Jobs.FilesIn(r.PathValue("id"), q.Get("filter"), q.Get("tree") == "1", q.Get("dir"), from, limit)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 		return

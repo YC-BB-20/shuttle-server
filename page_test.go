@@ -235,3 +235,16 @@ func TestPageVerifyNestedOnlyUnderItsCopy(t *testing.T) {
 		t.Error("Verify rows must be set in only under their own copy")
 	}
 }
+
+// v0.2.46: many files show as closed folders with counts; Show more / Show
+// fewer beside Verify files; Verify files only on a copy; a Verify's file
+// info has the three lines too, with a button for the missing one.
+func TestPageFoldersPagingAndVerifyInfo(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{"function dirRows", "function folderChip", `"&tree=1&dir="`, `"Show more files"`, `"Show fewer files"`, `<div class="fpage">`,
+		`if (old && !ver) btn(btns, "Verify files"`, `ver ? fi.from : [infoAt.id]`, `body.push(...proofSlots(fi));`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}
