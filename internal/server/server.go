@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/YC-BB-20/shuttle-server/internal/speedtest"
 	"net"
 	"net/http"
 	"os"
@@ -28,6 +29,7 @@ type Server struct {
 	Updates Updates // works in safe mode too
 	Restart func()
 	Quit    func()
+	Speed   *speedtest.Tester // nil in safe mode
 }
 
 // Updates are the update commands.
@@ -66,6 +68,8 @@ func (s *Server) HTTP() *http.Server {
 	mux.HandleFunc("GET /api/events", s.events)
 	mux.HandleFunc("GET /api/browse", s.browse)
 	mux.HandleFunc("GET /api/storage", s.storageList)
+	mux.HandleFunc("GET /api/speedtest", s.speedStatus)
+	mux.HandleFunc("POST /api/speedtest/{action}", s.always(s.speedAction))
 	mux.HandleFunc("GET /api/jobs/{id}/problems", s.problems)
 	mux.HandleFunc("GET /api/jobs/{id}/files", s.files)
 	mux.HandleFunc("GET /api/jobs/{id}/files/{i}", s.fileInfo)

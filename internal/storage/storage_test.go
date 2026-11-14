@@ -77,11 +77,11 @@ func TestUSBSpeedFromReport(t *testing.T) {
 
 func TestCameraHintAndWholeDisk(t *testing.T) {
 	d := t.TempDir()
-	if cameraHint(d) != "" {
+	if CameraHint(d) != "" {
 		t.Error("empty folder looks like a card")
 	}
 	os.MkdirAll(filepath.Join(d, "DCIM"), 0o755)
-	if cameraHint(d) == "" {
+	if CameraHint(d) == "" {
 		t.Error("DCIM not seen")
 	}
 	for in, want := range map[string]string{"sda1": "sda", "nvme0n1p2": "nvme0n1", "mmcblk0p1": "mmcblk0", "sdb": "sdb"} {

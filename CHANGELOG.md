@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.33 — 13 November 2026
+
+- **Disk speed test,** in the spirit of Blackmagic's Disk Speed Test. On the Storage page, **Test speed** on any disk opens two gauges, Write and Read, in MB/s. Shuttle writes one test file of 1, 2, 5 or 10 GB at the top of the disk (data that cannot be compressed), makes sure the disk has really stored it, reads it back with the Mac's cache bypassed, and repeats until you press Stop (at most 10 minutes). The test file is always removed. It shows the best so far and what the speed means: how long 1 TB takes to write and to read.
+- **A camera card or read-only disk is only read:** its test reads files already on it and writes nothing.
+- A disk Shuttle is copying to or from is not tested until that job is paused. The last result of each disk is kept and shown on its Storage card.
+
 ## 0.2.32 — 13 November 2026
 
 - **Storage page.** A new Storage tab lists this Mac's own disk and every connected disk: how it is connected (USB with its speed and USB generation, Thunderbolt, internal, SD card slot), the drive's name, file system, solid state or spinning, free space, read-only disks, and whether it looks like a camera card. It shows what Shuttle is doing with each disk right now, and has **Copy from here** and **Copy to here** buttons that open New copy with the disk filled in. A disk on a slow USB 2 link is marked. The page only reads; nothing is written to any disk.

@@ -208,6 +208,12 @@
   .disk .conn { font-size:14px; } .disk .conn b { color:var(--accent); }
   .disk p { margin:0; } .disk .btns { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
   .disk .use { font-size:13px; }
+  .gauges { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .gauge { min-width:0; text-align:center; } .gauge svg { width:100%; max-width:240px; display:block; margin:0 auto; }
+  .gauge .v { font-size:26px; font-weight:700; font-variant-numeric:tabular-nums; margin-top:-6px; }
+  .gauge .k { color:var(--mute); font-size:13px; letter-spacing:.08em; text-transform:uppercase; }
+  .spdline { margin:10px 0 0; font-size:14px; } .spdopts { flex-wrap:wrap; gap:8px; align-items:center; margin-top:10px; }
+  #spdDlg { width:min(560px, 96vw); }
 </style>
 </head>
 <body>
@@ -334,6 +340,20 @@
   </div>
   <div class="foot"><button type="button" id="pickUp">Up one level</button><button type="button" class="primary" id="pickUse">Use this folder</button></div>
 </dialog>
+<dialog id="spdDlg">
+  <div class="head"><h2 id="spdTitle">Disk speed test</h2><button type="button" data-close>Close</button></div>
+  <div class="body">
+    <div class="gauges"><div class="gauge" id="gW"></div><div class="gauge" id="gR"></div></div>
+    <p class="spdline" id="spdLine"></p>
+    <div class="bar"><i id="spdBar"></i></div>
+    <p id="spdMeans"></p>
+    <div class="row spdopts"><label for="spdSize">Test file</label><select id="spdSize"></select>
+      <label class="opt"><input type="checkbox" id="spdRO"><span>Read test only: writes nothing, reads files already on the disk</span></label></div>
+    <p class="mute" id="spdNote">The test writes one file, <span class="path">.shuttle-speedtest.tmp</span>, at the top of the disk, reads it back with the Mac's cache bypassed, and repeats until you press Stop (at most 10 minutes). The file is removed when the test ends. A camera card or a read-only disk is only read.</p>
+    <p class="err" id="spdErr"></p>
+  </div>
+  <div class="foot"><button type="button" class="primary" id="spdGo">Start</button></div>
+</dialog>
 <dialog id="confirmDlg">
   <div class="head"><h2 id="confirmTitle"></h2></div>
   <div class="body"><p id="confirmText"></p></div>
@@ -420,11 +440,61 @@ $("tabStorageBtn").onclick = () => showTab("storage");
 
 // Storage (v0.2.32): every connected disk, how it is connected, how full,
 // what Shuttle is doing with it, and buttons to copy from or to it.
-let stoTimer = 0, stoBusy = false;
+let stoTimer = 0, stoBusy = false, stoSpeed = null;
+// Disk speed test (v0.2.33), like Blackmagic's: two gauges, write and read,
+// in MB/s (millions of bytes a second, as disk makers count).
+const mbs = n => n > 0 ? (n / 1e6 >= 100 ? Math.round(n / 1e6) : (n / 1e6).toFixed(1)) + " MB/s" : "—";
+function gauge(box, label, val, color) {
+  const max = [200, 500, 1000, 2000, 4000, 8000].find(m => val / 1e6 <= m * 0.95) || 8000;
+  const f = Math.max(0, Math.min(1, val / 1e6 / max)), a = Math.PI * (1 - f);
+  const nx = 100 + 72 * Math.cos(a), ny = 100 - 72 * Math.sin(a);
+  const arc = (from, to, col, w) => { const x1 = 100 + 80 * Math.cos(Math.PI * (1 - from)), y1 = 100 - 80 * Math.sin(Math.PI * (1 - from)), x2 = 100 + 80 * Math.cos(Math.PI * (1 - to)), y2 = 100 - 80 * Math.sin(Math.PI * (1 - to));
+    return '<path d="M' + x1.toFixed(1) + ' ' + y1.toFixed(1) + ' A80 80 0 0 1 ' + x2.toFixed(1) + ' ' + y2.toFixed(1) + '" fill="none" stroke="' + col + '" stroke-width="' + w + '" stroke-linecap="round"/>'; };
+  let ticks = "";
+  for (let i = 0; i <= 4; i++) { const t = Math.PI * (1 - i / 4); ticks += '<text x="' + (100 + 98 * Math.cos(t)).toFixed(1) + '" y="' + (104 - 98 * Math.sin(t)).toFixed(1) + '" font-size="10" text-anchor="middle" fill="var(--mute)">' + (max * i / 4) + '</text>'; }
+  box.innerHTML = '<svg viewBox="-8 0 216 112" role="img" aria-label="' + label + ' ' + mbs(val) + '">' + arc(0, 1, "var(--line)", 12) + (f > 0.005 ? arc(0, f, color, 12) : "") + ticks +
+    '<line x1="100" y1="100" x2="' + nx.toFixed(1) + '" y2="' + ny.toFixed(1) + '" stroke="var(--fg)" stroke-width="3" stroke-linecap="round"/><circle cx="100" cy="100" r="6" fill="var(--fg)"/></svg>' +
+    '<div class="v">' + mbs(val) + '</div><div class="k">' + label + '</div>';
+}
+let spdDisk = null, spdTimer = 0;
+const hm = s => s < 60 ? "under a minute" : s < 5400 ? "about " + Math.round(s / 60) + " min" : "about " + Math.floor(s / 3600) + " h " + Math.round(s % 3600 / 60) + " min";
+function openSpeed(d) {
+  spdDisk = d;
+  $("spdTitle").textContent = "Disk speed test · " + d.name; $("spdErr").textContent = "";
+  $("spdSize").replaceChildren(...[1, 2, 5, 10].map(n => { const o = el("option", "", n + " GB"); o.value = n; return o; })); $("spdSize").value = 5;
+  const forced = d.read_only || !!d.camera;
+  $("spdRO").checked = forced; $("spdRO").disabled = forced;
+  $("spdDlg").showModal(); pollSpeed();
+}
+function pollSpeed() {
+  clearTimeout(spdTimer);
+  fetch("/api/speedtest").then(r => r.json()).then(x => {
+    stoSpeed = x; const st = x.status || {};
+    const mine = st.path && spdDisk && (st.path === spdDisk.path || spdDisk.kind === "internal" && !st.path.startsWith("/Volumes/"));
+    const other = st.running && !mine;
+    gauge($("gW"), "Write", mine ? (st.running && st.phase === "write" ? st.write_now : st.write) || 0 : 0, "var(--copy)");
+    gauge($("gR"), "Read", mine ? (st.running && st.phase === "read" ? st.read_now : st.read) || 0 : 0, "var(--verify)");
+    const phase = { write: "Writing the test file", flush: "Making sure the disk has really stored it", read: st.read_only ? "Reading files already on the disk" : "Reading the test file back" }[st.phase] || "";
+    $("spdLine").textContent = other ? "A speed test of " + st.disk + " is running. Wait for it to end." :
+      mine && st.running ? phase + " · round " + st.round + (st.write_best || st.read_best ? " · best so far: " + (st.write_best ? "write " + mbs(st.write_best) + ", " : "") + "read " + mbs(st.read_best) : "") :
+      mine && (st.ended || st.error) ? (st.error || st.ended) + (st.round ? " " + (st.write ? "Write " + mbs(st.write) + " · " : "") + (st.read ? "read " + mbs(st.read) : "") : "") : "Press Start to test this disk.";
+    $("spdLine").className = "spdline" + (mine && st.error ? " bad" : "");
+    $("spdBar").style.width = mine && st.running ? pct(st.done, st.size) + "%" : "0%";
+    const w = mine ? st.write : 0, r = mine ? st.read : 0;
+    $("spdMeans").textContent = w || r ? [w && "Writing 1 TB to this disk takes " + hm(1e12 / w), r && "reading 1 TB from it " + hm(1e12 / r)].filter(Boolean).join("; ") + ". A verified copy also reads everything back, so it takes about twice the copy time." : "";
+    $("spdGo").textContent = mine && st.running ? "Stop" : "Start"; $("spdGo").disabled = other;
+    $("spdGo").onclick = () => (mine && st.running ? post("/api/speedtest/stop") :
+      post("/api/speedtest/start", { path: spdDisk.path, size_gb: Number($("spdSize").value), read_only: $("spdRO").checked }))
+      .then(() => { $("spdErr").textContent = ""; pollSpeed(); }).catch(e => $("spdErr").textContent = e.message);
+    $("spdSize").disabled = !!(mine && st.running);
+    if ($("spdDlg").open && st.running) spdTimer = setTimeout(pollSpeed, 400);
+    else if (!$("tabStorage").hidden && !st.running) { loadStorage(); }
+  }).catch(() => { if ($("spdDlg").open) spdTimer = setTimeout(pollSpeed, 2000); });
+}
 function loadStorage() {
   if (stoBusy) return; stoBusy = true; clearTimeout(stoTimer);
   if (!$("disks").childElementCount) $("stoNote").textContent = "Asking the Mac about its disks…";
-  fetch("/api/storage").then(r => r.json()).then(d => {
+  fetch("/api/speedtest").then(r => r.json()).then(x => { stoSpeed = x; }).catch(() => {}).then(() => fetch("/api/storage")).then(r => r.json()).then(d => {
     $("stoNote").textContent = "Every disk connected to this Mac. Shuttle only reads here: nothing is written to a disk by this page." +
       (d.pending ? " Still reading the connection speeds…" : "");
     $("disks").replaceChildren(...(d.disks || []).map(diskCard));
@@ -468,7 +538,10 @@ function diskCard(d) {
   c.append(el("p", "use " + (use.length ? "" : "mute"), use.length ? use.join(" · ") : "Not used by any job right now"));
   const btns = el("div", "btns");
   const b = (t, f, cls) => { const x = el("button", cls || "", t); x.type = "button"; x.onclick = f; btns.append(x); };
+  const last = ((stoSpeed && stoSpeed.results) || []).find(r => r.path === d.path || (d.kind === "internal" && r.path === "/"));
+  if (last) c.append(el("p", "mute", "Speed test " + when(last.at) + ": " + (last.write ? "write " + mbs(last.write) + " · " : "") + "read " + mbs(last.read) + (last.read_only ? " (read test)" : "")));
   if (d.kind !== "server") {
+    b("Test speed", () => openSpeed(d));
     b("Copy from here", () => { showTab("status"); $("src").value = d.path; $("newBtn").onclick(); });
     if (!d.read_only && !d.camera) b("Copy to here", () => { showTab("status"); $("dst").value = d.path; $("newBtn").onclick(); });
   }

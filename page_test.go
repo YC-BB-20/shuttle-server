@@ -112,3 +112,16 @@ func TestPageStorageTab(t *testing.T) {
 		}
 	}
 }
+
+// v0.2.33: a disk speed test with write and read gauges, from the Storage page.
+func TestPageSpeedTest(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`id="spdDlg"`, `function gauge(box, label, val, color)`, `b("Test speed", () => openSpeed(d))`,
+		`post("/api/speedtest/start"`, `post("/api/speedtest/stop")`, `$("spdRO").disabled = forced`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}

@@ -48,13 +48,13 @@ func Details(ctx context.Context, mount string) Info {
 	} else {
 		in = linuxInfo(mount)
 	}
-	in.Camera = cameraHint(mount)
+	in.Camera = CameraHint(mount)
 	return in
 }
 
-// cameraHint looks only at the names at the top of the disk: the folders
+// CameraHint looks only at the names at the top of the disk: the folders
 // cameras write. Nothing is opened for writing.
-func cameraHint(mount string) string {
+func CameraHint(mount string) string {
 	for _, n := range []string{"DCIM", "PRIVATE/M4ROOT", "PRIVATE/AVCHD", "CLIPS001", "XDROOT", "CONTENTS", "Codex", "ARRIRAW"} {
 		if fi, err := os.Stat(filepath.Join(mount, filepath.FromSlash(n))); err == nil && fi.IsDir() {
 			return "has a " + n + " folder"

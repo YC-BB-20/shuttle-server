@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/YC-BB-20/shuttle-server/internal/speedtest"
 	"io"
 	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -325,7 +327,26 @@ func Run(opts Options) (code int) {
 	if jobs != nil {
 		actions = jobs
 	}
-	srv := (&server.Server{Page: shuttle.IndexHTML, PageDir: cfg.PageDir, Hub: hub, Status: status, Jobs: actions, Listen: cfg.Listen,
+	var speed *speedtest.Tester
+	if jobs != nil {
+		speed = &speedtest.Tester{Budget: budget, Disks: disks, Accepting: wd.AcceptingNewWork, Log: log,
+			StateFile: filepath.Join(stateDir, "speedtests.json"),
+			Busy: func(mount string) string { // a job working on that disk now
+				on := func(p string) bool {
+					if mount == "/" { // this computer's own disk: anything not on an attached one
+						return p != "" && !strings.HasPrefix(p, "/Volumes/") && !strings.HasPrefix(p, "/media/") && !strings.HasPrefix(p, "/mnt/")
+					}
+					return p == mount || strings.HasPrefix(p, mount+"/")
+				}
+				for _, v := range jobs.Views() {
+					if (v.State == "running" || v.State == "waiting") && (on(v.Source) || on(v.Dest)) {
+						return "a job is working on it"
+					}
+				}
+				return ""
+			}}
+	}
+	srv := (&server.Server{Page: shuttle.IndexHTML, Speed: speed, PageDir: cfg.PageDir, Hub: hub, Status: status, Jobs: actions, Listen: cfg.Listen,
 		Updates: updater, Restart: restart, Quit: quit,
 		About: func() any {
 			return map[string]string{"version": version.Version, "commit": version.Commit, "changelog": shuttle.Changelog}
