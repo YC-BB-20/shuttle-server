@@ -63,6 +63,8 @@ type Spec struct {
 	// IgnoreSpace (request only, never saved): the owner chose "continue
 	// anyway" after being told the copy may not fit.
 	IgnoreSpace bool `json:"ignore_space,omitempty"`
+	// Paused (request only, Verify jobs, v0.2.26): add the job paused.
+	Paused bool `json:"paused,omitempty"`
 }
 
 // MaxOnly bounds how many files and folders can be picked one by one.
@@ -106,7 +108,7 @@ type state struct {
 	Spec          Spec                  `json:"spec"`
 	Created       time.Time             `json:"created"`
 	Choice        string                `json:"choice"` // run, paused, stopped: the owner's choice
-	Phase         string                `json:"phase"`  // scan, copy, check (copy-then-check only), s2, done; a Verify job: scan, verify, done
+	Phase         string                `json:"phase"`  // scan, copy, check (copy-then-check only), s2, done; a Verify job: scan, verify, source (S2After only), done
 	Files         int                   `json:"files"`
 	Bytes         int64                 `json:"bytes"`
 	Skipped       int                   `json:"skipped"`
@@ -126,6 +128,9 @@ type state struct {
 	SizeAtAdd *int64      `json:"size_at_add,omitempty"`
 	SpaceOK   bool        `json:"space_ok,omitempty"`
 	SpaceAsk  *SpaceShort `json:"space_ask,omitempty"`
+	// Error (added in 0.2.26): why a Verify job stopped on its own, such as
+	// a folder that is missing. The job is done and shows as failed.
+	Error string `json:"error,omitempty"`
 }
 
 // Job is one copy job.
@@ -174,6 +179,8 @@ type live struct {
 	temp         string // current partial file, removed on Stop
 	scanned      int
 	scannedBytes int64
+	// A Verify job's pass over the source after its copies (S2After).
+	s2done, s2total int
 }
 
 func (j *Job) path(name string) string { return filepath.Join(j.dir, name) }

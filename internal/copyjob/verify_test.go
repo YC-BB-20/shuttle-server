@@ -89,3 +89,77 @@ func TestVerifyJobFolderAndFile(t *testing.T) {
 		t.Fatalf("duplicates or misses: %+v", v)
 	}
 }
+
+// v0.2.26: "Verify copy" of a copy-only job, destinations first, then the
+// source read again after the whole job; added paused.
+func TestVerifySourceAfter(t *testing.T) {
+	root := t.TempDir()
+	src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
+	files := makeTree(t, src, 2<<20+77)
+	m := newManager(t, filepath.Join(root, "state"))
+	startRun(t, m)
+	c, err := m.Add(Spec{Source: src, Dest: dst, Check: "none", Hash: HashCheckLater})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitState(t, m, c.st.ID, "finished")
+	p, _ := m.Files(c.st.ID, "done", 0, 200)
+	if p.Counts["done"] != 0 || p.Counts["unverified"] != len(files) {
+		t.Fatalf("copy only counts as verified: %+v", p.Counts)
+	}
+	vj, err := m.Add(Spec{Kind: KindVerify, Source: dst, S2: S2After, Paused: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vj.st.Spec.Source != src || vj.st.Spec.S2 != S2After || vj.st.Choice != "paused" {
+		t.Fatalf("spec %+v choice %s", vj.st.Spec, vj.st.Choice)
+	}
+	waitState(t, m, vj.st.ID, "paused")
+	m.Resume(vj.st.ID)
+	v := waitState(t, m, vj.st.ID, "finished")
+	if v.Verified != len(files) || v.Strong != len(files) || v.Failed != 0 || v.Error != "" || v.Progress != 1 {
+		t.Fatalf("%+v", v)
+	}
+	// A subfolder maps to the same subfolder of the source.
+	sub, err := m.Add(Spec{Kind: KindVerify, Source: filepath.Join(dst, "card"), S2: S2After})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub.st.Spec.Source != filepath.Join(src, "card") {
+		t.Fatalf("source %s", sub.st.Spec.Source)
+	}
+	waitState(t, m, sub.st.ID, "finished")
+}
+
+// v0.2.26: a Verify job whose folder is missing fails at once, naming it,
+// instead of waiting like a copy.
+func TestVerifyMissingFolderFails(t *testing.T) {
+	root := t.TempDir()
+	src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
+	makeTree(t, src, 1<<20)
+	m := newManager(t, filepath.Join(root, "state"))
+	startRun(t, m)
+	c, err := m.Add(Spec{Source: src, Dest: dst})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitState(t, m, c.st.ID, "finished")
+	for _, tc := range []struct{ gone, want string }{{src, "Source folder missing: " + src}, {dst, "Destination folder missing: " + dst}} {
+		vj, err := m.Add(Spec{Kind: KindVerify, Source: dst, S2: S2After, Paused: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		os.Rename(tc.gone, tc.gone+".away")
+		m.Resume(vj.st.ID)
+		v := waitState(t, m, vj.st.ID, "finished")
+		if !strings.HasPrefix(v.Error, tc.want) {
+			t.Fatalf("error %q, want %q", v.Error, tc.want)
+		}
+		os.Rename(tc.gone+".away", tc.gone)
+	}
+	// Nothing was changed: a plain verify still matches.
+	vj, _ := m.Add(Spec{Kind: KindVerify, Source: dst})
+	if v := waitState(t, m, vj.st.ID, "finished"); v.Error != "" || v.Failed != 0 {
+		t.Fatalf("%+v", v)
+	}
+}

@@ -323,6 +323,18 @@
   <div class="body"><p id="spaceText"></p><p class="mute" id="spaceMore"></p></div>
   <div class="foot"><button type="button" id="spaceCancel">Cancel job</button><button type="button" class="primary" id="spaceGo">Continue anyway</button></div>
 </dialog>
+<dialog id="verDlg">
+  <div class="head"><h2 id="verTitle">Verify copy</h2></div>
+  <div class="body">
+    <p class="mute" id="verWhat"></p>
+    <label class="opt"><input type="radio" name="verHow" id="verDest" checked><span>Destinations only: read every copy back and compare it with the hash stored when it was copied</span></label>
+    <label class="opt"><input type="radio" name="verHow" id="verSrc"><span>Destinations, then the source read again after the whole job: catches a bad read from the card or cable (the source disk must be connected)</span></label>
+    <label class="opt"><input type="checkbox" id="verPaused"><span>Add paused, to start when you choose</span></label>
+    <p class="mute">Nothing is changed on either side. If a folder is missing, the check stops and says which.</p>
+    <p class="bad" id="verErr"></p>
+  </div>
+  <div class="foot"><button type="button" data-close>Cancel</button><button type="button" class="primary" id="verGo">Add Verify</button></div>
+</dialog>
 <dialog id="probDlg">
   <div class="head"><h2>Files that need attention</h2><button type="button" data-close>Close</button></div>
   <div class="body" id="probList"></div>
@@ -534,8 +546,25 @@ document.querySelectorAll("[data-pick]").forEach(b => b.onclick = () => {
   $("pickTitle").textContent = pickFor === "src" ? "Choose what to copy" : "Choose where to copy to";
   openPicker();
 });
-function verify(path) {
-  return post("/api/jobs", { kind: "verify", source: path });
+function verify(path, opts) {
+  return post("/api/jobs", Object.assign({ kind: "verify", source: path }, opts || {}));
+}
+// The Verify pop-up of a row: destinations only, or then the source read
+// again after the whole job; optionally added paused.
+function verifyBox(path, title) {
+  $("verTitle").textContent = title; $("verWhat").textContent = "Checks " + path;
+  $("verErr").textContent = ""; $("verDest").checked = true; $("verPaused").checked = false;
+  $("verGo").onclick = () => verify(path, { s2: $("verSrc").checked ? "after" : "", paused: $("verPaused").checked })
+    .then(() => $("verDlg").close()).catch(e => $("verErr").textContent = e.message);
+  $("verDlg").showModal();
+}
+// A copy counts as verified once it, or a Verify job over its destination,
+// has read a copy back with a match.
+function everVerified(v) {
+  if (v.verified + v.identical > 0) return true;
+  const all = ((latest && latest.jobs) || []).concat(olderViews);
+  return all.some(o => o.kind === "verify" && o.state === "finished" && !o.error && o.verified > 0 &&
+    (o.dest === v.dest || o.dest.startsWith(v.dest + "/") || v.dest.startsWith(o.dest + "/")));
 }
 function openPicker() {
   const start = $(pickFor).value || "";
@@ -655,7 +684,7 @@ function card(v) {
   c._v = v;
   const q = sel => c.querySelector(sel);
   const old = v.state === "finished" || v.state === "stopped";
-  const problems = v.failed || v.s2_warnings;
+  const problems = v.failed || v.s2_warnings || v.error;
   c.classList.toggle("old", old);
   const ver = v.kind === "verify", kind = ver ? "verify" : "copy";
   c.classList.toggle("verify", ver);
@@ -675,7 +704,7 @@ function card(v) {
   mb.style.background = v.missing ? "var(--bad)" : v.state === "running" ? "var(--" + kind + ")" :
     v.state === "finished" ? (problems ? "var(--bad)" : "var(--ok)") : "var(--mute)";
   // One status line.
-  const proven = v.verified + v.identical, only = !ver && v.check === "none", again = ver && v.s2 === "now" && v.source !== v.dest;
+  const proven = v.verified + v.identical, only = !ver && v.check === "none", again = ver && (v.s2 === "now" || v.s2 === "after") && v.source !== v.dest;
   let sub = "", subCls = "sub";
   if (v.state === "waiting") { sub = v.reason; subCls += v.missing ? " bad" : " warn"; }
   else if (v.state === "paused" && v.space) { sub = "Paused · may not fit on " + v.space.disk + " — your answer is needed"; subCls += " warn"; }
@@ -684,6 +713,7 @@ function card(v) {
   else if (v.state === "running") sub = [pc, size((v.progress || 0) * v.bytes) + " of " + size(v.bytes), v.eta_seconds ? left(v.eta_seconds) : "working out the time left", ver ? rate(v.rate) : rate(v.copy_rate) && "copy speed " + rate(v.copy_rate)].filter(Boolean).join(" · ");
   else if (v.state === "paused") sub = v.after ? "Paused · press ▶ and it starts when the copy above has finished" : pc + " · Paused by you";
   else if (v.state === "queued") sub = v.after ? "Starts when the copy above has finished" : "Waiting for the job before it to finish";
+  else if (v.state === "finished" && v.error) { sub = (v.finished ? when(v.finished) + " · " : "") + "Failed · " + v.error; subCls += " bad"; }
   else if (v.state === "finished") { sub = (v.finished ? when(v.finished) + " · " : "") + took(v.created, v.finished) + " · " + size(v.bytes) +
       (secs(v.created, v.finished) >= 1 && v.bytes ? " · " + rate(v.bytes / secs(v.created, v.finished)) + " average" : "") +
       (ver ? " · " + (v.failed ? v.verified + " match, " + v.failed + " do not" : v.verified + (v.verified === 1 ? " file matches" : " files match")) :
@@ -695,6 +725,7 @@ function card(v) {
   // Details, shown when the row is open.
   let line = "";
   if (v.state === "running" && !scanning) line = "Now: " + v.file + " — " + v.stage + (v.file_size ? ", " + size(v.file_done) + " of " + size(v.file_size) : "");
+  else if (v.state === "finished" && v.error) line = v.error + (v.verified ? " " + v.verified + " files were checked and match before it stopped." : "");
   else if (v.state === "finished" && ver) line = v.failed ? "Some files do not match the stored hashes — see the files marked Error. Nothing was changed." :
       "Every file read in full matches the hash stored when it was copied" + (again ? ", and the source read again matches too." : ".") + (v.skipped ? " " + v.skipped + " files had no stored hash (never verified by the copy) and were not checked." : "");
   else if (v.state === "finished" && only) line = problems ? "Finished with problems — see the files marked Error." : "Finished. Every file is copied and hashed; no copy was read back." +
@@ -703,7 +734,7 @@ function card(v) {
   else if (v.state === "paused" && v.space) line = v.space.message + " Continue anyway, or cancel the job.";
   else if (v.state === "paused") line = "Paused by you. Resume continues exactly where it stopped.";
   else if (!old && v.state !== "running") line = "Added " + when(v.created);
-  if (ver && !old) line += (line ? " · " : "") + "Read in full and compared with the hashes stored when it was copied" + (again ? ", with the source read again beside it" : "") + ". Nothing is changed.";
+  if (ver && !old) line += (line ? " · " : "") + "Read in full and compared with the hashes stored when it was copied" + (again ? (v.s2 === "after" ? ", then the source is read again once every copy is checked" : ", with the source read again beside it") : "") + ". Nothing is changed.";
   q(".line").textContent = line;
   q(".bar.file").hidden = v.state !== "running" || scanning;
   q(".bar.file > i").style.width = v.state === "running" ? pct(v.file_done, v.file_size) + "%" : "0%";
@@ -734,8 +765,8 @@ function card(v) {
   }
   if (!old) btn(acts, "✕", () => stopJob(v), "", "Stop…");
   if (problems) btn(btns, "Show problems", () => showProblems(v.id));
-  if (old && !ver) btn(btns, "Verify again", () => verify(v.dest).catch(e => alert(e.message)));
-  if (old && ver) btn(btns, "Verify again", () => verify(place).catch(e => alert(e.message)));
+  if (old && !ver) { const t = everVerified(v) ? "Verify again" : "Verify copy"; btn(btns, t, () => verifyBox(v.dest, t)); }
+  if (old && ver) btn(btns, "Verify again", () => verifyBox(place, "Verify again"));
   const key = acts.map(b => b.title).join("|") + "/" + btns.map(b => b.textContent).join("|");
   if (fv[v.id]) { const was = fv[v.id].v.state; fv[v.id].v = v; if (was !== v.state) loadFiles(fv[v.id], false, true); }
   if (c.dataset.btns !== key) { c.dataset.btns = key; q(".acts").replaceChildren(...acts); q(".detail .btns").replaceChildren(...btns); }
@@ -893,7 +924,7 @@ const saveQf = () => { try { localStorage.setItem("shuttle.qf", JSON.stringify(q
 const qfOffKeys = ["done", "skipped", "stopped", "failed"];
 function jobCat(v) {
   if (v.state === "stopped") return "stopped";
-  if (v.state === "finished") return v.failed || v.s2_warnings || v.missing ? "failed" : v.files > 0 && v.identical === v.files ? "skipped" : "done";
+  if (v.state === "finished") return v.failed || v.s2_warnings || v.missing || v.error ? "failed" : v.files > 0 && v.identical === v.files ? "skipped" : "done";
   return v.state === "paused" ? "paused" : "active";
 }
 const shown = v => { const k = jobCat(v); return k === "active" || qf.show[k] !== false; };
@@ -992,7 +1023,7 @@ function toggleFiles(v, c) {
   const one = v.files <= 1;
   const f = fv[v.id] = { v, box, filter: !one && (v.failed || v.s2_warnings) ? "problems" : "all", rows: [], next: -1, busy: false };
   const bar = el("div", "filters"); bar.hidden = one;
-  [["all", "All"], ["todo", "In progress"], ["done", "Verified"], ["problems", "Error"]].forEach(([k, t]) => {
+  [["all", "All"], ["todo", "In progress"], ["done", "Verified"], ["unverified", "Not verified"], ["problems", "Error"]].forEach(([k, t]) => {
     const b = el("button", "", t + " "); b.type = "button"; b.dataset.f = k; b.append(el("span", "n", ""));
     b.onclick = () => { f.filter = k; loadFiles(f, false); }; bar.append(b);
   });
@@ -1012,6 +1043,8 @@ function drawFiles(f, note) {
   f.box.querySelectorAll(".filters button").forEach(b => {
     b.setAttribute("aria-pressed", b.dataset.f === f.filter);
     b.querySelector(".n").textContent = f.counts && f.counts[b.dataset.f] != null ? "(" + f.counts[b.dataset.f] + ")" : "";
+    // "Not verified" only appears when some file was copied but never read back.
+    if (b.dataset.f === "unverified") b.hidden = !(f.counts && f.counts.unverified) && f.filter !== "unverified";
   });
   f.box.querySelector(".frows").replaceChildren(...f.rows.map(r => {
     const row = el("div", "frow"), t = el("div", "t");

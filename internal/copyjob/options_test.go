@@ -31,7 +31,7 @@ func TestCopyOnlyNamesFilesWithoutReadBack(t *testing.T) {
 	}
 	checkDest(t, dst, files)
 	p, _ := m.Files(j.st.ID, "done", 0, 200)
-	if p.Counts["done"] != len(files) || p.Counts["todo"] != 0 {
+	if p.Counts["done"] != 0 || p.Counts["unverified"] != len(files) || p.Counts["todo"] != 0 || len(p.Rows) != 0 {
 		t.Fatalf("counts %+v", p.Counts)
 	}
 	fi, _ := m.FileInfo(j.st.ID, 0)

@@ -55,6 +55,7 @@ type View struct {
 	CopyRate   int64       `json:"copy_rate,omitempty"`   // speed of the copy pass alone, while it runs
 	ETA        int64       `json:"eta_seconds,omitempty"` // time left, when it can be estimated
 	Space      *SpaceShort `json:"space,omitempty"`       // paused because it may not fit: the question for the owner
+	Error      string      `json:"error,omitempty"`       // a Verify job stopped on its own: a folder is missing
 }
 
 type rateMemo struct {
@@ -85,7 +86,19 @@ func progress(st state, c counts, l live) float64 {
 	}
 	size, done := float64(l.size), float64(l.done)
 	if st.Spec.isVerify() {
-		return min(1, (float64(c.BytesProven+c.BytesFailed)+done)/float64(st.Bytes))
+		f := min(1, (float64(c.BytesProven+c.BytesFailed)+done)/float64(st.Bytes))
+		if st.Spec.S2 != S2After || !st.Spec.readsSource() {
+			return f
+		}
+		// Copies read back first (half the bar), then the source read again.
+		if st.Phase != "source" {
+			return f / 2
+		}
+		part := 0.0
+		if size > 0 {
+			part = done / size
+		}
+		return 0.5 + 0.5*min(1, (float64(l.s2done)+part)/float64(max(1, l.s2total)))
 	}
 	has := func(p string) bool { return strings.HasPrefix(l.stage, p) }
 	var part float64
@@ -218,7 +231,7 @@ func baseView(j *Job) (View, state, live) {
 		Verified: c.Verified, Identical: c.Identical, Failed: c.Failed, Strong: c.Strong, S2Warn: c.S2Warn, Copied: c.Copied, Hashed: c.Hashed,
 		Check: st.Spec.Check, VerifyNext: st.Spec.Verify, VerifyJob: st.VerifyJob, After: st.After,
 		Proven: c.BytesProven, SameVolume: st.SameVolume, Scanned: l.scanned, ScannedB: l.scannedBytes,
-		Progress: progress(st, c, l), Space: st.SpaceAsk}
+		Progress: progress(st, c, l), Space: st.SpaceAsk, Error: st.Error}
 	if st.Phase == "done" && st.Choice == "stopped" {
 		v.Progress = 0 // a stopped copy shows what is proven, not a full bar
 		if st.Bytes > 0 {
@@ -295,7 +308,8 @@ type FilePage struct {
 	Rows []FileRow `json:"rows"`
 	Next int       `json:"next"`
 	Note string    `json:"note,omitempty"`
-	// Counts holds how many files each filter shows: all, todo, done, problems.
+	// Counts holds how many files each filter shows: all, todo, done (verified),
+	// unverified (copied, not read back), problems.
 	Counts map[string]int `json:"counts"`
 }
 
@@ -328,8 +342,10 @@ func filterOK(filter, status string) bool {
 	switch filter {
 	case "todo":
 		return status == "waiting" || status == "working" || status == "copied"
-	case "done":
-		return status == "proven" || status == "strong" || status == "hashed"
+	case "done": // verified: the copy was read back
+		return status == "proven" || status == "strong"
+	case "unverified": // copied and hashed, never read back
+		return status == "hashed"
 	case "problems":
 		return status == "failed" || status == "warning"
 	}
@@ -337,7 +353,7 @@ func filterOK(filter, status string) bool {
 }
 
 // Files lists up to limit files of a job from index from on, matching filter
-// (all, todo, done, problems). It reads the manifest from disk and holds only
+// (all, todo, done, unverified, problems). It reads the manifest from disk and holds only
 // the page in memory.
 func (m *Manager) Files(id, filter string, from, limit int) (FilePage, error) {
 	page := FilePage{Rows: []FileRow{}, Next: -1}
@@ -350,9 +366,9 @@ func (m *Manager) Files(id, filter string, from, limit int) (FilePage, error) {
 	}
 	j.mu.Lock()
 	phase, l := j.st.Phase, j.live
-	page.Counts = map[string]int{"all": len(j.status), "todo": 0, "done": 0, "problems": 0}
+	page.Counts = map[string]int{"all": len(j.status), "todo": 0, "done": 0, "unverified": 0, "problems": 0}
 	for _, st := range j.status { // the compact table: a byte per file, no disk read
-		for _, f := range []string{"todo", "done", "problems"} {
+		for _, f := range []string{"todo", "done", "unverified", "problems"} {
 			if filterOK(f, rowStatus(st)) {
 				page.Counts[f]++
 			}

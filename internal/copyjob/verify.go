@@ -71,12 +71,37 @@ func (m *Manager) addVerify(s Spec) (*Job, error) {
 	if v.Network {
 		return nil, errors.New("verifying on a network server is not supported yet")
 	}
+	src, srcVol := root, v.ID
+	if s.S2 == S2After { // the source read again after every copy is checked
+		if src, err = m.sourceOf(root, from); err != nil {
+			return nil, err
+		}
+		if _, err := os.Stat(src); err != nil {
+			return nil, fmt.Errorf("the source folder %q was not found; is its disk connected?", src)
+		}
+		sv, err := diskio.VolumeOf(src)
+		if err != nil {
+			return nil, err
+		}
+		if sv.Network {
+			return nil, errors.New("reading a source on a network server is not supported yet")
+		}
+		srcVol = sv.ID
+	}
+	choice := "run"
+	if s.Paused {
+		choice = "paused"
+	}
+	s2 := ""
+	if src != root {
+		s2 = S2After
+	}
 	cs := m.Settings()
 	now := time.Now()
 	id := now.Format("20060102-150405.000")
-	j := &Job{dir: filepath.Join(m.Dir, id), st: state{FormatVersion: FormatVersion, ID: id, Created: now, Choice: "run", Phase: "scan",
-		Spec:      Spec{Kind: KindVerify, Source: root, Dest: root, File: file, From: from, SkipSystem: cs.SkipSystem, SkipAppleDouble: cs.SkipSystem && cs.SkipAppleDouble},
-		SourceVol: v.ID, DestVol: v.ID}}
+	j := &Job{dir: filepath.Join(m.Dir, id), st: state{FormatVersion: FormatVersion, ID: id, Created: now, Choice: choice, Phase: "scan",
+		Spec:      Spec{Kind: KindVerify, Source: src, Dest: root, S2: s2, File: file, From: from, SkipSystem: cs.SkipSystem, SkipAppleDouble: cs.SkipSystem && cs.SkipAppleDouble},
+		SourceVol: srcVol, DestVol: v.ID, SameVolume: srcVol == v.ID && src != root}}
 	if err := os.MkdirAll(j.dir, 0o700); err != nil {
 		return nil, err
 	}
@@ -86,7 +111,7 @@ func (m *Manager) addVerify(s Spec) (*Job, error) {
 	m.mu.Lock()
 	m.jobs = append(m.jobs, j)
 	m.mu.Unlock()
-	m.Log.Info("verify job added", "job", id, "place", p, "copies", len(from))
+	m.Log.Info("verify job added", "job", id, "place", p, "copies", len(from), "source_again_after", s2 != "", "paused", choice == "paused")
 	m.poke()
 	return j, nil
 }
@@ -146,8 +171,44 @@ func (m *Manager) queueVerify(cj *Job) {
 	m.poke()
 }
 
-// readsSource: this Verify job reads the source again (S2) beside the copy.
-func (s Spec) readsSource() bool { return s.isVerify() && s.S2 == "now" && s.Source != s.Dest }
+// S2After (Verify jobs, v0.2.26): every copy is read back first, then the
+// source is read again in a second pass over the whole job.
+const S2After = "after"
+
+// readsSource: this Verify job reads the source again (S2), beside the copy
+// ("now", a copy's own Verify item) or after all of it (S2After).
+func (s Spec) readsSource() bool {
+	return s.isVerify() && (s.S2 == "now" || s.S2 == S2After) && s.Source != s.Dest
+}
+
+// sourceOf finds the source folder that matches place for the copies that
+// wrote it. Every copy must have come from the same folder, and place must
+// lie inside the copy's destination; otherwise the source cannot be named.
+func (m *Manager) sourceOf(place string, from []string) (string, error) {
+	src := ""
+	for _, id := range from {
+		j := m.find(id)
+		if j == nil {
+			continue
+		}
+		j.mu.Lock()
+		sp := j.st.Spec
+		j.mu.Unlock()
+		rel, err := filepath.Rel(sp.Dest, place)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return "", errors.New("this folder holds several copies; to read their sources again, verify each copy from its own row")
+		}
+		s := filepath.Join(sp.Source, rel)
+		if src != "" && s != src {
+			return "", errors.New("the files here were copied from different sources; verify the destination only, or each copy from its own row")
+		}
+		src = s
+	}
+	if src == "" {
+		return "", errors.New("the source of this copy is not known")
+	}
+	return src, nil
+}
 
 // slot is one stored hash in the scan's lookup file: 32 hex characters at
 // offset index*32, zeros where a file has no proven hash. The lookup file
@@ -310,7 +371,7 @@ func (j *Job) verifyPhase(ctx context.Context, e env, jr *Journal, accepting fun
 		case size != en.S:
 			fail(fmt.Sprintf("wrong size: %d bytes instead of %d", size, en.S))
 		default:
-			withS2 := j.st.Spec.readsSource()
+			withS2 := j.st.Spec.readsSource() && j.st.Spec.S2 == "now"
 			s2ch := make(chan hashRes, 1)
 			if withS2 {
 				sp := filepath.Join(j.st.Spec.Source, filepath.FromSlash(en.P))
@@ -415,13 +476,87 @@ func (j *Job) runVerify(ctx context.Context, e env, accepting func() bool) error
 		return fmt.Errorf("journal: %w", err)
 	}
 	defer jr.Close()
-	if err := j.verifyPhase(ctx, e, jr, accepting); err != nil {
-		return err
+	if j.st.Phase == "verify" {
+		if err := j.verifyPhase(ctx, e, jr, accepting); err != nil {
+			return err
+		}
+		jr.Flush()
+		if j.st.Spec.S2 == S2After && j.st.Spec.readsSource() {
+			j.mu.Lock()
+			j.st.Phase = "source"
+			j.mu.Unlock()
+			j.save()
+		}
 	}
-	jr.Flush()
+	if j.st.Phase == "source" {
+		if err := j.verifySourcePhase(ctx, e, jr, accepting); err != nil {
+			return err
+		}
+		jr.Flush()
+	}
 	j.mu.Lock()
 	j.st.Phase, j.st.Finished, j.st.Checkpoints = "done", time.Now(), nil
 	j.live = live{}
 	j.mu.Unlock()
 	return j.save()
+}
+
+// verifySourcePhase reads the source again for every file whose copy
+// matched, after the whole job's copies were read back (S2After). A file
+// already settled (source read, failed, warning) is skipped, so a resumed
+// job carries on where it stopped.
+func (j *Job) verifySourcePhase(ctx context.Context, e env, jr *Journal, accepting func() bool) error {
+	j.mu.Lock()
+	todo := 0
+	for _, st := range j.status {
+		if st == stVerified {
+			todo++
+		}
+	}
+	j.live.s2total, j.live.s2done = todo, 0
+	j.mu.Unlock()
+	it, err := openManifest(j.path("manifest.jsonl"))
+	if err != nil {
+		return err
+	}
+	defer it.Close()
+	for it.Next() {
+		en := it.E
+		j.mu.Lock()
+		want := en.I < len(j.status) && j.status[en.I] == stVerified
+		j.mu.Unlock()
+		if !want {
+			continue
+		}
+		for !accepting() {
+			select {
+			case <-ctx.Done():
+				return context.Cause(ctx)
+			case <-time.After(time.Second):
+			}
+		}
+		sp := filepath.Join(j.st.Spec.Source, filepath.FromSlash(en.P))
+		j.setLive(func(l *live) { l.file, l.stage, l.done, l.size = en.P, "Reading the source again", 0, en.S })
+		start := time.Now()
+		var res hashRes
+		if _, _, serr := statSM(sp); serr != nil && j.gone(e.src, true) {
+			return diskio.ErrGone
+		}
+		res.h, res.err = j.hashFile(ctx, e, e.src, sp, en.I, "s2", true)
+		if res.err != nil && !isFileErr(res.err) {
+			return res.err
+		}
+		out := s2Verdict(en, sp, res)
+		if out.St == "failed" {
+			out.C, out.D1 = en.H, en.H
+		}
+		out.T, out.Ms = time.Now().Unix(), time.Since(start).Milliseconds()
+		jr.Append(out)
+		j.mu.Lock()
+		j.apply(out)
+		j.live.s2done++
+		j.mu.Unlock()
+		j.dropCheckpoint(en.I, "s2")
+	}
+	return nil
 }

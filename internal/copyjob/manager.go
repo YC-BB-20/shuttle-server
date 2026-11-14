@@ -95,7 +95,7 @@ func (m *Manager) Add(s Spec) (*Job, error) {
 	if s.Kind == KindVerify {
 		return m.addVerify(s)
 	}
-	s.Kind, s.File, s.From = "", "", nil
+	s.Kind, s.File, s.From, s.Paused = "", "", nil, false
 	src, err := filepath.Abs(strings.TrimSpace(s.Source))
 	if err != nil {
 		return nil, err
@@ -363,7 +363,13 @@ func (m *Manager) runOne(ctx context.Context, j *Job) {
 		return
 	}
 	if err1 != nil || err2 != nil {
-		m.waitMissing(ctx, j, "both")
+		which := "both"
+		if err1 == nil {
+			which = "destination"
+		} else if err2 == nil {
+			which = "source"
+		}
+		m.waitMissing(ctx, j, which)
 		return
 	}
 	if sd.Stalled() || dd.Stalled() {
@@ -431,7 +437,9 @@ func (m *Manager) runOne(ctx context.Context, j *Job) {
 		if which == "" {
 			which = "both" // back already, or the check could not tell
 		}
-		m.Log.Warn("a disk was disconnected during a copy", "job", j.st.ID, "missing", which)
+		if !j.st.Spec.isVerify() {
+			m.Log.Warn("a disk was disconnected during a copy", "job", j.st.ID, "missing", which)
+		}
 		m.waitMissing(ctx, j, which)
 	case errors.Is(err, diskio.ErrStalled):
 		m.wait(ctx, j, "A disk is not responding; waiting for it")
@@ -565,12 +573,40 @@ func MissingReason(which, src, dst string) string {
 }
 
 func (m *Manager) waitMissing(ctx context.Context, j *Job, which string) {
-	reason := MissingReason(which, j.st.Spec.Source, j.st.Spec.Dest)
 	if j.st.Spec.isVerify() {
-		which = "destination"
-		reason = strings.Replace(MissingReason(which, "", j.st.Spec.Dest), "the copy continues", "the check continues", 1)
+		m.failMissing(j, which)
+		return
 	}
-	m.rest(ctx, j, reason, which)
+	m.rest(ctx, j, MissingReason(which, j.st.Spec.Source, j.st.Spec.Dest), which)
+}
+
+// VerifyMissingReason names the folders a Verify job could not find.
+func VerifyMissingReason(which, src, dst string) string {
+	switch which {
+	case "source":
+		return "Source folder missing: " + src
+	case "destination":
+		return "Destination folder missing: " + dst
+	}
+	return "Source folder missing: " + src + "; destination folder missing: " + dst
+}
+
+// failMissing ends a Verify job whose source or destination folder is
+// missing (owner, 13 November 2026): unlike a copy it does not wait. It
+// changes nothing on either side; what was checked keeps its result, and
+// the copy can be verified again once the folder is back.
+func (m *Manager) failMissing(j *Job, which string) {
+	j.mu.Lock()
+	if !j.st.Spec.readsSource() || which == "" {
+		which = "destination" // source and destination are the same folder
+	}
+	why := VerifyMissingReason(which, j.st.Spec.Source, j.st.Spec.Dest) + ". The check stopped; nothing was changed. Connect it and verify again."
+	j.st.Error, j.st.Phase, j.st.Finished, j.st.Checkpoints = why, "done", time.Now(), nil
+	j.live = live{}
+	j.mu.Unlock()
+	j.save()
+	m.Log.Warn("verify job stopped: a folder is missing", "job", j.st.ID, "missing", which)
+	m.poke()
 }
 
 // wait shows why a job is resting, then lets the queue try again. Waiting

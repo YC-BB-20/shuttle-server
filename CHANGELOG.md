@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.26 — 13 November 2026
+
+- **"Verified" in a file list counts only files whose copy was read back.** A copy-only job used to show every file under Verified while each row said "Copied · not verified". Those files now sit under a new **Not verified** filter, shown only when there are some.
+- **Verify copy.** A finished copy that was never read back now has **Verify copy** on its row instead of "Verify again". Both open a pop-up: check the **destinations only**, or the destinations **then the source read again after the whole job**, and optionally **Add paused**.
+- **A Verify with a missing folder stops and shows failed,** naming the source or destination folder that is missing. Unlike a copy it does not wait; nothing is changed, and you can verify again once the folder is back.
+
 ## 0.2.25 — 13 November 2026
 
 - **Purple is the main colour.** Buttons, chosen filters, bars and links that were blue are now purple, in light and dark mode, and so is the page's icon.
