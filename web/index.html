@@ -206,7 +206,8 @@
   /* Copies are the main rows; a Verify is a smaller row, set in, with a pink edge and the copy it checks named. */
   .job:not(.verify) .ico { width:34px; height:34px; font-size:17px; }
   .job:not(.verify) .route { font-size:16px; }
-  .job.verify { margin-left:28px; padding-top:5px; padding-bottom:5px; border-left:3px solid var(--verify); }
+  .job.verify { padding-top:5px; padding-bottom:5px; }
+  .job.verify.nested { margin-left:28px; border-left:3px solid var(--verify); }
   .job.verify .ico { width:24px; height:24px; font-size:12px; border-radius:6px; }
   .job.verify .route { font-size:13px; }
   .job.verify .sub { font-size:12px; }
@@ -1252,6 +1253,24 @@ function setHidden(v, hide) {
 $("qfRange").onchange = () => { qf.range = $("qfRange").value; qfChanged(); };
 $("qfSort").onchange = () => { qf.sort = $("qfSort").value; qfChanged(); };
 syncQf();
+// Each Verify sits right under the one copy it checks, set in with the pink
+// edge. A Verify whose copy is not in the same list (filtered out, in the
+// other list, or several copies) stands on its own, not set in, so it never
+// looks attached to an unrelated copy above it (v0.2.45).
+function withVerifies(list) {
+  const copies = new Set(list.filter(v => v.kind !== "verify").map(v => v.id));
+  const of = v => v.kind === "verify" && v.from && v.from.length === 1 && copies.has(v.from[0]) ? v.from[0] : "";
+  const under = {};
+  list.forEach(v => { const c = of(v); if (c) (under[c] = under[c] || []).push(v); });
+  const out = [];
+  const add = (v, nested) => { const c = card(v); c.classList.toggle("nested", nested); out.push(c); };
+  list.forEach(v => {
+    if (of(v)) return;
+    add(v, false);
+    (under[v.id] || []).forEach(x => add(x, true));
+  });
+  return out;
+}
 function renderJobs(list) {
   const active = list.filter(v => v.state !== "finished" && v.state !== "stopped");
   const ids = new Set(list.map(v => v.id));
@@ -1266,8 +1285,8 @@ function renderJobs(list) {
   $("qfInfo").textContent = vis === total ? "" : "Showing " + vis + " of " + total;
   $("noJobs").hidden = active.length > 0; $("noDone").hidden = done.length > 0;
   $("noJobsF").hidden = !active.length || qShow.length > 0; $("noDoneF").hidden = !done.length || hShow.length > 0;
-  place($("jobs"), qShow.map(card), 0);
-  place($("done"), hShow.map(card), 0);
+  place($("jobs"), withVerifies(qShow), 0);
+  place($("done"), withVerifies(hShow), 0);
   $("moreHist").hidden = done.length < 20 || $("moreHist").dataset.end === "1";
 }
 $("moreHist").onclick = () => {

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.45 — 13 November 2026
+
+- **A Verify sits under the copy it checks, not under whatever is above it.** Each Verify row is placed directly under its own copy, set in with the pink edge. A Verify whose copy is not in the same list (filtered out, still in the queue while the copy is in the history, or checking several copies) is shown on its own, not set in, so it never looks attached to an unrelated copy.
+
 ## 0.2.44 — 13 November 2026
 
 - **"Verifying", not "Copying", while a file is checked.** When a file already at the destination is read in full and compared, or a copy is read back, or the source read again, the file's chip, the status line and the menu bar say Verifying.

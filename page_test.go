@@ -197,7 +197,7 @@ func TestPageLiveChecksAndVerifyRows(t *testing.T) {
 	for _, want := range []string{
 		`proven: "Destination verified", strong: "Fully verified"`, `checkwait: "Copied · check queued"`,
 		`f.v.checks && f.v.checks.checking`, `"↻ Checking now: "`, `"↳ Checks the copy "`,
-		`.job.verify { margin-left:28px;`, `const fileHeads = { done: "Files verified:"`, `.job.open .acts .hidebtn { display:inline-block; }`, `function verifyBox(path, title, from, pick)`, `btn(acts, v.hidden ? "↺" : "✕", () => setHidden(v, !v.hidden), "hidebtn"`,
+		`.job.verify.nested { margin-left:28px;`, `const fileHeads = { done: "Files verified:"`, `.job.open .acts .hidebtn { display:inline-block; }`, `function verifyBox(path, title, from, pick)`, `btn(acts, v.hidden ? "↺" : "✕", () => setHidden(v, !v.hidden), "hidebtn"`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
@@ -224,5 +224,14 @@ func TestPageVerifyingWordAndThreeReads(t *testing.T) {
 	}
 	if strings.Contains(s, "· Checked \" + checked") {
 		t.Error("old Copied / Checked / Completed counts still there")
+	}
+}
+
+// v0.2.45: a Verify is set in only under the copy it checks; elsewhere it
+// stands on its own, never under an unrelated copy.
+func TestPageVerifyNestedOnlyUnderItsCopy(t *testing.T) {
+	s := string(IndexHTML)
+	if !strings.Contains(s, "function withVerifies") || !strings.Contains(s, ".job.verify.nested {") || strings.Contains(s, ".job.verify { margin-left:28px") {
+		t.Error("Verify rows must be set in only under their own copy")
 	}
 }
