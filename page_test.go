@@ -62,7 +62,7 @@ func TestPagePurpleAccentNoVerifyButton(t *testing.T) {
 	if strings.Contains(s, `id="verBtn"`) {
 		t.Error("page still has the top Verify… button")
 	}
-	for _, want := range []string{`--accent:#7a3cc8;`, `--accent:#8a4fe0;`, `.qfinfo { font-size:13px; margin:12px 0 8px; }`, `"Verify again"`} {
+	for _, want := range []string{`--accent:#7a3cc8;`, `--accent:#8a4fe0;`, `.qfinfo { font-size:13px; margin:12px 0 8px; }`, `"Verify files"`, `"Read destination now"`, `"Read source again now"`} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
 		}
