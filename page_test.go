@@ -211,3 +211,18 @@ func TestPageNoRereadButtonsInChecks(t *testing.T) {
 		t.Error("re-reads start only from Verify files")
 	}
 }
+
+// v0.2.44: comparing a file already there says Verifying, never Copying;
+// files already there count as verified, not copied; file info shows three
+// reads and a Verify button for any that was never made.
+func TestPageVerifyingWordAndThreeReads(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{"^Already at the destination", "function proofSlots", "Not done: the copy has not been read back.", "Not done: the source has not been read a second time.", "verifyBox(fi.job_dest", "already there (verified, not copied)"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	if strings.Contains(s, "· Checked \" + checked") {
+		t.Error("old Copied / Checked / Completed counts still there")
+	}
+}

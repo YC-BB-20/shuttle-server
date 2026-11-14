@@ -69,7 +69,10 @@ func TestProgressHeadlineShowsCopiedAndVerified(t *testing.T) {
 	}{
 		{copyjob.View{Files: 3, Copied: 2}, "Copying — 2 of 3 files copied, 0 verified"},
 		{copyjob.View{Files: 3, Verified: 1, Copied: 1}, "Copying — 2 of 3 files copied, 1 verified"},
-		{copyjob.View{Files: 3, Hashed: 2, Check: "none"}, "Copying — 2 of 3 files copied (not verified)"},
+		{copyjob.View{Files: 3, Hashed: 2, Check: "none"}, "Copying — 2 of 3 files copied (not read back)"},
+		{copyjob.View{Files: 3, Identical: 2, Check: "none", Stage: "Copying (the source is hashed as it is read)"}, "Copying — 0 of 1 files copied · 2 already there, verified"},
+		{copyjob.View{Files: 3, Identical: 1, Verified: 1, Stage: "Reading back the destination"}, "Verifying — 1 of 2 files copied, 1 verified · 1 already there, verified"},
+		{copyjob.View{Files: 2, Stage: "Already at the destination: reading it in full to compare"}, "Verifying — 0 of 2 files copied, 0 verified"},
 		{copyjob.View{Files: 3, Verified: 1, Kind: "verify"}, "Verifying — 1 of 3 files checked"},
 	} {
 		if got := progressHeadline(&c.v); got != c.want {

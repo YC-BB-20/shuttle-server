@@ -731,6 +731,82 @@ type FileInfo struct {
 	Rechecks   []Recheck    `json:"rechecks"`       // "Read again" results, oldest first
 	RecheckNow []RecheckNow `json:"recheck_now"`    // waiting or being read
 	Busy       bool         `json:"busy,omitempty"` // a copy is running, so a recheck waits for it
+	// Verifies are the Verify runs over this copy that reached this file,
+	// oldest first, with the hashes they read (v0.2.44).
+	Verifies []FileVerify `json:"verifies"`
+	// VerifyQueued: a Verify of this copy is waiting or running.
+	VerifyQueued bool `json:"verify_queued,omitempty"`
+	// JobDone: the copy has finished or stopped, so a Verify can be started.
+	JobDone bool `json:"job_done,omitempty"`
+	// JobDest is the copy's destination folder, what Verify files checks.
+	JobDest string `json:"job_dest"`
+}
+
+// FileVerify is what one Verify run read for one file.
+type FileVerify struct {
+	Time time.Time `json:"time"`
+	D1   string    `json:"d1,omitempty"` // the copy read in full
+	S2   string    `json:"s2,omitempty"` // the source read again
+	Err  string    `json:"err,omitempty"`
+}
+
+// maxVerifies bounds how many Verify runs a file's info lists.
+const maxVerifies = 20
+
+// verifiesOf reads, from every Verify job over copy id, what it found for
+// the file at dest. Called with listMu held. Each Verify's manifest is read
+// from disk, one at a time; nothing is kept.
+func verifiesOf(jobs []*Job, id, dest string) (out []FileVerify, queued bool) {
+	for _, o := range jobs {
+		o.mu.Lock()
+		ost := o.st
+		o.mu.Unlock()
+		if !ost.Spec.isVerify() || !slices.Contains(ost.Spec.From, id) {
+			continue
+		}
+		if ost.Phase != "done" {
+			queued = true
+		}
+		if ost.Phase == "scan" || len(out) >= maxVerifies {
+			continue
+		}
+		it, err := openManifest(o.path("manifest.jsonl"))
+		if err != nil {
+			continue
+		}
+		idx := -1
+		for it.Next() {
+			if filepath.Join(ost.Spec.Dest, filepath.FromSlash(it.E.P)) == dest {
+				idx = it.E.I
+				break
+			}
+		}
+		it.Close()
+		if idx < 0 {
+			continue
+		}
+		var fv FileVerify
+		ReadJournal(o.path("journal.log"), 0, func(r Rec) bool {
+			if r.I != idx {
+				return true
+			}
+			fv.Time = time.Unix(r.T, 0)
+			if r.D1 != "" && r.St != "s2ok" && r.St != "s2changed" {
+				fv.D1 = r.D1
+			}
+			if r.S2 != "" {
+				fv.S2 = r.S2
+			}
+			if r.Err != "" {
+				fv.Err = r.Err
+			}
+			return true
+		})
+		if !fv.Time.IsZero() {
+			out = append(out, fv)
+		}
+	}
+	return out, queued
 }
 
 // maxEvents bounds a file's story; a file has a handful of records at most.
@@ -834,7 +910,16 @@ func (m *Manager) FileInfo(id string, i int) (FileInfo, error) {
 	fi.RecheckNow = m.recheckFor(id, i)
 	m.mu.Lock()
 	fi.Busy = m.running != nil
+	jobs := append([]*Job(nil), m.jobs...)
 	m.mu.Unlock()
+	fi.JobDone, fi.JobDest = phase == "done", spec.Dest
+	fi.Verifies = []FileVerify{}
+	if !spec.isVerify() {
+		fi.Verifies, fi.VerifyQueued = verifiesOf(jobs, id, fi.Dest)
+		if fi.Verifies == nil {
+			fi.Verifies = []FileVerify{}
+		}
+	}
 	if spec.isVerify() {
 		switch fi.Status {
 		case "strong":
@@ -894,4 +979,17 @@ func copyAverage(bytes, ns int64) int64 {
 		return 0
 	}
 	return int64(float64(bytes) / (float64(ns) / 1e9))
+}
+
+// IsCheckStage says whether a stage reads back or compares rather than
+// copies: the destination read back, the source read again, or a file
+// already at the destination compared in full. The page and the headline
+// say "Verifying" for these (v0.2.44).
+func IsCheckStage(stage string) bool {
+	for _, p := range []string{"Reading back", "Checking", "Already at the destination", "Reading the source again"} {
+		if strings.HasPrefix(stage, p) {
+			return true
+		}
+	}
+	return false
 }

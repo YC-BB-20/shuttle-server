@@ -448,14 +448,30 @@ func Run(opts Options) (code int) {
 }
 
 // progressHeadline is the status line for a running job, as in the menu bar:
-// for a copy, how many files are copied and how many of those are verified.
+// for a copy, how many files are copied and how many are verified. It says
+// "Verifying" while the file being worked on is read back or compared, and
+// files already at the destination count as verified, never as copied
+// (v0.2.44).
 func progressHeadline(v *copyjob.View) string {
 	if v.Kind == "verify" {
 		return fmt.Sprintf("Verifying — %d of %d files checked", v.Verified+v.Failed+v.Skipped, v.Files)
 	}
-	copied := v.Verified + v.Identical + v.Failed + v.Copied + v.Hashed
-	if v.Check == "none" {
-		return fmt.Sprintf("Copying — %d of %d files copied (not verified)", copied, v.Files)
+	verb := "Copying"
+	if copyjob.IsCheckStage(v.Stage) {
+		verb = "Verifying"
 	}
-	return fmt.Sprintf("Copying — %d of %d files copied, %d verified", copied, v.Files, v.Verified+v.Identical)
+	toCopy := max(0, v.Files-v.Identical)
+	copied := min(toCopy, v.Verified+v.Failed+v.Copied+v.Hashed)
+	s := fmt.Sprintf("%s — %d of %d files copied", verb, copied, toCopy)
+	if v.Check == "none" {
+		if copied > 0 {
+			s += " (not read back)"
+		}
+	} else {
+		s += fmt.Sprintf(", %d verified", v.Verified)
+	}
+	if v.Identical > 0 {
+		s += fmt.Sprintf(" · %d already there, verified", v.Identical)
+	}
+	return s
 }

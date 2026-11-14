@@ -998,9 +998,9 @@ function card(v) {
   q(".speed").textContent = !live ? "" :
     [ver && rate(v.rate) && "Speed " + rate(v.rate), rate(v.source_rate) && "source disk reading " + rate(v.source_rate), rate(v.dest_rate) && "destination disk " + rate(v.dest_rate)].filter(Boolean).join(" · ") || (ver ? "Measuring speed…" : "");
   q(".fcounts").hidden = ver || old || scanning;
-  if (!ver && !old && !scanning) q(".fcounts").textContent = only ? "Copied " + ((v.hashed || 0) + v.identical + v.failed) + " of " + v.files + " · not read back" : fileCounts(v);
+  if (!ver && !old && !scanning) q(".fcounts").textContent = fileCounts(v) + (only && v.hashed ? " · copies not read back yet" : "");
   q(".counts").textContent = srcOnly ? "Source matching " + v.strong + " of " + v.files + " files" + (v.failed ? " · do not match: " + v.failed : "") + (v.skipped ? " · no stored hash: " + v.skipped : "") : ver ? "Matching " + v.verified + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
-    (again ? " · source read again and matching: " + v.strong : "") + (v.failed ? " · do not match: " + v.failed : "") + (v.skipped ? " · no stored hash: " + v.skipped : "") : only ? "Copied " + ((v.hashed || 0) + v.identical) + " of " + v.files + " files" + (v.checks && v.checks.dest ? ", read back later: " + v.checks.dest : ", not verified") + (v.identical ? " · " + v.identical + " already there, not copied (full read, hashes match)" : "") +
+    (again ? " · source read again and matching: " + v.strong : "") + (v.failed ? " · do not match: " + v.failed : "") + (v.skipped ? " · no stored hash: " + v.skipped : "") : only ? "Copied " + (v.hashed || 0) + " of " + (v.files - v.identical) + " files" + (v.checks && v.checks.dest ? ", read back later: " + v.checks.dest : v.hashed ? ", not read back" : "") + (v.identical ? " · " + v.identical + " already there, verified, not copied (full read, hashes match)" : "") +
     (v.failed ? " · failed: " + v.failed : "") + (v.skipped ? " · not copied (links etc.): " + v.skipped : "") : "Verified " + proven + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
     (v.copied ? " · copied, check to come: " + v.copied : "") +
     (v.identical ? " · " + v.identical + " already there, not copied (full read, hashes match)" : "") + (v.s2 === "now" ? " · read twice: " + v.strong : "") +
@@ -1035,14 +1035,15 @@ function card(v) {
   }
   return c;
 }
-// Copied / Checked / Completed for a copy. Completed: passed its check and has
-// its real name (files already there that match count too). Checked: the
-// read-back and the source re-read are done. Copied: the copy pass is done.
+// Copied / Verified for a copy (v0.2.44). Copied: the copy pass is done, out
+// of the files that needed copying. Verified: read back and matching, files
+// already at the destination included, since they were read in full and
+// compared rather than copied.
 function fileCounts(v) {
-  const completed = v.verified + v.identical, checked = completed + v.failed;
+  const already = v.identical || 0, toCopy = Math.max(0, v.files - already);
   const copyDone = /^Reading back|^Reading the source again/.test(v.stage || "") ? 1 : 0;
-  const copied = Math.min(v.files, checked + (v.copied || 0) + copyDone);
-  return "Copied " + copied + " of " + v.files + " · Checked " + checked + " of " + v.files + " · Completed " + completed + " of " + v.files;
+  const copied = Math.min(toCopy, v.verified + v.failed + (v.copied || 0) + (v.hashed || 0) + copyDone);
+  return "Copied " + copied + " of " + toCopy + " · Verified " + (v.verified + already) + " of " + v.files + (already ? " · " + already + " already there (verified, not copied)" : "");
 }
 // The panel on top: the whole queue, the copy running now and its file,
 // each with the time left.
@@ -1283,10 +1284,12 @@ $("moreHist").onclick = () => {
 const fv = {};
 const fileLabel = { already: "Already there · hash checked", already2: "Already there · read twice", waiting: "Waiting", checkwait: "Copied · check queued", proven: "Destination verified", strong: "Fully verified",  failed: "Error", warning: "Source warning", copied: "Copied · check to come", hashed: "Copied · not verified", source: "Source verified" };
 // A file being worked on: "Copying" (purple) while it is written, "Verifying"
-// (pink) while the destination or the source is read back.
+// (pink) while the destination or the source is read back, or a file already
+// at the destination is compared (v0.2.44).
+const isCheckStage = st => /^Reading back|^Checking|^Already at the destination|^Reading the source again/.test(st || "");
 function workChip(r) {
   if (r.status !== "working") return el("span", "chip " + (fileChip[r.status] || ""), fileLabel[r.status] || r.status);
-  const checking = /^Reading back|^Checking/.test(r.stage || "");
+  const checking = isCheckStage(r.stage);
   return el("span", "chip " + (checking ? "verifying" : "copying"), (checking ? "Verifying" : /^Reading the source/.test(r.stage || "") ? "Reading" : "Copying") + (r.size ? " " + Math.floor(pct(r.done, r.size)) + "%" : ""));
 }
 const fileChip = { checkwait: "waiting", already: "ok", already2: "ok", proven: "ok", strong: "ok", failed: "bad", warning: "waiting", working: "copying", copied: "copying", hashed: "waiting", source: "ok" };
@@ -1374,6 +1377,65 @@ function againButton(fi, side) {
   };
   const w = el("div"); w.append(b); return w;
 }
+// A copied file's three reads (v0.2.44): the source as it was copied (or read
+// on its own first), the destination read back, and the source read a second
+// time. Each comes from the copy itself or from the newest Verify that read
+// it; a read never made says so, with a Verify button to set it up.
+function proofSlots(fi) {
+  const vs = fi.verifies || [], newest = k => { for (let n = vs.length - 1; n >= 0; n--) if (vs[n][k]) return vs[n]; return null; };
+  const first = fi.hash.c ? "c" : fi.hash.s1 ? "s1" : "";
+  const ref = first ? fi.hash[first] : "";
+  const vd = !fi.hash.d1 && newest("d1"), vs2 = !fi.hash.s2 && newest("s2");
+  const d1 = fi.hash.d1 || vd && vd.d1 || "", s2 = fi.hash.s2 || vs2 && vs2.s2 || "";
+  const src = fi.already ? "Source — full read, compared with the file already there (not copied)" : first === "s1" ? "Source — full read on its own, before the copy" : "Source — hashed while it was copied";
+  const setUp = pick => {
+    const w = el("div", "mute");
+    if (fi.verify_queued) w.textContent = "A Verify of this copy is in the queue.";
+    else if (!fi.job_done) w.textContent = "Can be verified once the copy has finished.";
+    else { const b = el("button", "", "Verify…"); b.type = "button"; b.onclick = () => verifyBox(fi.job_dest, "Verify files", [infoAt.id], pick); w.append(b); }
+    return w;
+  };
+  const slot = (label, h, from, side, pick, none) => {
+    const d = el("div", "hrow"); d.append(el("div", "mute", label));
+    const v = el("div");
+    if (h) {
+      v.append(el("span", "hash", h));
+      if (ref && h !== ref) v.append(el("span", "nomatch", "  ✗ differs"));
+      else if (ref && side !== "first") v.append(el("span", "match", "  ✓ same as the first"));
+      v.append(el("div", "mute", from));
+      d.append(v);
+      if (side !== "first" || fi.hash.c) d.append(againButton(fi, side === "first" ? "source" : side));
+    } else {
+      v.append(el("span", "warn", none)); d.append(v);
+      if (pick) d.append(setUp(pick));
+    }
+    return d;
+  };
+  const by = r => "by a Verify, " + new Date(r.time).toLocaleString();
+  const rows = [
+    slot(src, ref, fi.already ? "when the copy found the file already there" : "during the copy", "first", "", "Not made yet: it is made as the file is copied."),
+    slot("Destination — full read of the copy", d1, fi.hash.d1 ? "by the copy itself" : vd ? by(vd) : "", "dest", s2 ? "dest" : "src", "Not done: the copy has not been read back."),
+    slot("Source — second full read (safety check)", s2, fi.hash.s2 ? "by the copy itself" : vs2 ? by(vs2) : "", "source", d1 ? "only" : "src", "Not done: the source has not been read a second time."),
+  ];
+  const older = vs.filter(r => r !== vd && r !== vs2 || r.err).map(r => {
+    const d = el("div", "hrow"); d.append(el("div", "mute", "Verify — " + new Date(r.time).toLocaleString()));
+    const v = el("div");
+    if (r.d1) v.append(el("div", r.d1 === ref ? "match" : "nomatch", "Destination " + (r.d1 === ref ? "✓ matches" : "✗ differs")));
+    if (r.s2) v.append(el("div", r.s2 === ref ? "match" : "nomatch", "Source " + (r.s2 === ref ? "✓ matches" : "✗ differs")));
+    if (r.err) v.append(el("div", "bad", r.err));
+    d.append(v); return d;
+  });
+  const rech = (fi.rechecks || []).map(r => {
+    const d = el("div", "hrow"); d.append(el("div", "mute", (r.which === "dest" ? "Destination" : "Source") + " — read again " + new Date(r.time).toLocaleString()));
+    const v = el("div");
+    if (r.error) v.append(el("span", "bad", r.error));
+    else { v.append(el("span", "hash", r.hash)); if (ref) v.append(el("span", r.hash === ref ? "match" : "nomatch", r.hash === ref ? "  ✓ same as the first" : "  ✗ differs")); }
+    if (r.changed) v.append(el("div", "warn", "The source's size or modified time has changed since it was copied."));
+    d.append(v); return d;
+  });
+  return [el("h3", "", "Fingerprints (XXH128 hashes)"), el("p", "mute", "Three separate full reads: the source as it was copied, the copy read back, and the source read again. All must be the same for the copy to be fully verified."),
+    ...rows, ...(older.length ? [el("h3", "", "Earlier checks")] : []), ...older, ...rech, el("p", "bad againmsg", "")];
+}
 function fileInfo(id, i) {
   infoAt = { id, i };
   $("infoTitle").textContent = "File"; $("infoBody").textContent = "Loading…";
@@ -1396,7 +1458,8 @@ function loadInfo() {
     body.push(el("h3", "", "Where"), kv(fi.kind === "verify" ? [["File", el("span", "path", fi.dest)], ["At the destination", dest]] :
       [["From", el("span", "path", fi.source)], ["To", el("span", "path", fi.dest)], ["At the destination", dest]]));
     const hs = Object.entries(fi.kind === "verify" ? verifyHashName : fi.already ? alreadyHashName : hashName).filter(([k]) => fi.hash[k]);
-    if (hs.length) {
+    if (fi.kind !== "verify") body.push(...proofSlots(fi));
+    else if (hs.length) {
       const ref = fi.hash.c || fi.hash.s1;
       body.push(el("h3", "", "Fingerprints (XXH128 hashes)"), el("p", "mute", fi.kind === "verify" ? "The copy was read again in full; its fingerprint must equal the one stored when it was copied." :
         "Each line is a separate full read of the file. All must be the same for the copy to count as verified."),
@@ -1416,7 +1479,7 @@ function loadInfo() {
           if (r.changed) v.append(el("div", "warn", "The source's size or modified time has changed since it was copied."));
           d.append(v); return d;
         }), el("p", "bad againmsg", ""));
-    } else body.push(el("h3", "", "Fingerprints (XXH128 hashes)"), el("p", "mute", "None yet: hashes are made as the file is copied and read back."));
+    } else body.push(el("h3", "", "Fingerprints (XXH128 hashes)"), el("p", "mute", "None yet."));
     const story = el("ol", "story");
     (fi.events || []).forEach(e => {
       const li = el("li"); li.append(el("div", "mute", new Date(e.time).toLocaleString() + (e.ms ? " · took " + (e.ms < 1000 ? e.ms + " ms" : (e.ms / 1000).toFixed(1) + " s") : "") +

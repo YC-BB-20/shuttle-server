@@ -283,3 +283,31 @@ func TestCopyFileListShowsLaterVerifies(t *testing.T) {
 		t.Fatalf("damaged copy: %+v", p)
 	}
 }
+
+// A copy's file info shows the source hashed while copying, then the
+// destination read back and the source read again by later Verify jobs
+// (v0.2.44).
+func TestFileInfoShowsVerifyReads(t *testing.T) {
+	root := t.TempDir()
+	src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
+	makeTree(t, src, 1<<20)
+	m := newManager(t, filepath.Join(root, "state"))
+	startRun(t, m)
+	c, _ := m.Add(Spec{Source: src, Dest: dst, Check: "none", Hash: HashCheckLater})
+	waitState(t, m, c.st.ID, "finished")
+	fi, err := m.FileInfo(c.st.ID, 0)
+	if err != nil || fi.Hash.C == "" || fi.Hash.D1 != "" || len(fi.Verifies) != 0 || !fi.JobDone || fi.JobDest != dst {
+		t.Fatalf("before: %+v %v", fi, err)
+	}
+	d, _ := m.Add(Spec{Kind: KindVerify, Source: dst, From: []string{c.st.ID}})
+	waitState(t, m, d.st.ID, "finished")
+	s, _ := m.Add(Spec{Kind: KindVerify, Source: dst, S2: S2Only, From: []string{c.st.ID}})
+	waitState(t, m, s.st.ID, "finished")
+	fi, err = m.FileInfo(c.st.ID, 0)
+	if err != nil || len(fi.Verifies) != 2 || fi.VerifyQueued {
+		t.Fatalf("after: %+v %v", fi, err)
+	}
+	if fi.Verifies[0].D1 != fi.Hash.C || fi.Verifies[0].S2 != "" || fi.Verifies[1].S2 != fi.Hash.C || fi.Verifies[1].D1 != "" {
+		t.Fatalf("verify reads: %+v, c %s", fi.Verifies, fi.Hash.C)
+	}
+}

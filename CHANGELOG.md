@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.44 — 13 November 2026
+
+- **"Verifying", not "Copying", while a file is checked.** When a file already at the destination is read in full and compared, or a copy is read back, or the source read again, the file's chip, the status line and the menu bar say Verifying.
+- **Files already there count as verified, not copied.** The counts read, for example, "Copied 0 of 1 · Verified 2 of 3 · 2 already there (verified, not copied)" instead of "Copied 2 of 3, not verified".
+- **File info shows all three reads:** the source hashed while it was copied, the destination read back, and the source read a second time, each with where it came from (the copy itself or a Verify and its date). A read that was never made says so, with a Verify… button that opens Verify files with that check already chosen. Earlier Verify results for the file are listed below.
+
 ## 0.2.43 — 13 November 2026
 
 - **New copy moved to the front** of the Queue header: New copy, then "Queue", then the filters, all on one line. On a narrow screen such as the iPhone the filters still move to their own line below.
