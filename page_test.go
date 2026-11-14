@@ -68,3 +68,18 @@ func TestPagePurpleAccentNoVerifyButton(t *testing.T) {
 		}
 	}
 }
+
+// v0.2.30: room above the filters; history entries can be hidden, shown
+// again from Settings or the Hidden button among the filters.
+func TestPageHideHistory(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`.qf { margin:14px 0 4px; }`, `id="qfHidden"`, `id="showHidden"`,
+		`"Hide from history"`, `"Show in history"`, `(hide ? "hide" : "unhide")`,
+		`const listed = v => !v.hidden || qf.showHidden;`, `done.filter(v => listed(v) && shown(v) && inRange(v))`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}

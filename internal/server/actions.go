@@ -102,6 +102,8 @@ func (s *Server) jobAction(w http.ResponseWriter, r *http.Request) (any, error) 
 		err = s.Jobs.Stop(id)
 	case "continue": // the copy may not fit; the owner lets it run anyway
 		err = s.Jobs.ContinueAnyway(id)
+	case "hide", "unhide": // a history entry, page view only
+		err = s.Jobs.SetHidden(id, r.PathValue("action") == "hide")
 	default:
 		err = errors.New("unknown action")
 	}

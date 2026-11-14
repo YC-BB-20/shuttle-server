@@ -802,3 +802,39 @@ func TestRecheckReadsAgainAndRecords(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 }
+
+// v0.2.30: a finished entry can be hidden from the history and shown again;
+// the flag survives a restart, an unfinished job cannot be hidden, and the
+// copied files are untouched.
+func TestHideHistoryEntry(t *testing.T) {
+	root := t.TempDir()
+	src, dst, state := filepath.Join(root, "src"), filepath.Join(root, "dst"), filepath.Join(root, "state")
+	makeTree(t, src, 0)
+	m := newManager(t, state)
+	ctx, cancel := context.WithCancel(context.Background())
+	j, _ := m.Add(Spec{Source: src, Dest: dst})
+	id := j.st.ID
+	if err := m.SetHidden(id, true); err == nil {
+		t.Error("an unfinished job was hidden")
+	}
+	go m.Run(ctx)
+	waitState(t, m, id, "finished")
+	if err := m.SetHidden(id, true); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	time.Sleep(50 * time.Millisecond)
+	m = newManager(t, state)
+	if h := m.History(0, 20); len(h) != 1 || !h[0].Hidden {
+		t.Fatalf("hidden flag lost after restart: %+v", h)
+	}
+	if err := m.SetHidden(id, false); err != nil {
+		t.Fatal(err)
+	}
+	if h := m.History(0, 20); h[0].Hidden {
+		t.Error("entry still hidden after showing it again")
+	}
+	if n, _ := os.ReadDir(dst); len(n) == 0 {
+		t.Error("destination emptied")
+	}
+}

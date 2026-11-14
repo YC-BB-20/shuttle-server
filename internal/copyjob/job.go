@@ -132,6 +132,9 @@ type state struct {
 	// Error (added in 0.2.26): why a Verify job stopped on its own, such as
 	// a folder that is missing. The job is done and shows as failed.
 	Error string `json:"error,omitempty"`
+	// Hidden (added in 0.2.30): the owner hid this finished entry from the
+	// history. Only the page's view changes; nothing on disk is touched.
+	Hidden bool `json:"hidden,omitempty"`
 }
 
 // Job is one copy job.

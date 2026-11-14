@@ -247,6 +247,28 @@ func (m *Manager) Resume(id string) error { return m.choose(id, "run", nil) }
 // in progress (our own temporary file) is removed.
 func (m *Manager) Stop(id string) error { return m.choose(id, "stopped", errOwnerStop) }
 
+// SetHidden hides a finished or stopped entry from the history, or shows it
+// again. It changes only how the page lists it: the job, its records and
+// the copied files stay exactly as they are.
+func (m *Manager) SetHidden(id string, hidden bool) error {
+	j := m.find(id)
+	if j == nil {
+		return errors.New("no such job")
+	}
+	j.mu.Lock()
+	if j.st.Phase != "done" {
+		j.mu.Unlock()
+		return errors.New("only finished or stopped entries can be hidden")
+	}
+	j.st.Hidden = hidden
+	j.mu.Unlock()
+	if err := j.save(); err != nil {
+		return err
+	}
+	m.Log.Info("history entry hidden or shown", "job", id, "hidden", hidden)
+	return nil
+}
+
 func (m *Manager) choose(id, choice string, cause error) error {
 	j := m.find(id)
 	if j == nil {

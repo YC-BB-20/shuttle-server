@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.30 — 13 November 2026
+
+- **More room around the Queue filters.** Space above the filter row and a little more between the buttons.
+- **Hide entries from the history.** Open a finished or stopped entry and press Hide from history. Hiding only tidies the list: the copy, its files and its records are untouched, and Show in history brings it back.
+- **Seeing hidden entries:** a Hidden button with a count appears among the filters, and Settings → History has the same switch, "Show hidden entries in the history". Hidden entries shown that way are dimmed and marked "hidden".
+
 ## 0.2.29 — 13 November 2026
 
 - **Verify from a row checks that copy only.** It used to take in every copy ever made into the same folder, so a folder that had received copies from different sources refused to read "the source" again. Now Verify files, Read destination now and Read source again now on a copy check just that copy, against its own source. A Verify item's "Verify files again" checks the same copies it did before.

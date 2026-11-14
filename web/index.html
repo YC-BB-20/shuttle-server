@@ -144,7 +144,7 @@
   .job.old .bar { display:none; }
   .when { font-size:13px; color:var(--mute); margin-top:2px; }
   .files { margin-top:10px; border-top:1px solid var(--line); padding-top:8px; }
-  .filters { display:flex; gap:6px; overflow-x:auto; margin-bottom:6px; }
+  .filters { display:flex; gap:8px; overflow-x:auto; margin-bottom:6px; }
   .filters button { white-space:nowrap; font-size:14px; padding:4px 10px; }
   .filters button[aria-pressed=true] { background:var(--accent); color:#fff; border-color:var(--accent); }
   .frows { border:1px solid var(--line); border-radius:8px; max-height:50vh; overflow:auto; }
@@ -198,7 +198,7 @@
   .job.old { padding:8px 12px; }
   .filters button .n { opacity:.75; font-variant-numeric:tabular-nums; }
   .filters select { flex:none; font-size:14px; padding:3px 6px; }
-  .qf { margin-bottom:2px; } .qfinfo { font-size:13px; margin:12px 0 8px; } .qfinfo:empty { display:none; }
+  .qf { margin:14px 0 4px; } .job.hid { opacity:.55; } .job.hid .s::after { content:" · hidden"; font-weight:400; color:var(--mute); } .qfinfo { font-size:13px; margin:12px 0 8px; } .qfinfo:empty { display:none; }
   .resources { margin-top:18px; }
 </style>
 </head>
@@ -223,7 +223,7 @@
   </div>
   <div class="jobs-head"><h2>Queue</h2><div class="row"><button class="primary" type="button" id="newBtn">New copy</button></div></div>
   <div class="filters qf" id="qf" title="Click to show or hide each kind of entry (running and waiting items are always shown)">
-    <button type="button" data-k="done">Completed <span class="n"></span></button><button type="button" data-k="skipped" title="Copies where every file was already at the destination">Skipped <span class="n"></span></button><button type="button" data-k="stopped">Stopped <span class="n"></span></button><button type="button" data-k="failed" title="Finished with files that failed or need attention">Failed <span class="n"></span></button><button type="button" data-k="paused" title="Copies and verifies you paused">Paused <span class="n"></span></button>
+    <button type="button" data-k="done">Completed <span class="n"></span></button><button type="button" data-k="skipped" title="Copies where every file was already at the destination">Skipped <span class="n"></span></button><button type="button" data-k="stopped">Stopped <span class="n"></span></button><button type="button" data-k="failed" title="Finished with files that failed or need attention">Failed <span class="n"></span></button><button type="button" data-k="paused" title="Copies and verifies you paused">Paused <span class="n"></span></button><button type="button" id="qfHidden" title="Show or hide the entries you hid from the history" hidden>Hidden <span class="n"></span></button>
     <button type="button" id="qfActive">Active only</button>
     <select id="qfRange" title="Time range of the history"><option value="all">All time</option><option value="hour">Last hour</option><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="week">Last 7 days</option></select>
     <select id="qfSort" title="Sort the queue and the history"><option value="queue:1">Queue order</option><option value="time:-1">Newest first</option><option value="time:1">Oldest first</option><option value="name:1">Name A–Z</option><option value="name:-1">Name Z–A</option><option value="size:-1">Largest first</option><option value="size:1">Smallest first</option><option value="status:1">Status</option><option value="left:1">Time left</option><option value="dest:1">Destination</option></select>
@@ -254,6 +254,11 @@
     <label class="opt in"><input type="checkbox" id="skipDot"><span>Also leave out "._" files (Mac information such as Finder tags on non-Mac disks like exFAT)</span></label>
     <p class="mute">Finder rewrites .DS_Store whenever a folder is opened, so a copy of one can never stay verified. Left-out files are counted on the copy, not hidden. Applies to new copies and verifies.</p>
     <p class="err" id="sysErr"></p>
+  </section>
+  <section class="card" id="histSet">
+    <h2>History</h2>
+    <label class="opt"><input type="checkbox" id="showHidden"><span>Show hidden entries in the history</span></label>
+    <p class="mute">Hide an entry from its details in the history. Hiding only tidies the list: the copy, its files and its records stay as they are. The Hidden button among the filters does the same as this switch. Remembered in this browser.</p>
   </section>
   <section class="card" id="updates">
     <h2>Updates</h2>
@@ -704,7 +709,7 @@ function card(v) {
   const q = sel => c.querySelector(sel);
   const old = v.state === "finished" || v.state === "stopped";
   const problems = v.failed || v.s2_warnings || v.error;
-  c.classList.toggle("old", old);
+  c.classList.toggle("old", old); c.classList.toggle("hid", old && !!v.hidden);
   const ver = v.kind === "verify", kind = ver ? "verify" : "copy";
   c.classList.toggle("verify", ver);
   const place = ver && v.verify_file ? v.dest + "/" + v.verify_file : v.dest;
@@ -789,6 +794,7 @@ function card(v) {
   if (problems) btn(btns, "Show problems", () => showProblems(v.id));
   if (old) btn(btns, "Verify files", () => verifyBox(ver ? place : v.dest,
     ver || (v.checks && (v.checks.dest || v.checks.source)) ? "Verify files again" : "Verify files", ver ? v.from : [v.id]));
+  if (old) btn(btns, v.hidden ? "Show in history" : "Hide from history", () => setHidden(v, !v.hidden));
   drawChecks(q(".checks"), v);
   const key = acts.map(b => b.title).join("|") + "/" + btns.map(b => b.textContent).join("|");
   if (fv[v.id]) { const was = fv[v.id].v.state; fv[v.id].v = v; if (was !== v.state) loadFiles(fv[v.id], false, true); }
@@ -941,7 +947,7 @@ let olderViews = [];
 // Queue and History filters, as in Shuttle Router: kinds to show, Active only,
 // a time range for the history and a sort order. Remembered in this browser.
 // Running, waiting and queued items are always shown.
-const qfDefault = () => ({ show: {}, range: "all", sort: "queue:1" });
+const qfDefault = () => ({ show: {}, range: "all", sort: "queue:1", showHidden: false });
 const qf = (() => { try { return Object.assign(qfDefault(), JSON.parse(localStorage.getItem("shuttle.qf") || "{}")); } catch (e) { return qfDefault(); } })();
 const saveQf = () => { try { localStorage.setItem("shuttle.qf", JSON.stringify(qf)); } catch (e) {} };
 const qfOffKeys = ["done", "skipped", "stopped", "failed"];
@@ -992,6 +998,10 @@ function syncQf(counts) {
   $("qfActive").setAttribute("aria-pressed", allOff);
   $("qfActive").title = allOff ? "Switch the filters back on (completed, skipped, stopped, failed)" : "Switch every filter off: show only what is copying, verifying, waiting or paused";
   $("qfRange").value = qf.range; $("qfSort").value = qf.sort;
+  const nh = counts ? counts.hidden || 0 : 0;
+  $("qfHidden").hidden = !nh && !qf.showHidden; $("qfHidden").setAttribute("aria-pressed", !!qf.showHidden);
+  $("qfHidden").querySelector(".n").textContent = nh || "";
+  $("showHidden").checked = !!qf.showHidden;
 }
 const qfChanged = () => { saveQf(); if (latest) renderJobs(latest.jobs || []); else syncQf(); };
 $("qf").querySelectorAll("button[data-k]").forEach(b => b.onclick = () => { qf.show[b.dataset.k] = qf.show[b.dataset.k] === false; qfChanged(); });
@@ -999,6 +1009,15 @@ $("qfActive").onclick = () => {
   const allOff = qfOffKeys.every(k => qf.show[k] === false);
   qfOffKeys.forEach(k => qf.show[k] = allOff); qf.show.paused = true; qfChanged();
 };
+$("qfHidden").onclick = () => { qf.showHidden = !qf.showHidden; qfChanged(); };
+$("showHidden").onchange = () => { qf.showHidden = $("showHidden").checked; qfChanged(); };
+// Hide a history entry, or show it again: only the list changes.
+function setHidden(v, hide) {
+  post("/api/jobs/" + v.id + "/" + (hide ? "hide" : "unhide")).then(() => {
+    ((latest && latest.jobs) || []).concat(olderViews).forEach(x => { if (x.id === v.id) x.hidden = hide; });
+    if (latest) renderJobs(latest.jobs || []);
+  }).catch(e => alert(e.message));
+}
 $("qfRange").onchange = () => { qf.range = $("qfRange").value; qfChanged(); };
 $("qfSort").onchange = () => { qf.sort = $("qfSort").value; qfChanged(); };
 syncQf();
@@ -1007,9 +1026,11 @@ function renderJobs(list) {
   const ids = new Set(list.map(v => v.id));
   const done = list.filter(v => v.state === "finished" || v.state === "stopped").concat(olderViews.filter(v => !ids.has(v.id)));
   const counts = {};
-  active.concat(done).forEach(v => { const k = jobCat(v); counts[k] = (counts[k] || 0) + 1; });
+  // Hidden entries count only under Hidden until they are shown.
+  const listed = v => !v.hidden || qf.showHidden;
+  active.concat(done).forEach(v => { if (v.hidden) counts.hidden = (counts.hidden || 0) + 1; if (listed(v)) { const k = jobCat(v); counts[k] = (counts[k] || 0) + 1; } });
   syncQf(counts);
-  const qShow = sortJobs(active.filter(shown), false), hShow = sortJobs(done.filter(v => shown(v) && inRange(v)), true);
+  const qShow = sortJobs(active.filter(shown), false), hShow = sortJobs(done.filter(v => listed(v) && shown(v) && inRange(v)), true);
   const total = active.length + done.length, vis = qShow.length + hShow.length;
   $("qfInfo").textContent = vis === total ? "" : "Showing " + vis + " of " + total;
   $("noJobs").hidden = active.length > 0; $("noDone").hidden = done.length > 0;
