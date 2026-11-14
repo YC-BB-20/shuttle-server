@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.50 — 14 November 2026
+
+- **Choose several folders at once.** In "Choose what to copy", ⌘-click or Ctrl-click a folder or file to tick it without opening it; Shift-click ticks everything from the last one ticked. The tick boxes work as before.
+- **Queue sits under New copy;** the filter buttons are centred on New copy's line.
+- **Speed beside the pause button:** a copy's average copy speed, a Verify's speed, instead of in the line under the bar and a big line in the details.
+- **"Now:" says what is happening**, for example "Now: Copying (the source is hashed as it is read), 2.4 GB of 9.2 GB", without the file name (the file list shows the file).
+- **No repeated counts while copying:** "Copied 7 of 11 files, not read back" is gone; what it added (read twice, already there, failed…) joins the "Copied … · Verified …" line.
+- **From and To on one line** when they fit.
+- **Verify files at the left of the line above the files,** beside the filters or the heading.
+
 ## 0.2.49 — 14 November 2026
 
 - **Files always sit under their folder's name,** in a row that closes and opens, even when there is only one folder or only a few files. With up to 20 files every folder starts open; with more, folders start closed as before.

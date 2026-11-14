@@ -80,11 +80,12 @@
   .jobs-head { display:flex; align-items:center; gap:12px; margin:18px 0 8px; }
   .jobs-head h2 { flex:1; margin:0; font-size:17px; }
   /* One line: New copy, then Queue, then the filters. On a narrow screen the filters drop to their own line. */
-  .qhead { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:18px 0 4px; }
-  .qhead h2 { flex:none; margin:0; font-size:17px; }
-  .qhead .qf { flex:1 1 300px; min-width:0; margin:0; }
-  .qhead .big { flex:none; padding:9px 18px; font-size:16px; font-weight:600; }
-  @media (max-width:700px) { .qhead .qf { order:3; flex-basis:100%; } }
+  /* v0.2.50: "Queue" under New copy; the filters centred on the button's line. */
+  .qhead { display:grid; grid-template-columns:auto minmax(0,1fr); column-gap:16px; row-gap:2px; align-items:center; margin:18px 0 4px; }
+  .qhead .big { grid-row:1; grid-column:1; padding:9px 18px; font-size:16px; font-weight:600; }
+  .qhead h2 { grid-row:2; grid-column:1; margin:0; font-size:17px; }
+  .qhead .qf { grid-row:1; grid-column:2; min-width:0; margin:0; }
+  @media (max-width:700px) { .qhead .qf { grid-row:3; grid-column:1 / -1; margin-top:6px; } }
   .primary { background:var(--accent); color:#fff; border-color:var(--accent); }
   .job { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 16px; margin-bottom:12px; }
   .job .top { display:flex; gap:8px; align-items:flex-start; }
@@ -225,6 +226,17 @@
   .job .sub { font-size:13px; color:var(--mute); overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
   .job .sub.bad { color:var(--bad); } .job .sub.warn { color:var(--warn); }
   .job .acts { display:flex; gap:6px; flex:none; }
+  .job .counts:empty, .job .speed:empty { display:none; }
+  .job .rspeed { flex:none; text-align:right; font-size:13px; color:var(--mute); white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .job .rspeed b { display:block; font-size:17px; color:var(--fg); }
+  @media (max-width:600px) { .job .rspeed small { display:none; } .job .rspeed b { font-size:15px; } }
+  /* v0.2.50: From and To on one line when they fit. */
+  .job .paths { display:flex; flex-wrap:wrap; gap:0 24px; }
+  .job .paths .path { flex:0 1 auto; min-width:0; margin:0; }
+  /* v0.2.50: Verify files at the left of the line above the files. */
+  .job .ftop { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin:8px 0 6px; min-width:0; }
+  .job .ftop .brow, .job .ftop .btns, .job .ftop .fpage, .job .ftop .filters, .job .ftop .fhead { margin:0; }
+  .job .ftop .filters { flex:1 1 auto; min-width:0; }
   .job .acts .hidebtn { display:none; } .job.open .acts .hidebtn { display:inline-block; }
   .files .fhead { margin:8px 0 6px; font-size:14px; font-weight:600; } .files .fhead:empty { display:none; }
   .job .acts button { width:30px; height:30px; padding:0; border-radius:15px; font-size:13px; line-height:1; }
@@ -853,7 +865,7 @@ function useLabel() {
   $("pickHint").textContent = pickFor === "ver" ? "Open a folder Shuttle copied to and press Use this folder, or tap one file to verify only that file." :
     pickFor !== "src" ? "Open the folder to copy into, then press Use this folder." :
     chosen.size ? chosen.size + " chosen in this folder. Opening another folder clears the choice." :
-    "Tick files or folders to copy only those, or press Use this folder to copy all of it.";
+    "Tick files or folders (or ⌘-click / Ctrl-click them; Shift-click ticks a run) to copy only those, or press Use this folder to copy all of it.";
 }
 function browse(path, keep) {
   if (!keep) chosen = new Set();
@@ -873,13 +885,37 @@ function browse(path, keep) {
     const cr = $("crumbs"); cr.replaceChildren();
     (d.crumbs || []).forEach((c, i) => { if (i) cr.append(el("span", "", "›")); const b = el("button", "", c.name); b.type = "button"; b.onclick = () => browse(c.path); cr.append(b); });
     cr.scrollLeft = cr.scrollWidth;
-    $("pickList").replaceChildren(...d.folders.map(f => {
+    // Choosing several (v0.2.50): ⌘-click or Ctrl-click ticks an item
+    // instead of opening it (on a Mac, Ctrl-click arrives as a right click);
+    // Shift-click ticks everything from the last ticked item to this one.
+    let lastPick = -1;
+    const boxes = [];
+    const multi = (e, i) => {
+      if (pickFor !== "src" || !(e.metaKey || e.ctrlKey || e.shiftKey)) return false;
+      e.preventDefault(); e.stopPropagation();
+      if (e.shiftKey && lastPick >= 0) {
+        const [a, b] = [Math.min(lastPick, i), Math.max(lastPick, i)];
+        for (let k = a; k <= b; k++) { boxes[k].checked = true; chosen.add(d.folders[k].name); }
+        useLabel(); pickSize();
+      } else { boxes[i].checked = !boxes[i].checked; boxes[i].onchange(); }
+      lastPick = i;
+      return true;
+    };
+    $("pickList").replaceChildren(...d.folders.map((f, i) => {
       const row = el("div", "pick");
       if (pickFor === "src") {
         const cb = el("input"); cb.type = "checkbox"; cb.checked = chosen.has(f.name); cb.setAttribute("aria-label", "Choose " + f.name);
-        cb.onchange = () => { cb.checked ? chosen.add(f.name) : chosen.delete(f.name); useLabel(); pickSize(); };
+        cb.onchange = () => { cb.checked ? chosen.add(f.name) : chosen.delete(f.name); lastPick = i; useLabel(); pickSize(); };
+        // Shift on the box itself: the box ticks as usual, the run between is ticked too.
+        cb.onclick = e => {
+          if (!e.shiftKey || lastPick < 0 || lastPick === i) return;
+          for (let k = Math.min(lastPick, i); k <= Math.max(lastPick, i); k++) { boxes[k].checked = true; chosen.add(d.folders[k].name); }
+          useLabel(); pickSize();
+        };
+        boxes[i] = cb;
+        row.oncontextmenu = e => { if (e.ctrlKey) multi(e, i); };
         row.append(cb);
-        if (f.file) { const l = el("label", "", "📄 " + f.name); l.onclick = () => { cb.checked = !cb.checked; cb.onchange(); }; row.append(l, el("span", "sz", size(f.size))); return row; }
+        if (f.file) { const l = el("label", "", "📄 " + f.name); l.onclick = e => { if (!multi(e, i)) { cb.checked = !cb.checked; cb.onchange(); } }; row.append(l, el("span", "sz", size(f.size))); return row; }
       }
       if (f.file && pickFor === "ver") {
         const b = el("button", "", "📄 " + f.name); b.type = "button";
@@ -887,7 +923,7 @@ function browse(path, keep) {
         row.append(b, el("span", "sz", size(f.size))); return row;
       }
       if (f.file) return row;
-      const b = el("button", "", "📁 " + f.name); b.type = "button"; b.onclick = () => browse(f.path); row.append(b, el("span", "sz", "›"));
+      const b = el("button", "", "📁 " + f.name); b.type = "button"; b.onclick = e => { if (!multi(e, i)) browse(f.path); }; row.append(b, el("span", "sz", "›"));
       return row;
     }));
     if (!d.folders.length && !d.error) $("pickList").replaceChildren(el("p", "mute", pickFor === "src" ? "  This folder is empty." : "  No folders inside."));
@@ -960,8 +996,8 @@ function card(v) {
   if (!c) {
     c = document.createElement("section"); c.className = "job";
     c.innerHTML = '<div class="r"><span class="ico"></span><div class="m"><div class="route"><span class="s"></span><span class="arr">→</span><span class="d"></span></div><div class="of" hidden></div>' +
-      '<div class="bar"><i></i></div><div class="sub"></div></div><div class="acts"></div></div>' +
-      '<div class="detail"><p class="path from"></p><p class="path to"></p><p class="line"></p><div class="bar file"><i></i></div><p class="cspeed" hidden></p><p class="speed mute"></p><p class="fcounts" hidden></p>' +
+      '<div class="bar"><i></i></div><div class="sub"></div></div><div class="rspeed" hidden></div><div class="acts"></div></div>' +
+      '<div class="detail"><div class="paths"><p class="path from"></p><p class="path to"></p></div><p class="line"></p><div class="bar file"><i></i></div><p class="speed mute"></p><p class="fcounts" hidden></p>' +
       '<p class="counts mute"></p><p class="warn same" hidden>Source and destination are on the same disk: this copy does not protect against that disk failing.</p><div class="checks" hidden></div><div class="brow"><div class="btns"></div><div class="fpage"></div></div></div>';
     cards[v.id] = c;
     // Tapping a copy opens its details and files; tapping it again closes them.
@@ -1010,7 +1046,7 @@ function card(v) {
   else if (v.state === "paused" && v.space) { sub = "Paused · may not fit on " + v.space.disk + " — your answer is needed"; subCls += " warn"; }
   else if (v.state === "running" && scanning && ver) sub = "Reading the stored hashes — " + v.scanned + " files so far";
   else if (v.state === "running" && scanning) sub = "Scanning the source — " + v.scanned + " files, " + size(v.scanned_bytes) + " so far";
-  else if (v.state === "running") sub = [ver && verNow(v), pc, size((v.progress || 0) * v.bytes) + " of " + size(v.bytes), v.eta_seconds ? left(v.eta_seconds) : "working out the time left", ver ? rate(v.rate) : rate(v.copy_rate) && "average copy speed " + rate(v.copy_rate)].filter(Boolean).join(" · ");
+  else if (v.state === "running") sub = [ver && verNow(v), pc, size((v.progress || 0) * v.bytes) + " of " + size(v.bytes), v.eta_seconds ? left(v.eta_seconds) : "working out the time left", ].filter(Boolean).join(" · ");
   else if (v.state === "paused") sub = v.after ? "Paused · press ▶ and it starts when the copy above has finished" : pc + " · Paused by you";
   else if (v.state === "queued") sub = v.after ? "Starts when the copy above has finished" : "Waiting for the job before it to finish";
   else if (v.state === "finished" && v.error) { sub = (v.finished ? when(v.finished) + " · " : "") + "Failed · " + v.error; subCls += " bad"; }
@@ -1024,7 +1060,7 @@ function card(v) {
   q(".sub").textContent = sub; q(".sub").className = subCls;
   // Details, shown when the row is open.
   let line = "";
-  if (v.state === "running" && !scanning) line = "Now: " + v.file + " — " + v.stage + (v.file_size ? ", " + size(v.file_done) + " of " + size(v.file_size) : "");
+  if (v.state === "running" && !scanning) line = "Now: " + v.stage + (v.file_size ? ", " + size(v.file_done) + " of " + size(v.file_size) : "");
   else if (v.state === "finished" && v.error) line = v.error + (v.verified ? " " + v.verified + " files were checked and match before it stopped." : "");
   else if (v.state === "finished" && srcOnly) line = v.failed ? "Some source files do not match the hashes stored when they were copied — see the files marked Error. Nothing was changed." :
       "Every source file read again matches the hash stored when it was copied. The copies were not read in this check.";
@@ -1045,10 +1081,12 @@ function card(v) {
   q(".bar.file > i").style.width = v.state === "running" ? pct(v.file_done, v.file_size) + "%" : "0%";
   const live = v.state === "running" && !scanning;
   c.classList.toggle("live", live);
-  q(".cspeed").hidden = !live || ver;
-  if (live && !ver) { q(".cspeed").replaceChildren(el("small", "", "Average copy speed "), document.createTextNode(rate(v.copy_rate) || "measuring…")); }
+  // The speed sits beside the pause button (v0.2.50): a copy's average, a Verify's current speed.
+  const sp = live ? (ver ? rate(v.rate) : rate(v.copy_rate)) : "";
+  q(".rspeed").hidden = !live;
+  if (live) q(".rspeed").replaceChildren(el("b", "", sp || "…"), el("small", "", ver ? "speed" : sp ? "average copy speed" : "measuring speed"));
   q(".speed").textContent = !live ? "" :
-    [ver && rate(v.rate) && "Speed " + rate(v.rate), rate(v.source_rate) && "source disk reading " + rate(v.source_rate), rate(v.dest_rate) && "destination disk " + rate(v.dest_rate)].filter(Boolean).join(" · ") || (ver ? "Measuring speed…" : "");
+    [rate(v.source_rate) && "source disk reading " + rate(v.source_rate), rate(v.dest_rate) && "destination disk " + rate(v.dest_rate)].filter(Boolean).join(" · ");
   q(".fcounts").hidden = ver || old || scanning;
   if (!ver && !old && !scanning) q(".fcounts").textContent = fileCounts(v) + (only && v.hashed ? " · copies not read back yet" : "");
   q(".counts").textContent = srcOnly ? "Source matching " + v.strong + " of " + v.files + " files" + (v.failed ? " · do not match: " + v.failed : "") + (v.skipped ? " · no stored hash: " + v.skipped : "") : ver ? "Matching " + v.verified + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
@@ -1058,6 +1096,12 @@ function card(v) {
     (v.identical ? " · " + v.identical + " already there, not copied (full read, hashes match)" : "") + (v.s2 === "now" ? " · read twice: " + v.strong : "") +
     (v.failed ? " · failed: " + v.failed : "") + (v.s2_warnings ? " · source warnings: " + v.s2_warnings : "") + (v.skipped ? " · not copied (links etc.): " + v.skipped : "");
   if (v.system_skipped) q(".counts").textContent += " · system files left out: " + v.system_skipped;
+  // While a copy runs the line above already gives copied and verified of
+  // all; only what it does not say is kept here (v0.2.50).
+  if (!ver && !old && !scanning) q(".fcounts").textContent += [""].concat([v.identical && v.identical + " already there, not copied (full read, hashes match)",
+    v.s2 === "now" && v.strong && "read twice: " + v.strong, v.failed && "failed: " + v.failed, v.s2_warnings && "source warnings: " + v.s2_warnings,
+    v.skipped && "not copied (links etc.): " + v.skipped, v.system_skipped && "system files left out: " + v.system_skipped].filter(Boolean)).join(" · ");
+  if (!ver && !old && !scanning) q(".counts").textContent = "";
   q(".same").hidden = !v.same_volume;
   // Pause / resume / stop as small round buttons on the row; the rest in the details.
   const acts = [], btns = [];
@@ -1371,7 +1415,7 @@ const fileChip = { checkwait: "waiting", already: "ok", already2: "ok", proven: 
 // / Show fewer sit beside Verify files.
 const treeMin = 20, filePage = 50;
 function toggleFiles(v, c) {
-  if (fv[v.id]) { fv[v.id].box.remove(); c.querySelector(".fpage").replaceChildren(); delete fv[v.id]; return; }
+  if (fv[v.id]) { c.querySelector(".detail").append(c.querySelector(".brow")); fv[v.id].box.remove(); c.querySelector(".fpage").replaceChildren(); delete fv[v.id]; return; }
   const box = el("div", "files");
   // One file: no filters, the one row says it all.
   const one = v.files <= 1;
@@ -1382,7 +1426,10 @@ function toggleFiles(v, c) {
     const b = el("button", "", t + " "); b.type = "button"; b.dataset.f = k; b.append(el("span", "n", ""));
     b.onclick = () => { f.filter = k; f.nodes = {}; loadFiles(f, false); }; bar.append(b);
   });
-  box.append(bar, el("p", "fhead"), el("div", "frows"), el("p", "mute note"));
+  // Verify files (and Show more / fewer) at the left of the line above the
+  // files, beside the filters or the heading (v0.2.50).
+  const top = el("div", "ftop"); top.append(c.querySelector(".brow"), bar, el("p", "fhead"));
+  box.append(top, el("div", "frows"), el("p", "mute note"));
   c.querySelector(".detail").append(box); loadFiles(f, false);
 }
 const filesURL = (f, dir, from, limit) => "/api/jobs/" + f.v.id + "/files?filter=" + f.filter + "&from=" + from + "&limit=" + limit + (f.tree ? "&tree=1&dir=" + encodeURIComponent(dir) : "");

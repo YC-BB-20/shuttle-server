@@ -159,7 +159,7 @@ func TestPageWideFileInfoAndAverageSpeed(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
 		`#infoDlg { width:min(960px, calc(100vw - 24px));`, `#infoDlg .head h2 { min-width:0; overflow-wrap:anywhere; }`,
-		`"Average copy speed "`, `(v.hashed || 0) + v.identical`, `<span>After each file is copied</span>`,
+		`"average copy speed"`, `(v.hashed || 0) + v.identical`, `<span>After each file is copied</span>`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
@@ -284,6 +284,39 @@ func TestPageFolderHeadsAndVerifyBars(t *testing.T) {
 	for _, want := range []string{
 		`tree: true,`, `function autoOpen(f, dir)`, `.then(() => autoOpen(f, ""))`, `e.stopPropagation(); openDir(f, fr.path)`,
 		`.bar.vbar {`, `.bar.vbar > i { background:var(--copy) !important; }`, `(isCheckStage(r.stage) ? " vbar" : "")`, `classList.toggle("vbar", vnow)`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}
+
+// v0.2.50: Queue under New copy, speed beside the pause button, Now: without
+// the file name, no repeated counts, From and To on one line, Verify files
+// at the left of the line above the files.
+func TestPageCardLayout50(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`.qhead { display:grid;`, `.qhead h2 { grid-row:2; grid-column:1;`, `<div class="rspeed" hidden></div><div class="acts">`, `"average copy speed"`,
+		`line = "Now: " + v.stage +`, `<div class="paths"><p class="path from"></p><p class="path to"></p></div>`,
+		`top.append(c.querySelector(".brow"), bar, el("p", "fhead"))`, `c.querySelector(".detail").append(c.querySelector(".brow"))`, `q(".counts").textContent = "";`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	if strings.Contains(s, `"Now: " + v.file`) || strings.Contains(s, `"average copy speed " + rate(v.copy_rate)].filter`) {
+		t.Error("the file name or the speed is still in the old place")
+	}
+}
+
+// v0.2.50: several folders or files are chosen with ⌘/Ctrl-click (Ctrl-click
+// is a right click on a Mac) and Shift-click for a run.
+func TestPagePickerMultiSelect(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`e.metaKey || e.ctrlKey || e.shiftKey`, `row.oncontextmenu = e => { if (e.ctrlKey) multi(e, i); };`,
+		`b.onclick = e => { if (!multi(e, i)) browse(f.path); };`, `"Tick files or folders (or ⌘-click / Ctrl-click them; Shift-click ticks a run)`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
