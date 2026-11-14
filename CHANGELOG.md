@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.56 — 14 November 2026
+
+- **Every finished job says how long it took, as minutes and seconds** (for example "took 12:34", or "1:05:09" from an hour). This is the job's own working time: time paused, waiting for a disk or waiting in the queue is left out, so it compares directly with other offload tools. It shows on the history line, on the job card, in the Status headline once nothing is running ("last copy took 12:34"), in the menu bar and in the log. The average speed on the history line is now worked out from that same time. A stopped job says how long it ran before you stopped it.
+- Jobs finished before this version keep their old rounded time, since their working time was not recorded.
+
 ## 0.2.55 — 14 November 2026
 
 - **Faster copying.** Each disk is now asked for 16 MB at a time instead of 4 MB, and the source can read up to four pieces ahead while the destination writes, so neither disk waits for the other. Small files get small buffers, so they no longer cost a large piece of memory each.

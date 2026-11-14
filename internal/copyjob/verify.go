@@ -511,6 +511,7 @@ func (j *Job) runVerify(ctx context.Context, e env, accepting func() bool) error
 	}
 	j.mu.Lock()
 	j.st.Phase, j.st.Finished, j.st.Checkpoints = "done", time.Now(), nil
+	j.endWorkLocked(j.st.Finished)
 	j.live = live{}
 	j.mu.Unlock()
 	return j.save()

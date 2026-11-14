@@ -743,6 +743,7 @@ func (j *Job) run(ctx context.Context, e env, accepting func() bool) error {
 	j.mu.Lock()
 	j.st.Phase, j.st.Finished, j.st.Checkpoints = "done", time.Now(), nil
 	j.st.CopyRate = copyAverage(j.copyClock(j.st.Finished)) // for history (v0.2.55)
+	j.endWorkLocked(j.st.Finished)                          // the job's own time, saved with its finish (v0.2.56)
 	j.live = live{}
 	j.mu.Unlock()
 	return j.save()

@@ -429,12 +429,19 @@ func (m *Manager) runOne(ctx context.Context, j *Job) {
 			}
 		}
 	}()
+	j.startWork(time.Now())
 	err := j.run(jctx, env{budget: m.Budget, src: sd, dst: dd, afterCopy: m.AfterCopy, copyRead: m.CopyRead,
 		space: func() error { return m.checkSpaceAtStart(j) }}, m.Accepting)
 	cancel(nil)
 	m.mu.Lock()
 	m.running = nil
 	m.mu.Unlock()
+	j.mu.Lock()
+	worked := j.endWorkLocked(time.Now()) // paused, waiting or stopped: keep this run's time
+	j.mu.Unlock()
+	if worked {
+		j.save()
+	}
 
 	cause := context.Cause(jctx)
 	j.mu.Lock()
@@ -448,10 +455,11 @@ func (m *Manager) runOne(ctx context.Context, j *Job) {
 		m.holdForSpace(j, short.short)
 	case err == nil:
 		j.mu.Lock()
-		c := j.c
+		c, took := j.c, time.Duration(j.st.WorkNs).Round(time.Second)
 		j.mu.Unlock()
 		m.Log.Info("copy job finished", "job", j.st.ID, "verified", c.Verified, "already_there", c.Identical,
-			"failed", c.Failed, "s2_ok", c.Strong, "s2_warnings", c.S2Warn, "copied_only", c.Hashed)
+			"failed", c.Failed, "s2_ok", c.Strong, "s2_warnings", c.S2Warn, "copied_only", c.Hashed,
+			"took", took.String())
 		m.queueVerify(j)
 	case errors.Is(cause, errOwnerPause), ctx.Err() != nil:
 		j.setLive(func(l *live) { l.reason, l.missing = "", "" })

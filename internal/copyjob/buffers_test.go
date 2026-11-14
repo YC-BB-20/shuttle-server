@@ -2,6 +2,7 @@ package copyjob
 
 import (
 	"context"
+	"encoding/json"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -114,5 +115,38 @@ func TestCopyRateKeptAfterFinish(t *testing.T) {
 	j.mu.Unlock()
 	if v, _, _ := baseView(j); v.CopyRate != 250e6 {
 		t.Fatalf("history copy rate %d", v.CopyRate)
+	}
+}
+
+// v0.2.56: a finished job keeps the time it spent running, saved with it,
+// and time between runs (paused, queued) is not counted.
+func TestWorkTimeKeptAfterFinish(t *testing.T) {
+	root := t.TempDir()
+	src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
+	makeTree(t, src, 1<<20)
+	m := newManager(t, filepath.Join(root, "state"))
+	j, err := m.Add(Spec{Source: src, Dest: dst, S2: "now"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.mu.Lock()
+	j.st.WorkNs = int64(90 * time.Second) // an earlier run, before a pause
+	j.mu.Unlock()
+	startRun(t, m)
+	v := waitState(t, m, j.st.ID, "finished")
+	if v.WorkMs < 90_000 || v.WorkMs > 90_000+30_000 {
+		t.Fatalf("work time %d ms", v.WorkMs)
+	}
+	b, err := os.ReadFile(j.path("job.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st state
+	if err := json.Unmarshal(b, &st); err != nil || st.WorkNs <= int64(90*time.Second) {
+		t.Fatalf("saved work time %d (%v)", st.WorkNs, err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	if v2, _, _ := baseView(j); v2.WorkMs != st.WorkNs/1e6 {
+		t.Fatalf("clock still running after finish: %d vs %d", v2.WorkMs, st.WorkNs/1e6)
 	}
 }

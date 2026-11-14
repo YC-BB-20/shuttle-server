@@ -1068,14 +1068,14 @@ function card(v) {
   else if (v.state === "paused") sub = v.after ? "Paused · press ▶ and it starts when the copy above has finished" : pc + " · Paused by you";
   else if (v.state === "queued") sub = v.after ? "Starts when the copy above has finished" : "Waiting for the job before it to finish";
   else if (v.state === "finished" && v.error) { sub = (v.finished ? when(v.finished) + " · " : "") + "Failed · " + v.error; subCls += " bad"; }
-  else if (v.state === "finished") { sub = (v.finished ? when(v.finished) + " · " : "") + took(v.created, v.finished) + " · " + size(v.bytes) +
-      (secs(v.created, v.finished) >= 1 && v.bytes ? " · " + rate(v.bytes / secs(v.created, v.finished)) + " average" : "") +
+  else if (v.state === "finished") { sub = (v.finished ? when(v.finished) + " · " : "") + jobTime(v) + " · " + size(v.bytes) +
+      (jobSecs(v) >= 1 && v.bytes ? " · " + rate(v.bytes / jobSecs(v)) + " average" : "") +
       (!ver && v.copy_rate ? " · copying " + rate(v.copy_rate) : "") +
       (ver ? " · " + (srcOnly ? "source: " : "") + (v.failed ? (srcOnly ? v.strong : v.verified) + " match, " + v.failed + " do not" : (srcOnly ? v.strong : v.verified) + ((srcOnly ? v.strong : v.verified) === 1 ? " file matches" : " files match")) :
       problems ? " · " + (v.failed ? v.failed + " failed" : "") + (v.failed && v.s2_warnings ? ", " : "") + (v.s2_warnings ? v.s2_warnings + " source warnings" : "") :
       v.checks ? " · " + proofLine(v.checks) : only ? " · " + ((v.hashed || 0) + v.identical) + " files copied, not verified" : " · " + proven + " files verified");
     if (problems) subCls += " warn"; }
-  else sub = (v.finished ? when(v.finished) + " · " : "") + "Stopped by you · " + proven + (ver ? " files checked and matching" : " files verified and kept");
+  else sub = (v.finished ? when(v.finished) + " · " : "") + "Stopped by you" + (v.work_ms ? " after " + clock(v.work_ms) : "") + " · " + proven + (ver ? " files checked and matching" : " files verified and kept");
   q(".sub").textContent = sub; q(".sub").className = subCls;
   // Details, shown when the row is open.
   let line = "";
@@ -1282,6 +1282,11 @@ $("keySave").onclick = () => {
 const when = t => new Date(t).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const secs = (a, b) => (new Date(b) - new Date(a)) / 1000;
 const left = s => s < 60 ? "under a minute left" : s < 5400 ? "about " + Math.round(s / 60) + " min left" : "about " + Math.floor(s / 3600) + " h " + Math.round(s % 3600 / 60) + " min left";
+// v0.2.56: a finished job's own time (running only, pauses and waits left out) as m:ss, or h:mm:ss from an hour.
+const clock = ms => { const t = Math.max(0, Math.round(ms / 1000)), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = String(t % 60).padStart(2, "0");
+  return h ? h + ":" + String(m).padStart(2, "0") + ":" + s : m + ":" + s; };
+const jobSecs = v => v.work_ms ? v.work_ms / 1000 : secs(v.created, v.finished);
+const jobTime = v => v.work_ms ? "took " + clock(v.work_ms) : took(v.created, v.finished);
 const took = (a, b) => { const sec = Math.max(0, secs(a, b)); if (sec < 90) return Math.round(sec) + " s"; const m = Math.round(sec / 60); return m < 60 ? m + " min" : Math.floor(m / 60) + " h " + (m % 60) + " min"; };
 function place(box, want, keep) {
   want.forEach((c, i) => { if (box.children[i + keep] !== c) box.insertBefore(c, box.children[i + keep] || null); });

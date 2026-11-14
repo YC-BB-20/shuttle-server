@@ -80,3 +80,24 @@ func TestProgressHeadlineShowsCopiedAndVerified(t *testing.T) {
 		}
 	}
 }
+
+// v0.2.56: with nothing running, the headline says how long the last job took.
+func TestIdleLineShowsLastJobTime(t *testing.T) {
+	for d, want := range map[time.Duration]string{0: "0:00", 59*time.Second + 600*time.Millisecond: "1:00", 754 * time.Second: "12:34", 3*time.Hour + 5*time.Minute + 9*time.Second: "3:05:09"} {
+		if got := Clock(d); got != want {
+			t.Errorf("Clock(%v) = %q, want %q", d, got, want)
+		}
+	}
+	if got := idleLine(nil); got != idleHeadline {
+		t.Fatal(got)
+	}
+	now := time.Now()
+	jobs := []copyjob.View{
+		{State: "finished", Finished: now.Add(-time.Hour), WorkMs: 1000},
+		{State: "finished", Finished: now, WorkMs: 754_000},
+		{State: "stopped", Finished: now.Add(time.Minute), WorkMs: 5000},
+	}
+	if got, want := idleLine(jobs), idleHeadline+" · last copy took 12:34"; got != want {
+		t.Fatalf("%q, want %q", got, want)
+	}
+}

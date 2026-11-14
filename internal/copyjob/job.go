@@ -122,6 +122,7 @@ type state struct {
 	Checkpoints   map[string]Checkpoint `json:"checkpoints,omitempty"`
 	Finished      time.Time             `json:"finished,omitzero"`
 	CopyRate      int64                 `json:"copy_rate,omitempty"`  // average while copying in the last run, kept for history (v0.2.55)
+	WorkNs        int64                 `json:"work_ns,omitempty"`    // time spent running, all runs added up: not paused, waiting or queued (v0.2.56)
 	VerifyJob     string                `json:"verify_job,omitempty"` // the Verify job that follows this copy
 	After         string                `json:"after,omitempty"`      // a Verify job: the copy it waits for (added with it, v0.2.16)
 	// Free space (added in 0.2.24): the bytes to write counted when the job
@@ -157,6 +158,29 @@ type Job struct {
 	// Copy speed: bytes written by the copy pass and the time spent in it, so
 	// the copy's own speed is not mixed with the read-back and re-read.
 	copyBytes, copyNs, copySince atomic.Int64 // copySince: unix ns the current copy pass began, 0 if none
+	workSince                    atomic.Int64 // unix ns this run began, 0 when not running
+}
+
+// startWork starts the job's work clock for a run.
+func (j *Job) startWork(now time.Time) { j.workSince.Store(now.UnixNano()) }
+
+// endWorkLocked adds the running time of this run to WorkNs and stops the
+// clock; it says whether there was any. The caller holds j.mu.
+func (j *Job) endWorkLocked(now time.Time) bool {
+	s := j.workSince.Swap(0)
+	if s == 0 {
+		return false
+	}
+	j.st.WorkNs += max(0, now.UnixNano()-s)
+	return true
+}
+
+// workClock is the time the job has spent running, with the run going now.
+func workClock(st state, since int64, now time.Time) int64 {
+	if since != 0 {
+		return st.WorkNs + max(0, now.UnixNano()-since)
+	}
+	return st.WorkNs
 }
 
 // copyClock is the bytes written by copy passes and the time spent in them,

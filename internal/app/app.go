@@ -296,7 +296,7 @@ func Run(opts Options) (code int) {
 		case active != nil:
 			st.Headline, ok = progressHeadline(active), true
 		default:
-			st.Headline, ok = idleHeadline, true
+			st.Headline, ok = idleLine(st.Jobs), true
 		}
 		st.Level = "warn"
 		switch {
@@ -452,6 +452,37 @@ func Run(opts Options) (code int) {
 // "Verifying" while the file being worked on is read back or compared, and
 // files already at the destination count as verified, never as copied
 // (v0.2.44).
+// idleLine is the headline with nothing running: after a job has finished
+// it says how long the last one took, in m:ss (v0.2.56).
+func idleLine(jobs []copyjob.View) string {
+	var last *copyjob.View
+	for i := range jobs {
+		if v := &jobs[i]; v.State == "finished" && v.WorkMs > 0 && (last == nil || v.Finished.After(last.Finished)) {
+			last = v
+		}
+	}
+	if last == nil {
+		return idleHeadline
+	}
+	what := "copy"
+	if last.Kind == "verify" {
+		what = "verify"
+	}
+	return idleHeadline + " · last " + what + " took " + Clock(time.Duration(last.WorkMs)*time.Millisecond)
+}
+
+// Clock writes a duration as m:ss, or h:mm:ss from an hour.
+func Clock(d time.Duration) string {
+	t := int64(d.Round(time.Second) / time.Second)
+	if t < 0 {
+		t = 0
+	}
+	if h := t / 3600; h > 0 {
+		return fmt.Sprintf("%d:%02d:%02d", h, t/60%60, t%60)
+	}
+	return fmt.Sprintf("%d:%02d", t/60, t%60)
+}
+
 func progressHeadline(v *copyjob.View) string {
 	if v.Kind == "verify" {
 		return fmt.Sprintf("Verifying — %d of %d files checked", v.Verified+v.Failed+v.Skipped, v.Files)
