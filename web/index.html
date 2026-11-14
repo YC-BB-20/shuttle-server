@@ -78,7 +78,12 @@
   dialog .body { padding:12px 16px; overflow:auto; flex:1 1 auto; min-height:0; }
   .jobs-head { display:flex; align-items:center; gap:12px; margin:18px 0 8px; }
   .jobs-head h2 { flex:1; margin:0; font-size:17px; }
-  .jobs-head .big { flex:none; padding:9px 18px; font-size:16px; font-weight:600; }
+  /* One line: Queue, the filters, then New copy at the right end. On a narrow screen the filters drop to their own line. */
+  .qhead { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:18px 0 4px; }
+  .qhead h2 { flex:none; margin:0; font-size:17px; }
+  .qhead .qf { flex:1 1 300px; min-width:0; margin:0; }
+  .qhead .big { flex:none; margin-left:auto; padding:9px 18px; font-size:16px; font-weight:600; }
+  @media (max-width:700px) { .qhead .qf { order:3; flex-basis:100%; } }
   .primary { background:var(--accent); color:#fff; border-color:var(--accent); }
   .job { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 16px; margin-bottom:12px; }
   .job .top { display:flex; gap:8px; align-items:flex-start; }
@@ -262,13 +267,14 @@
       <dl class="mlines" id="monLines"></dl>
     </div>
   </div>
-  <div class="jobs-head"><button class="primary big" type="button" id="newBtn">New copy</button><h2>Queue</h2></div>
+  <div class="qhead"><h2>Queue</h2>
   <div class="filters qf" id="qf" title="Click to show or hide each kind of entry (running and waiting items are always shown)">
     <button type="button" data-k="done">Completed <span class="n"></span></button><button type="button" data-k="skipped" title="Copies where every file was already at the destination">Skipped <span class="n"></span></button><button type="button" data-k="stopped">Stopped <span class="n"></span></button><button type="button" data-k="failed" title="Finished with files that failed or need attention">Failed <span class="n"></span></button><button type="button" data-k="paused" title="Copies and verifies you paused">Paused <span class="n"></span></button><button type="button" id="qfHidden" title="Show or hide the entries you hid from the history" hidden>Hidden <span class="n"></span></button>
     <button type="button" id="qfActive">Active only</button>
     <select id="qfRange" title="Time range of the history"><option value="all">All time</option><option value="hour">Last hour</option><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="week">Last 7 days</option></select>
     <select id="qfSort" title="Sort the queue and the history"><option value="queue:1">Queue order</option><option value="time:-1">Newest first</option><option value="time:1">Oldest first</option><option value="name:1">Name A–Z</option><option value="name:-1">Name Z–A</option><option value="size:-1">Largest first</option><option value="size:1">Smallest first</option><option value="status:1">Status</option><option value="left:1">Time left</option><option value="dest:1">Destination</option></select>
   </div>
+  <button class="primary big" type="button" id="newBtn">New copy</button></div>
   <p class="mute qfinfo" id="qfInfo"></p>
   <p class="mute" id="noJobs">Nothing in the queue.</p>
   <p class="mute" id="noJobsF" hidden>Nothing in the queue matches the filters.</p>

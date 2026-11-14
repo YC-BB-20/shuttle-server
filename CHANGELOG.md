@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.40 — 13 November 2026
+
+- **Queue header on one line:** "Queue", then the filter buttons and menus, then **New copy** at the right end. On a narrow screen such as the iPhone the filters move to their own line below.
+
 ## 0.2.39 — 13 November 2026
 
 - **A copy shows its check as it happens.** While a Verify of a copy runs, the copy's own file list updates by itself: the file being read shows "Verifying", files already checked turn **"Destination verified"** (or **"Fully verified"** when the source was read again too), and files still to check read **"Copied · check queued"** under In progress. The copy's checks say "↻ Checking now: reading the destination back — 3 of 11 files done, all matching so far", and its summary line adds "checking now: 3 of 11 files".
