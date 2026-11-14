@@ -57,6 +57,7 @@
   .card p { margin:2px 0; overflow-wrap:anywhere; }
   .bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin:6px 0 2px; }
   .bar > i { display:block; height:100%; background:var(--accent); width:0; }
+  .checks .checking { color:var(--verify, var(--accent)); }
   .checks p { margin:6px 0; overflow-wrap:anywhere; } .checks .ok { color:var(--ok); } .checks button { margin-left:6px; padding:4px 10px; font-size:14px; }
   .warn { color:var(--warn); } .bad { color:var(--bad); } .mute { color:var(--mute); font-size:14px; }
   .path { font-family: ui-monospace, Menlo, monospace; font-size:13px; overflow-wrap:anywhere; }
@@ -197,6 +198,14 @@
   .job .ico { flex:none; width:30px; height:30px; border-radius:8px; display:grid; place-items:center; font-size:15px; color:#fff; background:var(--accent); }
   .job .ico.ok { background:var(--ok); } .job .ico.warn { background:var(--warn); } .job .ico.bad { background:var(--bad); } .job .ico.idle { background:var(--mute); } .job .ico.copy { background:var(--copy); } .job .ico.verify { background:var(--verify); }
   .job.verify .route .s { color:var(--verify); }
+  /* Copies are the main rows; a Verify is a smaller row, set in, with a pink edge and the copy it checks named. */
+  .job:not(.verify) .ico { width:34px; height:34px; font-size:17px; }
+  .job:not(.verify) .route { font-size:16px; }
+  .job.verify { margin-left:28px; padding-top:5px; padding-bottom:5px; border-left:3px solid var(--verify); }
+  .job.verify .ico { width:24px; height:24px; font-size:12px; border-radius:6px; }
+  .job.verify .route { font-size:13px; }
+  .job.verify .sub { font-size:12px; }
+  .job .of { font-size:12px; color:var(--verify); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .job .detail .bar:not(.ok) > i { background:var(--copy); } .job.verify .detail .bar:not(.ok) > i { background:var(--verify); }
   .route { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); gap:6px; max-width:560px; align-items:baseline; font-size:15px; font-weight:600; }
   .route > span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
@@ -745,7 +754,8 @@ const verNow = v => /source/i.test(v.stage || "") && !/destination/i.test(v.stag
 function proofLine(k) {
   if (!k || !k.of) return "";
   const part = (n, yes, no) => n >= k.of ? yes + " ✓" : n ? yes + " " + n + " of " + k.of : no;
-  return part(k.dest, "destination read back", "destination not read back") + " · " + part(k.source, "source read twice", "source not read again") + (k.queued ? " · a check is queued" : "");
+  return part(k.dest, "destination read back", "destination not read back") + " · " + part(k.source, "source read twice", "source not read again") +
+    (k.checking ? " · checking now: " + k.check_done + " of " + k.check_of + " files" : "") + (k.queued ? " · a check is queued" : "");
 }
 function drawChecks(box, v) {
   const k = v.checks;
@@ -757,7 +767,7 @@ function drawChecks(box, v) {
   const row = (done, at, okText, noText, btnText, s2) => {
     const p = el("p", done >= k.of && k.of > 0 ? "ok" : "warn");
     p.append((done >= k.of && k.of > 0 ? "✓ " : "✗ ") + (done ? okText + ": " + all(done) + (at ? " · " + when(at) : "") : noText));
-    if (done < k.of && !k.queued) {
+    if (done < k.of && !k.queued && !k.checking) {
       const b = el("button", "", btnText); b.type = "button";
       b.onclick = () => verify(v.dest, { s2, from: [v.id] }).catch(e => alert(e.message)); p.append(" ", b);
     }
@@ -766,6 +776,8 @@ function drawChecks(box, v) {
   box.replaceChildren(
     row(k.dest, k.dest_at, "Destination read back", "Destination not read back yet", "Read destination now", ""),
     row(k.source, k.source_at, "Source read a second time", "Source not read a second time yet", "Read source again now", "only"),
+    ...(k.checking ? [el("p", "checking", "↻ Checking now: " + (k.check_src ? "reading the destination back and the source again" : "reading the destination back") + " — " +
+      k.check_done + " of " + k.check_of + " files done" + (k.check_done ? (k.check_match === k.check_done ? ", all matching so far" : ", " + (k.check_done - k.check_match) + " do not match") : "") + ".")] : []),
     ...(k.queued ? [el("p", "mute", "A check of this copy is in the queue.")] : []));
 }
 function verifyBox(path, title, from) {
@@ -891,7 +903,7 @@ function card(v) {
   let c = cards[v.id];
   if (!c) {
     c = document.createElement("section"); c.className = "job";
-    c.innerHTML = '<div class="r"><span class="ico"></span><div class="m"><div class="route"><span class="s"></span><span class="arr">→</span><span class="d"></span></div>' +
+    c.innerHTML = '<div class="r"><span class="ico"></span><div class="m"><div class="route"><span class="s"></span><span class="arr">→</span><span class="d"></span></div><div class="of" hidden></div>' +
       '<div class="bar"><i></i></div><div class="sub"></div></div><div class="acts"></div></div>' +
       '<div class="detail"><p class="path from"></p><p class="path to"></p><p class="line"></p><div class="bar file"><i></i></div><p class="cspeed" hidden></p><p class="speed mute"></p><p class="fcounts" hidden></p>' +
       '<p class="counts mute"></p><p class="warn same" hidden>Source and destination are on the same disk: this copy does not protect against that disk failing.</p><div class="checks" hidden></div><div class="btns"></div></div>';
@@ -911,6 +923,11 @@ function card(v) {
   c.classList.toggle("old", old); c.classList.toggle("hid", old && !!v.hidden);
   const ver = v.kind === "verify", kind = ver ? "verify" : "copy";
   c.classList.toggle("verify", ver);
+  // A Verify names the copy it checks, so it is clear which copy it belongs to.
+  const of = q(".of"), cp = ver && v.from && v.from.length === 1 && cards[v.from[0]] && cards[v.from[0]]._v;
+  of.hidden = !ver;
+  if (ver) of.textContent = "↳ Checks the copy " + (cp ? base(cp.source) + (cp.only ? " (" + cp.only + " chosen)" : "") + " → " + base(cp.dest) + (cp.created ? " · " + when(cp.created) : "") :
+    v.from && v.from.length > 1 ? "of " + v.from.length + " copies" : "made earlier");
   const place = ver && v.verify_file ? v.dest + "/" + v.verify_file : v.dest;
   // Folder names with their disk beside them; a Verify says which kind it is.
   q(".s").replaceChildren(ver ? verKind(v) : base(v.source) + (v.only ? " (" + v.only + " chosen)" : ""), ...(ver ? [] : [el("span", "dk", " · " + diskOf(v.source))]));
@@ -1001,7 +1018,7 @@ function card(v) {
   if (old) btn(btns, v.hidden ? "Show in history" : "Hide from history", () => setHidden(v, !v.hidden));
   drawChecks(q(".checks"), v);
   const key = acts.map(b => b.title).join("|") + "/" + btns.map(b => b.textContent).join("|");
-  if (fv[v.id]) { const was = fv[v.id].v.state; fv[v.id].v = v; if (was !== v.state) loadFiles(fv[v.id], false, true); }
+  if (fv[v.id]) { const was = fv[v.id].v, chk = c => !!(c && c.checking); fv[v.id].v = v; if (was.state !== v.state || chk(was.checks) !== chk(v.checks)) loadFiles(fv[v.id], false, true); }
   if (c.dataset.btns !== key) { c.dataset.btns = key; q(".acts").replaceChildren(...acts); q(".detail .btns").replaceChildren(...btns); }
   else {
     q(".acts").querySelectorAll("button").forEach((b, i) => b.onclick = acts[i].onclick);
@@ -1255,7 +1272,7 @@ $("moreHist").onclick = () => {
 // Files of one copy: filters, paged rows, the file being worked on with its
 // own bar. Refreshed every 2 s while the copy runs and the page is visible.
 const fv = {};
-const fileLabel = { already: "Already there · hash checked", already2: "Already there · read twice", waiting: "Waiting", proven: "Verified", strong: "Verified · read twice", failed: "Error", warning: "Source warning", copied: "Copied · check to come", hashed: "Copied · not verified", source: "Source matches" };
+const fileLabel = { already: "Already there · hash checked", already2: "Already there · read twice", waiting: "Waiting", checkwait: "Copied · check queued", proven: "Destination verified", strong: "Fully verified",  failed: "Error", warning: "Source warning", copied: "Copied · check to come", hashed: "Copied · not verified", source: "Source verified" };
 // A file being worked on: "Copying" (purple) while it is written, "Verifying"
 // (pink) while the destination or the source is read back.
 function workChip(r) {
@@ -1263,7 +1280,7 @@ function workChip(r) {
   const checking = /^Reading back|^Checking/.test(r.stage || "");
   return el("span", "chip " + (checking ? "verifying" : "copying"), (checking ? "Verifying" : /^Reading the source/.test(r.stage || "") ? "Reading" : "Copying") + (r.size ? " " + Math.floor(pct(r.done, r.size)) + "%" : ""));
 }
-const fileChip = { already: "ok", already2: "ok", proven: "ok", strong: "ok", failed: "bad", warning: "waiting", working: "copying", copied: "copying", hashed: "waiting", source: "ok" };
+const fileChip = { checkwait: "waiting", already: "ok", already2: "ok", proven: "ok", strong: "ok", failed: "bad", warning: "waiting", working: "copying", copied: "copying", hashed: "waiting", source: "ok" };
 function toggleFiles(v, c) {
   if (fv[v.id]) { fv[v.id].box.remove(); delete fv[v.id]; return; }
   const box = el("div", "files");
@@ -1400,7 +1417,8 @@ $("infoDlg").addEventListener("close", () => { infoAt = null; infoBusy = false; 
 setInterval(() => {
   if (document.hidden) return;
   if (infoAt && $("infoDlg").open && (infoBusy || fv[infoAt.id] && ["running", "waiting"].includes(fv[infoAt.id].v.state))) loadInfo();
-  Object.values(fv).forEach(f => { if (["running", "waiting"].includes(f.v.state) && f.box.isConnected) loadFiles(f, false, true); });
+  // A finished copy's list keeps refreshing while a Verify of it runs, so its files turn verified one by one.
+  Object.values(fv).forEach(f => { if ((["running", "waiting"].includes(f.v.state) || f.v.checks && f.v.checks.checking) && f.box.isConnected) loadFiles(f, false, true); });
 }, 2000);
 </script>
 </body>

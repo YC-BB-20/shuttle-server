@@ -214,7 +214,7 @@ func (m *Manager) Views() []View {
 			if finished++; finished > 20 {
 				continue
 			}
-			withChecks(jobs, j, &v)
+			withChecks(jobs, running, j, &v)
 		}
 		out = append(out, v)
 	}
@@ -260,12 +260,19 @@ type Checks struct {
 	Source   int       `json:"source"`
 	SourceAt time.Time `json:"source_at,omitzero"`
 	Queued   bool      `json:"queued,omitempty"` // a Verify of this copy has not finished yet
+	// Checking is set while a Verify of this copy is running: how many files
+	// it has done so far and how many it checks in all (v0.2.39).
+	Checking   bool `json:"checking,omitempty"`
+	CheckDone  int  `json:"check_done,omitempty"`
+	CheckMatch int  `json:"check_match,omitempty"`
+	CheckOf    int  `json:"check_of,omitempty"`
+	CheckSrc   bool `json:"check_src,omitempty"` // it also reads the source again
 }
 
 // checksOf builds a copy's Checks from its own counts and from every Verify
 // job that compared with its stored hashes. Counts are the best single run,
 // never added up, and never more than the copy's files.
-func checksOf(jobs []*Job, st state, c counts) *Checks {
+func checksOf(jobs []*Job, running *Job, st state, c counts) *Checks {
 	k := &Checks{Of: st.Files}
 	if n := c.Verified + c.Identical; n > 0 {
 		k.Dest, k.DestAt = n, st.Finished
@@ -281,7 +288,15 @@ func checksOf(jobs []*Job, st state, c counts) *Checks {
 			continue
 		}
 		if ost.Phase != "done" {
-			k.Queued = true
+			if o == running && ost.Phase != "scan" {
+				k.Checking, k.CheckOf, k.CheckSrc = true, ost.Files, ost.Spec.S2 == "now" || ost.Spec.S2 == "after" || ost.Spec.S2 == "only"
+				k.CheckDone, k.CheckMatch = oc.Verified+oc.Failed, oc.Verified // a match on the destination counts in Verified
+				if ost.Spec.S2 == "only" {
+					k.CheckDone, k.CheckMatch = oc.Strong+oc.Failed, oc.Strong
+				}
+			} else {
+				k.Queued = true
+			}
 			continue
 		}
 		if n := min(oc.Verified, k.Of); n > k.Dest || n == k.Dest && n > 0 && ost.Finished.After(k.DestAt) {
@@ -295,14 +310,14 @@ func checksOf(jobs []*Job, st state, c counts) *Checks {
 }
 
 // withChecks adds Checks to the view of a finished or stopped copy.
-func withChecks(jobs []*Job, j *Job, v *View) {
+func withChecks(jobs []*Job, running *Job, j *Job, v *View) {
 	if v.Kind == KindVerify || (v.State != "finished" && v.State != "stopped") {
 		return
 	}
 	j.mu.Lock()
 	st, c := j.st, j.c
 	j.mu.Unlock()
-	v.Checks = checksOf(jobs, st, c)
+	v.Checks = checksOf(jobs, running, st, c)
 }
 
 // History lists finished and stopped copies, newest first, skipping the
@@ -310,6 +325,7 @@ func withChecks(jobs []*Job, j *Job, v *View) {
 func (m *Manager) History(skip, limit int) []View {
 	m.mu.Lock()
 	jobs := append([]*Job(nil), m.jobs...)
+	running := m.running
 	m.mu.Unlock()
 	out := []View{}
 	for i := len(jobs) - 1; i >= 0 && len(out) < limit; i-- {
@@ -317,7 +333,7 @@ func (m *Manager) History(skip, limit int) []View {
 		if v.State == "" {
 			continue
 		}
-		withChecks(jobs, jobs[i], &v)
+		withChecks(jobs, running, jobs[i], &v)
 		if skip > 0 {
 			skip--
 			continue
@@ -395,6 +411,8 @@ func rowStatus(st byte) string {
 		return "hashed"
 	case stSrcOK:
 		return "source"
+	case stCheckWait:
+		return "checkwait"
 	}
 	return "waiting"
 }
@@ -415,7 +433,7 @@ func alreadyStatus(status string, already bool) string {
 func filterOK(filter, status string) bool {
 	switch filter {
 	case "todo":
-		return status == "waiting" || status == "working" || status == "copied"
+		return status == "waiting" || status == "working" || status == "copied" || status == "checkwait"
 	case "done": // verified: the copy was read back (or, in a source-only Verify, the source matched)
 		return status == "proven" || status == "strong" || status == "source" || status == "already" || status == "already2"
 	case "unverified": // copied and hashed, never read back
@@ -441,6 +459,7 @@ func (m *Manager) Files(id, filter string, from, limit int) (FilePage, error) {
 	listMu.Lock()
 	defer listMu.Unlock()
 	table, later := m.mergedStatus(j)
+	vfile, vstage, vdone := m.verifyLive(j)
 	j.mu.Lock()
 	phase, l, already := j.st.Phase, j.live, slices.Clone(j.already)
 	j.mu.Unlock()
@@ -477,6 +496,8 @@ func (m *Manager) Files(id, filter string, from, limit int) (FilePage, error) {
 		r := FileRow{I: e.I, Path: e.P, Size: e.S, Status: alreadyStatus(rowStatus(st), isAlready(already, e.I))}
 		if l.file == e.P && l.stage != "" && phase != "done" {
 			r.Status, r.Stage, r.Done = "working", l.stage, l.done
+		} else if vfile == e.P && vstage != "" {
+			r.Status, r.Stage, r.Done = "working", vstage, vdone // a Verify of this copy is reading it now
 		}
 		if !filterOK(filter, r.Status) {
 			continue
@@ -506,6 +527,32 @@ func (m *Manager) Files(id, filter string, from, limit int) (FilePage, error) {
 	return page, nil
 }
 
+// verifyLive says which of copy j's files a running Verify of that copy is
+// reading now, as a path relative to the copy's destination, with its stage
+// and bytes done. Empty when no such Verify is running.
+func (m *Manager) verifyLive(j *Job) (file, stage string, done int64) {
+	m.mu.Lock()
+	o := m.running
+	m.mu.Unlock()
+	if o == nil || o == j {
+		return "", "", 0
+	}
+	j.mu.Lock()
+	id, dest := j.st.ID, j.st.Spec.Dest
+	j.mu.Unlock()
+	o.mu.Lock()
+	ost, l := o.st, o.live
+	o.mu.Unlock()
+	if !ost.Spec.isVerify() || len(ost.Spec.From) != 1 || ost.Spec.From[0] != id || l.file == "" || l.stage == "" {
+		return "", "", 0
+	}
+	rel, err := filepath.Rel(dest, filepath.Join(ost.Spec.Dest, filepath.FromSlash(l.file)))
+	if err != nil {
+		return "", "", 0
+	}
+	return filepath.ToSlash(rel), l.stage, l.done
+}
+
 // Flags of one file in a merged table: what has been proven about it.
 const (
 	mfDest    byte = 1 << iota // the copy was read back and matches
@@ -513,7 +560,12 @@ const (
 	mfFailed                   // the latest check of it failed
 	mfWarn                     // the source changed after the copy
 	mfTouched                  // a later Verify job checked it
+	mfPending                  // a Verify of this copy that has not finished will check it
 )
+
+// stCheckWait only appears in merged tables: a copied file that a queued or
+// running Verify of its copy has still to check.
+const stCheckWait byte = 9
 
 // mergedStatus is a copy's file table with the results of every later
 // Verify job of that copy laid on top (v0.2.31), so a copy made without
@@ -560,7 +612,7 @@ func (m *Manager) mergedStatus(j *Job) ([]byte, bool) {
 				}
 			}
 		}
-		layVerify(j.path("manifest.jsonl"), o.path("manifest.jsonl"), dest, ost.Spec.Dest, ostatus, flags)
+		layVerify(j.path("manifest.jsonl"), o.path("manifest.jsonl"), dest, ost.Spec.Dest, ostatus, flags, ost.Phase != "done" && ost.Choice != "stopped")
 	}
 	if flags == nil {
 		return table, false
@@ -568,6 +620,9 @@ func (m *Manager) mergedStatus(j *Job) ([]byte, bool) {
 	later := false
 	for i, f := range flags {
 		if f&mfTouched == 0 {
+			if f&mfPending != 0 && (table[i] == stHashed || table[i] == stCopied) {
+				table[i], later = stCheckWait, true
+			}
 			continue
 		}
 		later = true
@@ -589,7 +644,7 @@ func (m *Manager) mergedStatus(j *Job) ([]byte, bool) {
 
 // layVerify walks one Verify job's manifest beside its copy's and adds what
 // the Verify found for each file to flags, indexed by the copy's files.
-func layVerify(copyManifest, verManifest, copyDest, verDest string, vstatus, flags []byte) {
+func layVerify(copyManifest, verManifest, copyDest, verDest string, vstatus, flags []byte, unfinished bool) {
 	vit, err := openManifest(verManifest)
 	if err != nil {
 		return
@@ -622,6 +677,9 @@ func layVerify(copyManifest, verManifest, copyDest, verDest string, vstatus, fla
 		f := flags[ci]
 		switch vstatus[ve.I] {
 		case stPending:
+			if unfinished {
+				flags[ci] |= mfPending
+			}
 			continue
 		case stVerified:
 			f = f&^mfFailed | mfDest

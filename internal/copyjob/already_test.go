@@ -22,3 +22,20 @@ func TestAlreadyThereStatus(t *testing.T) {
 		t.Error("already-there files belong under Verified")
 	}
 }
+
+func TestChecksWhileVerifyRuns(t *testing.T) {
+	cp := state{ID: "c1", Files: 11, Phase: "done"}
+	ver := &Job{st: state{ID: "v1", Files: 11, Phase: "verify", Spec: Spec{Kind: KindVerify, From: []string{"c1"}}}}
+	ver.c.Verified, ver.c.Failed = 3, 1
+	k := checksOf([]*Job{ver}, ver, cp, counts{})
+	if !k.Checking || k.Queued || k.CheckDone != 4 || k.CheckMatch != 3 || k.CheckOf != 11 {
+		t.Errorf("running Verify: got %+v", *k)
+	}
+	k = checksOf([]*Job{ver}, nil, cp, counts{})
+	if k.Checking || !k.Queued {
+		t.Errorf("Verify not running yet should be queued: %+v", *k)
+	}
+	if rowStatus(stCheckWait) != "checkwait" || !filterOK("todo", "checkwait") {
+		t.Error("files a Verify has still to check belong under In progress")
+	}
+}

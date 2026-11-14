@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.39 — 13 November 2026
+
+- **A copy shows its check as it happens.** While a Verify of a copy runs, the copy's own file list updates by itself: the file being read shows "Verifying", files already checked turn **"Destination verified"** (or **"Fully verified"** when the source was read again too), and files still to check read **"Copied · check queued"** under In progress. The copy's checks say "↻ Checking now: reading the destination back — 3 of 11 files done, all matching so far", and its summary line adds "checking now: 3 of 11 files".
+- Clearer labels everywhere: **Destination verified** (the copy was read back and matches), **Fully verified** (the copy read back and the source read a second time, all matching), **Source verified**.
+- **Copies and checks look different in the queue.** Copy rows are a little bigger. A Verify row is smaller, set in, with a pink edge, and says which copy it checks: "↳ Checks the copy TestSrc → TestDestFolder · 13 Nov, 21:35".
+
 ## 0.2.38 — 13 November 2026
 
 - **Files already at the destination are now named as such.** In a copy's file list they read **"Already there · hash checked"** (or "· read twice" once the source was read again), instead of plain "Verified". File info says the file was not copied, that both files were read in full and that their hashes match. The copy's line reads "N already there, not copied (full read, hashes match)", and while it works it says "Already at the destination: reading it in full to compare".

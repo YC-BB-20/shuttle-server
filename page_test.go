@@ -191,3 +191,16 @@ func TestPagePickerStaysPutAndAlreadyThere(t *testing.T) {
 		}
 	}
 }
+
+func TestPageLiveChecksAndVerifyRows(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`proven: "Destination verified", strong: "Fully verified"`, `checkwait: "Copied · check queued"`,
+		`f.v.checks && f.v.checks.checking`, `"↻ Checking now: "`, `"↳ Checks the copy "`,
+		`.job.verify { margin-left:28px;`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}
