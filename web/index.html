@@ -220,6 +220,8 @@
   .job .sub { font-size:13px; color:var(--mute); overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
   .job .sub.bad { color:var(--bad); } .job .sub.warn { color:var(--warn); }
   .job .acts { display:flex; gap:6px; flex:none; }
+  .job .acts .hidebtn { display:none; } .job.open .acts .hidebtn { display:inline-block; }
+  .files .fhead { margin:8px 0 6px; font-size:14px; font-weight:600; } .files .fhead:empty { display:none; }
   .job .acts button { width:30px; height:30px; padding:0; border-radius:15px; font-size:13px; line-height:1; }
   .job .r::after { content:"›"; color:var(--mute); font-size:20px; line-height:1; transition:transform .15s; }
   .job.open .r::after { transform:rotate(90deg); }
@@ -1021,7 +1023,8 @@ function card(v) {
   if (problems) btn(btns, "Show problems", () => showProblems(v.id));
   if (old) btn(btns, "Verify files", () => verifyBox(ver ? place : v.dest,
     ver || (v.checks && (v.checks.dest || v.checks.source)) ? "Verify files again" : "Verify files", ver ? v.from : [v.id]));
-  if (old) btn(btns, v.hidden ? "Show in history" : "Hide from history", () => setHidden(v, !v.hidden));
+  // Hide from history: an ✕ at the right end of the row, shown once the row is opened (↺ brings a hidden one back).
+  if (old) btn(acts, v.hidden ? "↺" : "✕", () => setHidden(v, !v.hidden), "hidebtn", v.hidden ? "Show in history" : "Hide from history");
   drawChecks(q(".checks"), v);
   const key = acts.map(b => b.title).join("|") + "/" + btns.map(b => b.textContent).join("|");
   if (fv[v.id]) { const was = fv[v.id].v, chk = c => !!(c && c.checking); fv[v.id].v = v; if (was.state !== v.state || chk(was.checks) !== chk(v.checks)) loadFiles(fv[v.id], false, true); }
@@ -1299,7 +1302,7 @@ function toggleFiles(v, c) {
     b.onclick = () => { f.filter = k; loadFiles(f, false); }; bar.append(b);
   });
   const more = el("button", "", "Show more"); more.type = "button"; more.onclick = () => loadFiles(f, true);
-  box.append(bar, el("div", "frows"), el("p", "mute note"), more);
+  box.append(bar, el("p", "fhead"), el("div", "frows"), el("p", "mute note"), more);
   c.querySelector(".detail").append(box); loadFiles(f, false);
 }
 function loadFiles(f, append, refresh) {
@@ -1310,7 +1313,13 @@ function loadFiles(f, append, refresh) {
     drawFiles(f, p.note);
   }).catch(() => {}).finally(() => { f.busy = false; });
 }
+// When one filter holds every file, the filter buttons say nothing new: a
+// plain heading ("Files verified:") replaces them.
+const fileHeads = { done: "Files verified:", todo: "Files in progress:", unverified: "Files not verified:", problems: "Files with problems:" };
 function drawFiles(f, note) {
+  const c = f.counts || {}, same = c.all > 1 && f.filter === "all" ? Object.keys(fileHeads).find(k => c[k] === c.all) : "";
+  f.box.querySelector(".fhead").textContent = same ? fileHeads[same] : "";
+  if (f.v.files > 1) f.box.querySelector(".filters").hidden = !!same;
   f.box.querySelectorAll(".filters button").forEach(b => {
     b.setAttribute("aria-pressed", b.dataset.f === f.filter);
     b.querySelector(".n").textContent = f.counts && f.counts[b.dataset.f] != null ? "(" + f.counts[b.dataset.f] + ")" : "";

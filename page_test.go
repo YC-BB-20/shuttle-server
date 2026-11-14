@@ -197,7 +197,7 @@ func TestPageLiveChecksAndVerifyRows(t *testing.T) {
 	for _, want := range []string{
 		`proven: "Destination verified", strong: "Fully verified"`, `checkwait: "Copied · check queued"`,
 		`f.v.checks && f.v.checks.checking`, `"↻ Checking now: "`, `"↳ Checks the copy "`,
-		`.job.verify { margin-left:28px;`,
+		`.job.verify { margin-left:28px;`, `const fileHeads = { done: "Files verified:"`, `.job.open .acts .hidebtn { display:inline-block; }`, `btn(acts, v.hidden ? "↺" : "✕", () => setHidden(v, !v.hidden), "hidebtn"`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)

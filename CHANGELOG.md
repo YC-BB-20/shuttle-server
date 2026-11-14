@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.41 — 13 November 2026
+
+- **No duplicate filters in a file list.** When every file is in the same group — all verified, say — the All / Verified buttons are replaced by one heading, **"Files verified:"**, above the list (likewise "Files in progress:", "Files not verified:", "Files with problems:"). The buttons come back as soon as the files differ.
+- **Hide from history is now an ✕** at the right end of a finished row, shown once you open the row. A hidden row shows ↺ there to bring it back.
+
 ## 0.2.40 — 13 November 2026
 
 - **Queue header on one line:** "Queue", then the filter buttons and menus, then **New copy** at the right end. On a narrow screen such as the iPhone the filters move to their own line below.
