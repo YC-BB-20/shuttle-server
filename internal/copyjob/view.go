@@ -523,7 +523,7 @@ func (m *Manager) FilesIn(id, filter string, tree bool, dir string, from, limit 
 	}
 	listMu.Lock()
 	defer listMu.Unlock()
-	table, later := m.mergedStatus(j)
+	table, _ := m.mergedStatus(j)
 	vfile, vstage, vdone := m.verifyLive(j)
 	j.mu.Lock()
 	phase, l, already := j.st.Phase, j.live, slices.Clone(j.already)
@@ -539,9 +539,6 @@ func (m *Manager) FilesIn(id, filter string, tree bool, dir string, from, limit 
 	if phase == "scan" {
 		page.Note = "The source is still being scanned; the file list appears when the scan finishes."
 		return page, nil
-	}
-	if later {
-		page.Note = "Includes what later Verify jobs of this copy found."
 	}
 	it, err := openManifest(j.path("manifest.jsonl"))
 	if err != nil {

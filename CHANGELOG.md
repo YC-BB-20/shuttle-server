@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.52 — 14 November 2026
+
+- **Status panel slimmed down:** it shows only the job that is running. Its speed now sits at the right end of its bar, in line with it, and the bar is shorter to make room.
+- **The queue count ("2 copies, 1 verify") sits beside the Queue title** instead of in the Status panel.
+- **No file lines on the Status panel:** "Files" and "This file" are gone; a file's details are in the queue and the history.
+- **The line "Includes what later Verify jobs of this copy found." under a copy's file list is gone.**
+
 ## 0.2.51 — 14 November 2026
 
 - **Verifying bars match the Verifying chip:** the copy's purple is the track, and the progress is drawn over it in the chip's pink. On a file's row, under "Now:", on the Status page's "This file" and on a Verify job's bars. A copy's overall bar stays as it was.

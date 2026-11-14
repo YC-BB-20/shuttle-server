@@ -83,7 +83,7 @@
   /* v0.2.50: "Queue" under New copy; the filters centred on the button's line. */
   .qhead { display:grid; grid-template-columns:auto minmax(0,1fr); column-gap:16px; row-gap:2px; align-items:center; margin:18px 0 4px; }
   .qhead .big { grid-row:1; grid-column:1; padding:9px 18px; font-size:16px; font-weight:600; }
-  .qhead h2 { grid-row:2; grid-column:1; margin:0; font-size:17px; }
+  .qhead h2 { grid-row:2; grid-column:1 / -1; margin:0; font-size:17px; }
   .qhead .qf { grid-row:1; grid-column:2; min-width:0; margin:0; }
   @media (max-width:700px) { .qhead .qf { grid-row:3; grid-column:1 / -1; margin-top:6px; } }
   .primary { background:var(--accent); color:#fff; border-color:var(--accent); }
@@ -197,7 +197,10 @@
   .mlines { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:4px 12px; font-weight:400; font-size:14px; }
   .mlines dt { color:var(--mute); } .mlines dd { margin:0; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
   .mlines .bar { height:4px; margin:3px 0 0; }
-  .mlines dd.big { font-size:22px; font-weight:600; line-height:1.1; }
+  .mlines .brate { display:flex; align-items:center; gap:12px; margin-top:3px; }
+  .mlines .brate .bar { flex:1 1 auto; min-width:0; margin:0; }
+  .mlines .brate b { flex:none; font-size:22px; font-weight:600; line-height:1.1; font-variant-numeric:tabular-nums; }
+  .qhead h2 .qcount { color:var(--mute); font-size:14px; font-weight:400; margin-left:8px; white-space:nowrap; }
   .status.alarm { border-color:var(--bad); }
   .status.alarm > span:first-child { color:var(--bad); }
   /* Queue and History: one list each, the same rows, like the Files app. */
@@ -291,7 +294,7 @@
       <dl class="mlines" id="monLines"></dl>
     </div>
   </div>
-  <div class="qhead"><button class="primary big" type="button" id="newBtn">New copy</button><h2>Queue</h2>
+  <div class="qhead"><button class="primary big" type="button" id="newBtn">New copy</button><h2>Queue<span class="qcount" id="qCount"></span></h2>
   <div class="filters qf" id="qf" title="Click to show or hide each kind of entry (running and waiting items are always shown)">
     <button type="button" data-k="done">Completed <span class="n"></span></button><button type="button" data-k="skipped" title="Copies where every file was already at the destination">Skipped <span class="n"></span></button><button type="button" data-k="stopped">Stopped <span class="n"></span></button><button type="button" data-k="failed" title="Finished with files that failed or need attention">Failed <span class="n"></span></button><button type="button" data-k="paused" title="Copies and verifies you paused">Paused <span class="n"></span></button><button type="button" id="qfHidden" title="Show or hide the entries you hid from the history" hidden>Hidden <span class="n"></span></button>
     <button type="button" id="qfActive">Active only</button>
@@ -1149,10 +1152,13 @@ function fileCounts(v) {
   const copied = Math.min(toCopy, v.verified + v.failed + (v.copied || 0) + (v.hashed || 0) + copyDone);
   return "Copied " + copied + " of " + toCopy + " · Verified " + (v.verified + already) + " of " + v.files + (already ? " · " + already + " already there (verified, not copied)" : "");
 }
-// The panel on top: the whole queue, the copy running now and its file,
-// each with the time left.
+// The panel on top: the whole queue and the job running now, its speed
+// at the right end of its bar. Files are shown only in the queue and history.
 function renderMonitor(list) {
   const active = list.filter(v => !["finished", "stopped"].includes(v.state));
+  // v0.2.52: how many copies and verifies wait sits beside the Queue title, not in the panel.
+  const nv = active.filter(v => v.kind === "verify").length, nc = active.length - nv;
+  $("qCount").textContent = [nc ? nc + (nc === 1 ? " copy" : " copies") : "", nv ? nv + (nv === 1 ? " verify" : " verifies") : ""].filter(Boolean).join(", ");
   $("mon").hidden = !active.length;
   if (!active.length) return;
   const run = active.find(v => v.state === "running") || active.find(v => v.state === "waiting");
@@ -1170,27 +1176,23 @@ function renderMonitor(list) {
   $("monBar").style.width = p + "%";
   $("monBar").style.background = run && run.missing ? "var(--bad)" : run && run.state === "running" ? "var(--copy)" : "var(--mute)";
   $("monBar").parentNode.classList.toggle("vbar", !!(run && run.state === "running" && !run.missing && run.kind === "verify"));
-  const nv = active.filter(v => v.kind === "verify").length, nc = active.length - nv;
-  const rows = [["Queue", [nc ? nc + (nc === 1 ? " copy" : " copies") : "", nv ? nv + (nv === 1 ? " verify" : " verifies") : ""].filter(Boolean).join(", ")]];
+  // v0.2.52: only the running job; its speed sits at the right end of its bar.
+  // File details live in the queue and the history.
+  const rows = [];
   if (run) {
     const rp = Math.round((run.progress || 0) * 100);
     rows.push([run.kind === "verify" ? "This verify" : "This copy", base(run.source) + " → " + base(run.dest) + " · " + (run.phase === "scan" ? "scanning, " + run.scanned + " files so far" :
-      rp + "% · " + (run.state === "waiting" ? (run.missing ? "waiting for the disk" : "waiting") : run.eta_seconds ? left(run.eta_seconds) : "working out the time left")), run.phase === "scan" ? null : rp]);
-    if (run.state === "running" && run.phase !== "scan" && run.kind !== "verify") {
-      rows.push(["Average copy speed", rate(run.copy_rate) || "measuring…", null, "big"]);
-      rows.push(["Files", fileCounts(run)]);
-    }
-    if (run.state === "running" && run.file && run.phase !== "scan") {
-      const pr = passRate(run), fl = pr > 0 ? (run.file_size - run.file_done) / pr : 0;
-      rows.push(["This file", base(run.file) + " · " + run.stage.replace(/ \(.*\)$/, "") + " · " + size(run.file_done) + " of " + size(run.file_size) +
-        (fl >= 1 ? " · " + left(fl) : run.file_size ? " · almost done" : ""), pct(run.file_done, run.file_size), "", isCheckStage(run.stage)]);
-    }
+      rp + "% · " + (run.state === "waiting" ? (run.missing ? "waiting for the disk" : "waiting") : run.eta_seconds ? left(run.eta_seconds) : "working out the time left")), run.phase === "scan" ? null : rp,
+      run.state === "running" && run.phase !== "scan" ? (rate(run.kind === "verify" ? run.rate : run.copy_rate) || "measuring…") : ""]);
   }
   const dl = $("monLines"); dl.replaceChildren();
-  rows.forEach(([k, t, bar, cls, vb]) => {
+  rows.forEach(([k, t, bar, spd]) => {
     dl.append(el("dt", "", k));
-    const d = el("dd", cls || "", t);
-    if (bar != null) { const b = el("div", "bar" + (vb ? " vbar" : "")), i = el("i"); i.style.width = bar + "%"; i.style.background = $("monBar").style.background; b.append(i); d.append(b); }
+    const d = el("dd", "", t);
+    if (bar != null) {
+      const b = el("div", "bar" + (run.kind === "verify" && run.state === "running" ? " vbar" : "")), i = el("i"); i.style.width = bar + "%"; i.style.background = $("monBar").style.background; b.append(i);
+      const line = el("div", "brate"); line.append(b); if (spd) line.append(el("b", "", spd)); d.append(line);
+    }
     dl.append(d);
   });
 }

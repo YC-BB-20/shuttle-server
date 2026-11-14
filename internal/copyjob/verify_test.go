@@ -266,7 +266,7 @@ func TestCopyFileListShowsLaterVerifies(t *testing.T) {
 	d, _ := m.Add(Spec{Kind: KindVerify, Source: dst, From: []string{c.st.ID}})
 	waitState(t, m, d.st.ID, "finished")
 	list("proven")
-	if p, _ := m.Files(c.st.ID, "unverified", 0, 200); p.Counts["done"] != len(files) || p.Counts["unverified"] != 0 || len(p.Rows) != 0 || p.Note == "" {
+	if p, _ := m.Files(c.st.ID, "unverified", 0, 200); p.Counts["done"] != len(files) || p.Counts["unverified"] != 0 || len(p.Rows) != 0 || p.Note != "" {
 		t.Fatalf("counts after the destination check: %+v", p)
 	}
 	s, _ := m.Add(Spec{Kind: KindVerify, Source: dst, S2: S2Only, From: []string{c.st.ID}})

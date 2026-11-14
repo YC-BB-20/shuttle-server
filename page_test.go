@@ -172,7 +172,7 @@ func TestPageWideFileInfoAndAverageSpeed(t *testing.T) {
 
 func TestPageNewCopyBeforeQueueTitle(t *testing.T) {
 	s := string(IndexHTML)
-	if !strings.Contains(s, `<div class="qhead"><button class="primary big" type="button" id="newBtn">New copy</button><h2>Queue</h2>`) || strings.Contains(s, `margin-left:auto; padding:9px 18px`) {
+	if !strings.Contains(s, `<div class="qhead"><button class="primary big" type="button" id="newBtn">New copy</button><h2>Queue<span class="qcount" id="qCount"></span></h2>`) || strings.Contains(s, `margin-left:auto; padding:9px 18px`) {
 		t.Error("New copy should come first, before the Queue title and the filters, on one line")
 	}
 	if !strings.Contains(s, `<p class="mute" id="noJobs">Nothing in the queue.</p>`) || strings.Contains(s, "Press New copy") {
@@ -297,7 +297,7 @@ func TestPageFolderHeadsAndVerifyBars(t *testing.T) {
 func TestPageCardLayout50(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
-		`.qhead { display:grid;`, `.qhead h2 { grid-row:2; grid-column:1;`, `<div class="rspeed" hidden></div><div class="acts">`, `"average copy speed"`,
+		`.qhead { display:grid;`, `.qhead h2 { grid-row:2; grid-column:1 / -1;`, `<div class="rspeed" hidden></div><div class="acts">`, `"average copy speed"`,
 		`line = "Now: " + v.stage +`, `<div class="paths"><p class="path from"></p><p class="path to"></p></div>`,
 		`top.append(c.querySelector(".brow"), bar, el("p", "fhead"))`, `c.querySelector(".detail").append(c.querySelector(".brow"))`, `q(".counts").textContent = "";`,
 	} {
@@ -334,6 +334,26 @@ func TestPageVerifyColoursAndSync(t *testing.T) {
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
+		}
+	}
+}
+
+// v0.2.52: the Status panel shows only the running job, its speed at the right
+// end of its bar; the queue count sits beside the Queue title; no file lines.
+func TestPageStatusPanelSlim(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`<h2>Queue<span class="qcount" id="qCount"></span></h2>`, `$("qCount").textContent = [nc ?`,
+		`.mlines .brate { display:flex;`, `.mlines .brate .bar { flex:1 1 auto; min-width:0;`,
+		`rate(run.kind === "verify" ? run.rate : run.copy_rate) || "measuring…"`, `if (spd) line.append(el("b", "", spd));`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	for _, gone := range []string{`rows.push(["This file"`, `rows.push(["Files"`, `rows.push(["Average copy speed"`, `[["Queue", [nc`} {
+		if strings.Contains(s, gone) {
+			t.Errorf("Status panel still has %q", gone)
 		}
 	}
 }
