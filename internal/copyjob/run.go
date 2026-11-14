@@ -742,6 +742,7 @@ func (j *Job) run(ctx context.Context, e env, accepting func() bool) error {
 	jr.Flush()
 	j.mu.Lock()
 	j.st.Phase, j.st.Finished, j.st.Checkpoints = "done", time.Now(), nil
+	j.st.CopyRate = copyAverage(j.copyClock(j.st.Finished)) // for history (v0.2.55)
 	j.live = live{}
 	j.mu.Unlock()
 	return j.save()

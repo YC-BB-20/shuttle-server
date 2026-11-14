@@ -682,7 +682,9 @@ function post(url, body) {
   return fetch(url, { method: "POST", headers: { "X-Shuttle": "1", "Content-Type": "application/json" }, body: JSON.stringify(body || {}) })
     .then(r => r.json().then(j => { if (!r.ok) throw new Error(j.error || "Something went wrong"); return j; }));
 }
-const rate = n => n > 0 ? size(Math.round(n)) + "/s" : "";
+// Speeds in decimal units (1 MB/s = 1,000,000 bytes a second), as disk makers,
+// the speed test and other copy tools count them (v0.2.55; was 1024-based).
+const rate = n => { if (!(n > 0)) return ""; const u = ["B","KB","MB","GB"]; let i = Math.min(3, Math.floor(Math.log10(n) / 3)); const v = n / 1000 ** i; return (i < 2 || v >= 100 ? Math.round(v) : v.toFixed(1)) + " " + u[i] + "/s"; };
 
 // New copy
 // It opens with the source, destination and proof of the last copy, so the
@@ -1068,6 +1070,7 @@ function card(v) {
   else if (v.state === "finished" && v.error) { sub = (v.finished ? when(v.finished) + " · " : "") + "Failed · " + v.error; subCls += " bad"; }
   else if (v.state === "finished") { sub = (v.finished ? when(v.finished) + " · " : "") + took(v.created, v.finished) + " · " + size(v.bytes) +
       (secs(v.created, v.finished) >= 1 && v.bytes ? " · " + rate(v.bytes / secs(v.created, v.finished)) + " average" : "") +
+      (!ver && v.copy_rate ? " · copying " + rate(v.copy_rate) : "") +
       (ver ? " · " + (srcOnly ? "source: " : "") + (v.failed ? (srcOnly ? v.strong : v.verified) + " match, " + v.failed + " do not" : (srcOnly ? v.strong : v.verified) + ((srcOnly ? v.strong : v.verified) === 1 ? " file matches" : " files match")) :
       problems ? " · " + (v.failed ? v.failed + " failed" : "") + (v.failed && v.s2_warnings ? ", " : "") + (v.s2_warnings ? v.s2_warnings + " source warnings" : "") :
       v.checks ? " · " + proofLine(v.checks) : only ? " · " + ((v.hashed || 0) + v.identical) + " files copied, not verified" : " · " + proven + " files verified");

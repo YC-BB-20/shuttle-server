@@ -16,10 +16,61 @@ import (
 
 // Tunables; tests make them small.
 var (
-	ChunkSize       int64         = 4 << 20
+	// ChunkSize is one read or write. 16 MB since v0.2.55 (was 4 MB), the
+	// same as the speed test: with the system cache bypassed there is no
+	// read-ahead, so a bigger request is what keeps a USB disk's queue full.
+	ChunkSize       int64         = 16 << 20
 	CheckpointEvery int64         = 1 << 30
 	chunkDelay      time.Duration // tests only: slows every chunk
 )
+
+// Buffers in flight: the copy keeps up to copyBufs so the source can run
+// ahead of the destination; a read-back keeps two, one read while the other
+// is hashed.
+const (
+	copyBufs = 4
+	readBufs = 2
+	bufAlign = 64 << 10
+)
+
+// bufPlan sizes the buffers for one file: up to want buffers of ChunkSize,
+// smaller for a small file (it never gets more than it needs), and all of
+// them within share bytes of the budget. They are taken as one lease, so two
+// readers can never each hold part of what they need and wait for the rest.
+func bufPlan(size int64, want int, share int64) (per int64, n int) {
+	per = ChunkSize
+	if size < per {
+		per = max(bufAlign, (size+bufAlign-1)/bufAlign*bufAlign)
+	}
+	n = want
+	if need := int((size + per - 1) / per); need < n {
+		n = max(2, need)
+	}
+	for int64(n)*per > share && n > 2 { // fewer buffers before smaller ones
+		n--
+	}
+	for int64(n)*per > share && per > bufAlign {
+		per = max(bufAlign, per/2/bufAlign*bufAlign)
+	}
+	for int64(n)*per > share && n > 1 {
+		n--
+	}
+	return per, n
+}
+
+// takeBufs takes one lease and splits it into n buffers of per bytes.
+func takeBufs(ctx context.Context, b *limits.Budget, per int64, n int) (limits.Lease, [][]byte, error) {
+	l, err := b.Acquire(ctx, per*int64(n))
+	if err != nil {
+		return l, nil, err
+	}
+	bufs := make([][]byte, n)
+	for i := range bufs {
+		lo, hi := int64(i)*per, int64(i+1)*per
+		bufs[i] = l.B[lo:hi:hi]
+	}
+	return l, bufs, nil
+}
 
 // fileError is a problem with one file: it gets a red chip, the job goes on.
 type fileError struct{ msg string }
@@ -97,49 +148,87 @@ func (j *Job) hashFileOpt(ctx context.Context, e env, d *diskio.Disk, path strin
 		st, _ := h.MarshalBinary()
 		return j.saveCheckpoint(Checkpoint{Index: idx, Stage: stage, Offset: off, State: st, Size: size, Mtime: mtime})
 	}
-	lease, err := e.budget.Acquire(ctx, ChunkSize)
+	per, nb := bufPlan(size-off, readBufs, e.budget.Total()/4)
+	lease, bufs, err := takeBufs(ctx, e.budget, per, nb)
 	if err != nil {
 		return xxh3.Hash{}, err
 	}
 	defer e.budget.Release(lease)
-	buf := lease.B
+	// One buffer is read while another is hashed, so the disk never waits
+	// for the hasher (v0.2.55). The hash, and every checkpoint, covers
+	// exactly the bytes before off, in order.
+	type piece struct {
+		b   []byte
+		n   int
+		err error
+	}
+	free := make(chan []byte, nb)
+	for _, b := range bufs {
+		free <- b
+	}
+	full := make(chan piece, nb)
+	rctx, stopReader := context.WithCancel(ctx)
+	readerDone := make(chan struct{})
+	defer func() { stopReader(); <-readerDone }() // before the lease goes back
+	go func(pos int64) {
+		defer close(readerDone)
+		for pos < size {
+			var b []byte
+			select {
+			case b = <-free:
+			case <-rctx.Done():
+				return
+			}
+			if rem := size - pos; rem < int64(len(b)) {
+				b = b[:rem]
+			}
+			n, err := diskio.ReadChunk(rctx, d, f, b, pos)
+			if err == nil {
+				time.Sleep(chunkDelay)
+				if isSrc {
+					j.srcBytes.Add(int64(n))
+				} else {
+					j.dstBytes.Add(int64(n))
+				}
+			}
+			full <- piece{b, n, err} // never blocks: full holds every buffer
+			if err != nil || n == 0 {
+				return
+			}
+			pos += int64(n)
+		}
+	}(off)
 	last := off
 	if show {
 		j.setLive(func(l *live) { l.done, l.size = off, size })
 	}
 	for off < size {
+		var p piece
+		if ctx.Err() == nil {
+			select {
+			case p = <-full:
+			case <-ctx.Done():
+			}
+		}
 		if ctx.Err() != nil {
 			save()
 			return xxh3.Hash{}, context.Cause(ctx)
 		}
-		want := buf
-		if rem := size - off; rem < int64(len(want)) {
-			want = want[:rem]
-		}
-		n, err := diskio.ReadChunk(ctx, d, f, want, off)
-		if err != nil {
-			if ctx.Err() == nil && off > last {
+		if err := p.err; err != nil {
+			if off > last {
 				save()
 			}
-			if errors.Is(err, diskio.ErrGone) || errors.Is(err, diskio.ErrStalled) || ctx.Err() != nil {
-				if ctx.Err() != nil {
-					return xxh3.Hash{}, context.Cause(ctx)
-				}
+			if errors.Is(err, diskio.ErrGone) || errors.Is(err, diskio.ErrStalled) {
 				return xxh3.Hash{}, err
 			}
 			return xxh3.Hash{}, perFile("read error: %v", err)
 		}
-		if n == 0 {
+		if p.n == 0 {
 			return xxh3.Hash{}, perFile("file became shorter while being read")
 		}
-		h.Write(want[:n])
-		off += int64(n)
-		time.Sleep(chunkDelay)
-		if isSrc {
-			j.srcBytes.Add(int64(n))
-		} else {
-			j.dstBytes.Add(int64(n))
-		}
+		h.Write(p.b[:p.n])
+		off += int64(p.n)
+		free <- p.b[:cap(p.b)]
 		if show {
 			j.setLive(func(l *live) { l.done = off })
 		}
@@ -227,39 +316,42 @@ func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int, hs 
 	diskio.NoCache(out)
 	j.setLive(func(l *live) { l.temp, l.done, l.size = tmp, off, size })
 
-	// Two buffers: the source is read into one while the other is written.
+	// Up to four buffers of 16 MB (v0.2.55; was two of 4 MB): the source
+	// reads ahead into them while the destination writes, so neither disk
+	// waits for the other. One lease, at most half the budget.
 	type chunk struct {
-		lease limits.Lease
-		n     int
-		off   int64
+		b   []byte
+		n   int
+		off int64
 	}
-	free := make(chan limits.Lease, 2)
-	for i := 0; i < 2; i++ {
-		l, err := e.budget.Acquire(ctx, ChunkSize)
-		if err != nil {
-			close(free)
-			for l := range free {
-				e.budget.Release(l)
-			}
+	per, nb := bufPlan(size-off, copyBufs, e.budget.Total()/2)
+	lease, bufs, err := takeBufs(ctx, e.budget, per, nb)
+	if err != nil {
+		if ctx.Err() != nil {
 			return context.Cause(ctx)
 		}
-		free <- l
+		return err
 	}
-	full := make(chan chunk, 2)
+	defer e.budget.Release(lease) // runs after the reader has stopped (below)
+	free := make(chan []byte, nb)
+	for _, b := range bufs {
+		free <- b
+	}
+	full := make(chan chunk, nb)
 	readErr := make(chan error, 1)
 	rctx, stopReader := context.WithCancel(ctx)
 	go func() {
 		defer close(full)
 		pos := off
 		for pos < size {
-			var l limits.Lease
+			var l []byte
 			select {
 			case l = <-free:
 			case <-rctx.Done():
 				readErr <- nil
 				return
 			}
-			want := l.B
+			want := l
 			if rem := size - pos; rem < int64(len(want)) {
 				want = want[:rem]
 			}
@@ -304,9 +396,9 @@ func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int, hs 
 			var before []byte
 			if hs != nil {
 				before = hashState()
-				hashIn <- c.lease.B[:c.n]
+				hashIn <- c.b[:c.n]
 			}
-			err := diskio.WriteChunk(ctx, e.dst, out, c.lease.B[:c.n], c.off)
+			err := diskio.WriteChunk(ctx, e.dst, out, c.b[:c.n], c.off)
 			if hs != nil {
 				<-hashDone
 			}
@@ -323,7 +415,7 @@ func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int, hs 
 				j.setLive(func(l *live) { l.done = written })
 			}
 		}
-		free <- c.lease
+		free <- c.b
 		if werr == nil && written-last >= CheckpointEvery && written < size {
 			if err := diskio.Flush(ctx, e.dst, out); err == nil {
 				j.saveCheckpoint(Checkpoint{Index: idx, Stage: "copy", Offset: written, State: hashState(), Size: size, Mtime: mtime})
@@ -336,10 +428,6 @@ func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int, hs 
 	}
 	rerr := <-readErr
 	stopReader()
-	close(free)
-	for l := range free {
-		e.budget.Release(l)
-	}
 	// Keep what was written: flush it and record where to continue.
 	if werr != nil || rerr != nil || written < size {
 		if written > off && diskio.Flush(context.Background(), e.dst, out) == nil {

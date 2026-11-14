@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.55 — 14 November 2026
+
+- **Faster copying.** Each disk is now asked for 16 MB at a time instead of 4 MB, and the source can read up to four pieces ahead while the destination writes, so neither disk waits for the other. Small files get small buffers, so they no longer cost a large piece of memory each.
+- **Faster checking.** While a copy is read back, and while the source is read a second time, the next piece is read while the last one is hashed, so the disks no longer pause for the hash.
+- **Speeds in the same units as other apps.** Every speed now counts 1 MB as 1,000,000 bytes, like the speed test, the disk makers and other offload tools. The copy speed used to count 1 MB as 1,048,576 bytes, so it read about 5% lower than the same speed in those apps.
+- **History keeps the copying speed.** A finished copy's line now shows its average speed while copying, beside the overall average, so two runs (or two apps) are easy to compare.
+
 ## 0.2.54 — 14 November 2026
 
 - **One bar, two colours, like the offload apps.** A copy's bar grows in purple as each file is written, then pink fills the same stretch as that file is read back and matches. While the next file copies, purple moves ahead again and pink catches up behind it. On each copy in the queue and on the Status bar (where a Verify job counts as pink).

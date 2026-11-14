@@ -125,3 +125,6 @@ func (b *Budget) Stats() BudgetStats {
 	defer b.mu.Unlock()
 	return BudgetStats{b.total, b.limit, b.used, b.waiters.Len()}
 }
+
+// Total is the budget's full size, whatever the watchdog has shrunk it to.
+func (b *Budget) Total() int64 { return b.total }

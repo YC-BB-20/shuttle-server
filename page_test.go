@@ -378,3 +378,20 @@ func TestPageTwoLayerBars(t *testing.T) {
 		t.Error("the Status bar should use the two layers, not turn pink while verifying")
 	}
 }
+
+// v0.2.55: every speed is in decimal MB/s, like the speed test and other copy
+// tools, and a finished copy's history line keeps its average copy speed.
+func TestPageDecimalSpeedsAndCopyRateInHistory(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`const v = n / 1000 ** i;`, `" " + u[i] + "/s"`,
+		`(!ver && v.copy_rate ? " · copying " + rate(v.copy_rate) : "")`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	if strings.Contains(s, `const rate = n => n > 0 ? size(Math.round(n)) + "/s"`) {
+		t.Error("speeds still 1024-based")
+	}
+}

@@ -121,6 +121,7 @@ type state struct {
 	CheckEnd      int64                 `json:"check_journal_end,omitempty"` // journal size when the check pass began
 	Checkpoints   map[string]Checkpoint `json:"checkpoints,omitempty"`
 	Finished      time.Time             `json:"finished,omitzero"`
+	CopyRate      int64                 `json:"copy_rate,omitempty"`  // average while copying in the last run, kept for history (v0.2.55)
 	VerifyJob     string                `json:"verify_job,omitempty"` // the Verify job that follows this copy
 	After         string                `json:"after,omitempty"`      // a Verify job: the copy it waits for (added with it, v0.2.16)
 	// Free space (added in 0.2.24): the bytes to write counted when the job
