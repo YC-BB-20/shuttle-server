@@ -74,6 +74,7 @@ func (m *Manager) Load() error {
 		}
 		if j.st.Phase != "scan" {
 			j.status = make([]byte, j.st.Files)
+			j.already = nil
 			ReadJournal(j.path("journal.log"), 0, func(r Rec) bool { j.apply(r); return true })
 		}
 		m.jobs = append(m.jobs, j)

@@ -399,12 +399,25 @@ func rowStatus(st byte) string {
 	return "waiting"
 }
 
+// alreadyStatus turns a verified file that was found at the destination,
+// compared and not copied into "already" (or "already2" once the source was
+// also read a second time), so the page can say so. A later failure wins.
+func alreadyStatus(status string, already bool) string {
+	if already && status == "proven" {
+		return "already"
+	}
+	if already && status == "strong" {
+		return "already2"
+	}
+	return status
+}
+
 func filterOK(filter, status string) bool {
 	switch filter {
 	case "todo":
 		return status == "waiting" || status == "working" || status == "copied"
 	case "done": // verified: the copy was read back (or, in a source-only Verify, the source matched)
-		return status == "proven" || status == "strong" || status == "source"
+		return status == "proven" || status == "strong" || status == "source" || status == "already" || status == "already2"
 	case "unverified": // copied and hashed, never read back
 		return status == "hashed"
 	case "problems":
@@ -429,12 +442,12 @@ func (m *Manager) Files(id, filter string, from, limit int) (FilePage, error) {
 	defer listMu.Unlock()
 	table, later := m.mergedStatus(j)
 	j.mu.Lock()
-	phase, l := j.st.Phase, j.live
+	phase, l, already := j.st.Phase, j.live, slices.Clone(j.already)
 	j.mu.Unlock()
 	page.Counts = map[string]int{"all": len(table), "todo": 0, "done": 0, "unverified": 0, "problems": 0}
-	for _, st := range table { // the compact table: a byte per file
+	for i, st := range table { // the compact table: a byte per file
 		for _, f := range []string{"todo", "done", "unverified", "problems"} {
-			if filterOK(f, rowStatus(st)) {
+			if filterOK(f, alreadyStatus(rowStatus(st), isAlready(already, i))) {
 				page.Counts[f]++
 			}
 		}
@@ -461,7 +474,7 @@ func (m *Manager) Files(id, filter string, from, limit int) (FilePage, error) {
 		if e.I < len(table) {
 			st = table[e.I]
 		}
-		r := FileRow{I: e.I, Path: e.P, Size: e.S, Status: rowStatus(st)}
+		r := FileRow{I: e.I, Path: e.P, Size: e.S, Status: alreadyStatus(rowStatus(st), isAlready(already, e.I))}
 		if l.file == e.P && l.stage != "" && phase != "done" {
 			r.Status, r.Stage, r.Done = "working", l.stage, l.done
 		}
@@ -668,7 +681,7 @@ const maxEvents = 50
 var eventText = map[string]string{
 	"strong":     "Copied and verified: the copy read back and the source read a second time both match",
 	"verified":   "Copied and verified: the copy read back matches the source",
-	"identical":  "Already at the destination; compared and identical, left untouched",
+	"identical":  "Not copied: already at the destination. Both files read in full, hashes match; left untouched",
 	"failed":     "Failed",
 	"match":      "Verified again: the copy was read in full and matches the hash stored when it was copied",
 	"copied":     "Copied and hashed as it was read, and given its real name; the check (copy read back, source read again) comes later",
@@ -757,6 +770,9 @@ func (m *Manager) FileInfo(id string, i int) (FileInfo, error) {
 	if fi.Rechecks == nil {
 		fi.Rechecks = []Recheck{}
 	}
+	if !spec.isVerify() {
+		fi.Status = alreadyStatus(fi.Status, fi.Already)
+	}
 	fi.RecheckNow = m.recheckFor(id, i)
 	m.mu.Lock()
 	fi.Busy = m.running != nil
@@ -779,6 +795,10 @@ func (m *Manager) FileInfo(id string, i int) (FileInfo, error) {
 		return fi, nil
 	}
 	switch fi.Status {
+	case "already":
+		fi.Proof = "Not copied: a file with this name was already at the destination. It and the source were both read in full and their hashes match, so it was left untouched"
+	case "already2":
+		fi.Proof = "Not copied: a file with this name was already at the destination. It was read in full and the source was read twice; all hashes match, so it was left untouched"
 	case "strong":
 		fi.Proof = "Strong: two separate reads of the source match what the destination holds"
 	case "proven":

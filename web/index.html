@@ -67,6 +67,9 @@
   dialog .head, dialog .foot { flex:none; }
   dialog::backdrop { background:rgba(0,0,0,.4); }
   /* File info: as wide as the app itself (main is 960px), and taller, so long names and paths wrap less. */
+  /* The folder picker keeps one size whatever folder or option is shown, so nothing jumps. */
+  #pickDlg { height:min(80vh, 640px); height:min(85dvh, 640px); }
+  #pickDlg .body, #pickDlg .list { scrollbar-gutter:stable; }
   #infoDlg { width:min(960px, calc(100vw - 24px)); max-height:min(90vh, 1000px); max-height:min(90dvh, 1000px); }
   #infoDlg .head h2 { min-width:0; overflow-wrap:anywhere; }
   dialog .head { display:flex; align-items:center; padding:12px 16px; border-bottom:1px solid var(--line); }
@@ -124,7 +127,9 @@
   .big span { color:var(--mute); font-size:14px; font-variant-numeric:tabular-nums; }
   .bar.main { height:10px; border-radius:5px; margin:6px 0 4px; }
   .speed { font-size:14px; color:var(--mute); margin:0 0 6px; font-variant-numeric:tabular-nums; }
-  .job .line { font-size:14px; }
+  .job .line { font-size:14px; font-variant-numeric:tabular-nums; }
+  /* While a copy runs, text that changes every second keeps one line each, so the page never jumps. */
+  .job.live .line, .job.live .sub, .job.live .speed { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-height:1.4em; }
   .bar.file { height:4px; }
   .frow { cursor:pointer; }
   .frow:hover { background:color-mix(in srgb, var(--accent) 6%, var(--card)); }
@@ -155,7 +160,14 @@
   .frow { padding:6px 10px; border-bottom:1px solid var(--line); }
   .frow:last-child { border-bottom:0; }
   .frow .t { display:flex; gap:8px; align-items:baseline; }
-  .frow .t > span:first-child { flex:1; min-width:0; overflow-wrap:anywhere; font-size:14px; }
+  .frow { position:relative; }
+  /* Every row is one line high, whatever its state: long names end in "…", the chip keeps one width,
+     and the file being worked on shows a thin bar along its bottom edge instead of an extra line. */
+  .frow .t { align-items:center; }
+  .frow .t > span:first-child { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:14px; }
+  .frow .sz { font-variant-numeric:tabular-nums; min-width:5.5em; text-align:right; }
+  .frow .chip { min-width:11.5em; text-align:center; box-sizing:border-box; }
+  .frow .bar.edge { position:absolute; left:0; right:0; bottom:0; margin:0; height:3px; border-radius:0; }
   .frow .sz { color:var(--mute); font-size:13px; white-space:nowrap; }
   .frow .why { font-size:13px; color:var(--bad); overflow-wrap:anywhere; }
   .frow .bar { margin:4px 0 0; }
@@ -816,7 +828,9 @@ function browse(path, keep) {
     // New folder: only where copies go, and not on a read-only disk or a server.
     const here = d.places.find(p => p.kind !== "home" && (d.path === p.path || d.path.startsWith(p.path + "/")) && p.kind !== "internal") ||
       d.places.find(p => p.kind === "internal");
-    $("newDirBtn").hidden = pickFor !== "dst" || !!d.error || !!d.note || !!(here && (here.read_only || here.kind === "server"));
+    // Not offered where nothing may be written, but its place is kept so the buttons never move.
+    $("newDirBtn").hidden = pickFor !== "dst";
+    $("newDirBtn").style.visibility = d.error || d.note || (here && (here.read_only || here.kind === "server")) ? "hidden" : "";
     $("newDirBox").hidden = true;
     useLabel();
   }).catch(() => { $("pickErr").textContent = "Could not reach Shuttle Server."; });
@@ -951,10 +965,11 @@ function card(v) {
   else if (!old && v.state !== "running") line = "Added " + when(v.created);
   if (srcOnly && !old) line += (line ? " · " : "") + "The source read in full and compared with the hashes stored when it was copied; the copies are not read. Nothing is changed.";
   else if (ver && !old) line += (line ? " · " : "") + "Read in full and compared with the hashes stored when it was copied" + (again ? (v.s2 === "after" ? ", then the source is read again once every copy is checked" : ", with the source read again beside it") : "") + ". Nothing is changed.";
-  q(".line").textContent = line;
+  q(".line").textContent = line; q(".line").title = line; q(".sub").title = sub;
   q(".bar.file").hidden = v.state !== "running" || scanning;
   q(".bar.file > i").style.width = v.state === "running" ? pct(v.file_done, v.file_size) + "%" : "0%";
   const live = v.state === "running" && !scanning;
+  c.classList.toggle("live", live);
   q(".cspeed").hidden = !live || ver;
   if (live && !ver) { q(".cspeed").replaceChildren(el("small", "", "Average copy speed "), document.createTextNode(rate(v.copy_rate) || "measuring…")); }
   q(".speed").textContent = !live ? "" :
@@ -962,10 +977,10 @@ function card(v) {
   q(".fcounts").hidden = ver || old || scanning;
   if (!ver && !old && !scanning) q(".fcounts").textContent = only ? "Copied " + ((v.hashed || 0) + v.identical + v.failed) + " of " + v.files + " · not read back" : fileCounts(v);
   q(".counts").textContent = srcOnly ? "Source matching " + v.strong + " of " + v.files + " files" + (v.failed ? " · do not match: " + v.failed : "") + (v.skipped ? " · no stored hash: " + v.skipped : "") : ver ? "Matching " + v.verified + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
-    (again ? " · source read again and matching: " + v.strong : "") + (v.failed ? " · do not match: " + v.failed : "") + (v.skipped ? " · no stored hash: " + v.skipped : "") : only ? "Copied " + ((v.hashed || 0) + v.identical) + " of " + v.files + " files" + (v.checks && v.checks.dest ? ", read back later: " + v.checks.dest : ", not verified") + (v.identical ? " · " + v.identical + " were already there (compared)" : "") +
+    (again ? " · source read again and matching: " + v.strong : "") + (v.failed ? " · do not match: " + v.failed : "") + (v.skipped ? " · no stored hash: " + v.skipped : "") : only ? "Copied " + ((v.hashed || 0) + v.identical) + " of " + v.files + " files" + (v.checks && v.checks.dest ? ", read back later: " + v.checks.dest : ", not verified") + (v.identical ? " · " + v.identical + " already there, not copied (full read, hashes match)" : "") +
     (v.failed ? " · failed: " + v.failed : "") + (v.skipped ? " · not copied (links etc.): " + v.skipped : "") : "Verified " + proven + " of " + v.files + " files (" + size(v.bytes_proven) + " of " + size(v.bytes) + ")" +
     (v.copied ? " · copied, check to come: " + v.copied : "") +
-    (v.identical ? " · " + v.identical + " were already there" : "") + (v.s2 === "now" ? " · read twice: " + v.strong : "") +
+    (v.identical ? " · " + v.identical + " already there, not copied (full read, hashes match)" : "") + (v.s2 === "now" ? " · read twice: " + v.strong : "") +
     (v.failed ? " · failed: " + v.failed : "") + (v.s2_warnings ? " · source warnings: " + v.s2_warnings : "") + (v.skipped ? " · not copied (links etc.): " + v.skipped : "");
   if (v.system_skipped) q(".counts").textContent += " · system files left out: " + v.system_skipped;
   q(".same").hidden = !v.same_volume;
@@ -1240,15 +1255,15 @@ $("moreHist").onclick = () => {
 // Files of one copy: filters, paged rows, the file being worked on with its
 // own bar. Refreshed every 2 s while the copy runs and the page is visible.
 const fv = {};
-const fileLabel = { waiting: "Waiting", proven: "Verified", strong: "Verified · read twice", failed: "Error", warning: "Source warning", copied: "Copied · check to come", hashed: "Copied · not verified", source: "Source matches" };
+const fileLabel = { already: "Already there · hash checked", already2: "Already there · read twice", waiting: "Waiting", proven: "Verified", strong: "Verified · read twice", failed: "Error", warning: "Source warning", copied: "Copied · check to come", hashed: "Copied · not verified", source: "Source matches" };
 // A file being worked on: "Copying" (purple) while it is written, "Verifying"
 // (pink) while the destination or the source is read back.
 function workChip(r) {
   if (r.status !== "working") return el("span", "chip " + (fileChip[r.status] || ""), fileLabel[r.status] || r.status);
   const checking = /^Reading back|^Checking/.test(r.stage || "");
-  return el("span", "chip " + (checking ? "verifying" : "copying"), checking ? "Verifying" : /^Reading the source/.test(r.stage || "") ? "Reading" : "Copying");
+  return el("span", "chip " + (checking ? "verifying" : "copying"), (checking ? "Verifying" : /^Reading the source/.test(r.stage || "") ? "Reading" : "Copying") + (r.size ? " " + Math.floor(pct(r.done, r.size)) + "%" : ""));
 }
-const fileChip = { proven: "ok", strong: "ok", failed: "bad", warning: "waiting", working: "copying", copied: "copying", hashed: "waiting", source: "ok" };
+const fileChip = { already: "ok", already2: "ok", proven: "ok", strong: "ok", failed: "bad", warning: "waiting", working: "copying", copied: "copying", hashed: "waiting", source: "ok" };
 function toggleFiles(v, c) {
   if (fv[v.id]) { fv[v.id].box.remove(); delete fv[v.id]; return; }
   const box = el("div", "files");
@@ -1282,11 +1297,12 @@ function drawFiles(f, note) {
   f.box.querySelector(".frows").replaceChildren(...f.rows.map(r => {
     const row = el("div", "frow"), t = el("div", "t");
     row.tabIndex = 0; row.onclick = () => fileInfo(f.v.id, r.i); row.onkeydown = e => { if (e.key === "Enter") row.onclick(); };
-    t.append(el("span", "", r.path), el("span", "sz", size(r.size)), workChip(r));
+    const name = el("span", "", r.path); name.title = r.path;
+    t.append(name, el("span", "sz", size(r.size)), workChip(r));
     row.append(t);
     if (r.status === "working") {
-      row.append(el("div", "mute", r.stage + (r.size ? " — " + size(r.done) + " of " + size(r.size) : "")));
-      const b = el("div", "bar"), i = el("i"); i.style.width = pct(r.done, r.size) + "%"; b.append(i); row.append(b);
+      row.title = r.stage + (r.size ? " — " + size(r.done) + " of " + size(r.size) : "");
+      const b = el("div", "bar edge"), i = el("i"); i.style.width = pct(r.done, r.size) + "%"; b.append(i); row.append(b);
     }
     if (r.why) row.append(el("div", "why", r.why));
     return row;

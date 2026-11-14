@@ -179,3 +179,15 @@ func TestPageNewCopyBeforeQueueTitle(t *testing.T) {
 		t.Error("empty-queue message should be just \"Nothing in the queue.\"")
 	}
 }
+
+func TestPagePickerStaysPutAndAlreadyThere(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`#pickDlg { height:min(80vh, 640px);`, `#pickDlg .body, #pickDlg .list { scrollbar-gutter:stable; }`,
+		`$("newDirBtn").style.visibility =`, `.job.live .line, .job.live .sub, .job.live .speed { white-space:nowrap;`, `const b = el("div", "bar edge")`, `.frow .chip { min-width:11.5em;`, `c.classList.toggle("live", live);`, `already: "Already there · hash checked"`, `already2: "Already there · read twice"`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}

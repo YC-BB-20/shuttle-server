@@ -144,8 +144,11 @@ type Job struct {
 	mu     sync.Mutex
 	st     state
 	status []byte
-	c      counts
-	live   live
+	// already marks files that were found at the destination and compared,
+	// not copied: one bit per file, made on the first such file.
+	already []uint64
+	c       counts
+	live    live
 
 	srcBytes, dstBytes atomic.Int64 // for speed
 	recheckMu          sync.Mutex   // rechecks.json
@@ -215,6 +218,21 @@ func loadJob(dir string) (*Job, error) {
 }
 
 // apply updates the table and counters from a journal record.
+// setAlready marks file i as found at the destination and compared, not copied.
+func (j *Job) setAlready(i int) {
+	if j.already == nil {
+		j.already = make([]uint64, (len(j.status)+63)/64)
+	}
+	if i/64 < len(j.already) {
+		j.already[i/64] |= 1 << (i % 64)
+	}
+}
+
+// isAlready reports whether bits mark file i as already at the destination.
+func isAlready(bits []uint64, i int) bool {
+	return i >= 0 && i/64 < len(bits) && bits[i/64]&(1<<(i%64)) != 0
+}
+
 func (j *Job) apply(r Rec) {
 	if r.I < 0 || r.I >= len(j.status) {
 		return
@@ -239,6 +257,7 @@ func (j *Job) apply(r Rec) {
 		}
 		j.status[r.I] = stVerified
 		if r.St == "identical" {
+			j.setAlready(r.I)
 			j.c.Identical++
 		} else {
 			j.c.Verified++

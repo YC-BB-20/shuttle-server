@@ -107,6 +107,7 @@ func (j *Job) scan(ctx context.Context, src location.Source) error {
 	j.mu.Lock()
 	j.st.Files, j.st.Bytes, j.st.Skipped, j.st.SystemSkipped, j.st.Phase = n, total, skipped, system, "copy"
 	j.status = make([]byte, n)
+	j.already = nil
 	j.live.scanned, j.live.scannedBytes = n, total
 	j.mu.Unlock()
 	return j.save()
@@ -305,7 +306,7 @@ func (j *Job) oneFile(ctx context.Context, e env, en *entry, srcPath, final stri
 	if _, err := os.Lstat(final); err == nil {
 		// Never overwrite: compare what is there instead.
 		startNext()
-		j.setLive(func(l *live) { l.stage = "Checking the file already at the destination" })
+		j.setLive(func(l *live) { l.stage = "Already at the destination: reading it in full to compare" })
 		d1, err := j.hashFile(ctx, e, e.dst, final, en.I, "d1", false)
 		if err != nil {
 			return rec, err
@@ -404,7 +405,7 @@ func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, fina
 		if err != nil {
 			return nil, err
 		}
-		j.setLive(func(l *live) { l.stage = "Checking the file already at the destination" })
+		j.setLive(func(l *live) { l.stage = "Already at the destination: reading it in full to compare" })
 		d1, err := j.hashFile(ctx, e, e.dst, final, en.I, "d1", false)
 		if err != nil {
 			return nil, err
@@ -697,6 +698,7 @@ func (j *Job) run(ctx context.Context, e env, accepting func() bool) error {
 	}
 	j.mu.Lock()
 	j.status = make([]byte, j.st.Files) // rebuilt from the journal below
+	j.already = nil
 	j.c = counts{}
 	j.mu.Unlock()
 	jr, _, err := OpenJournal(j.path("journal.log"), func(r Rec) { j.mu.Lock(); j.apply(r); j.mu.Unlock() })

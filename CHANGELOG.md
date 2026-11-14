@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.38 — 13 November 2026
+
+- **Files already at the destination are now named as such.** In a copy's file list they read **"Already there · hash checked"** (or "· read twice" once the source was read again), instead of plain "Verified". File info says the file was not copied, that both files were read in full and that their hashes match. The copy's line reads "N already there, not copied (full read, hashes match)", and while it works it says "Already at the destination: reading it in full to compare".
+- **The folder picker keeps one size.** It no longer grows, shrinks or shifts when you open another folder, press New folder or pick a different disk; the buttons at the bottom stay where they are (New folder keeps its place even where it can't be used).
+- **The page no longer jumps while a copy runs.** The "Now:" line, the progress line and the disk speeds each keep one line (long names end in "…"; hover for the full text). In the file list every row is one line high: long names end in "…", the status label keeps one width, and the file being copied shows its progress as a thin bar along the row's bottom edge and a percentage in its label ("Copying 29%") instead of an extra line.
+
 ## 0.2.37 — 13 November 2026
 
 - **New copy** now sits on the left of the Queue title, a little bigger.

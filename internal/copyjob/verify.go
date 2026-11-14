@@ -326,6 +326,7 @@ func (j *Job) verifyScan(ctx context.Context) error {
 	j.mu.Lock()
 	j.st.Files, j.st.Bytes, j.st.Skipped, j.st.SystemSkipped, j.st.Phase = n, total, skipped, system, "verify"
 	j.status = make([]byte, n)
+	j.already = nil
 	j.live.scanned, j.live.scannedBytes = n, total
 	j.mu.Unlock()
 	return j.save()
@@ -476,6 +477,7 @@ func (j *Job) runVerify(ctx context.Context, e env, accepting func() bool) error
 	}
 	j.mu.Lock()
 	j.status = make([]byte, j.st.Files)
+	j.already = nil
 	j.c = counts{}
 	j.mu.Unlock()
 	jr, _, err := OpenJournal(j.path("journal.log"), func(r Rec) { j.mu.Lock(); j.apply(r); j.mu.Unlock() })
