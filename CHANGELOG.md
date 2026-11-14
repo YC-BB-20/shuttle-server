@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.34 — 13 November 2026
+
+- New copy: **"Check in a separate queue item"** is shown only when **"After all files are copied"** is chosen. With "As each file is copied" it is hidden and off, since that check happens during the copy itself.
+
 ## 0.2.33 — 13 November 2026
 
 - **Disk speed test,** in the spirit of Blackmagic's Disk Speed Test. On the Storage page, **Test speed** on any disk opens two gauges, Write and Read, in MB/s. Shuttle writes one test file of 1, 2, 5 or 10 GB at the top of the disk (data that cannot be compressed), makes sure the disk has really stored it, reads it back with the Mac's cache bypassed, and repeats until you press Stop (at most 10 minutes). The test file is always removed. It shows the best so far and what the speed means: how long 1 TB takes to write and to read.

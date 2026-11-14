@@ -624,7 +624,7 @@ $("newBtn").onclick = () => {
     $("ckDest").checked = last.check !== "none" || sep;
     $("ckSrc").checked = $("ckDest").checked && last.s2 !== "skip";
     $("ckSep").checked = sep; $("ckPaused").checked = last.verify_next === "paused";
-    $(last.hash === "later" ? "whenEnd" : "whenFile").checked = true;
+    $(last.hash === "later" || sep ? "whenEnd" : "whenFile").checked = true;
   }
   proofForm();
   loadSys();
@@ -675,8 +675,12 @@ async function spaceAnswer(v) {
 function proofForm(changed) {
   if (changed === "ckSrc" && $("ckSrc").checked) $("ckDest").checked = true;
   if (changed === "ckDest" && !$("ckDest").checked) $("ckSrc").checked = false;
+  // A separate check item runs after the whole copy, so it is offered only
+  // with "After all files are copied".
+  const end = $("whenEnd").checked;
+  if (!end) $("ckSep").checked = false;
   const dest = $("ckDest").checked, src = $("ckSrc").checked, sep = $("ckSep").checked;
-  $("ckMore").hidden = !dest; $("whenBox").hidden = sep;
+  $("ckMore").hidden = !dest; $("ckSep").closest(".opt").hidden = !end;
   $("ckPaused").disabled = !sep; $("ckPaused").closest(".opt").hidden = !sep;
   $("proofSum").textContent = !dest ? "Copy only: fastest, the source is read once, but nothing checks the copy. Not for cards you will erase." :
     (src ? "Strongest: the copy read back and the source read again must both match what was copied. Right for camera cards."

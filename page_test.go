@@ -125,3 +125,18 @@ func TestPageSpeedTest(t *testing.T) {
 		}
 	}
 }
+
+func TestPageSeparateCheckOnlyAfterAll(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`if (!end) $("ckSep").checked = false;`, `$("ckSep").closest(".opt").hidden = !end;`,
+		`last.hash === "later" || sep ? "whenEnd" : "whenFile"`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	if strings.Contains(s, `$("whenBox").hidden = sep`) {
+		t.Error("the when-to-check choice must stay visible with a separate check")
+	}
+}
