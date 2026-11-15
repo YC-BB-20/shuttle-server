@@ -351,13 +351,13 @@ func linuxPath(link string) Path {
 func canFromBCD(bcd int) string {
 	switch {
 	case bcd >= 0x320:
-		return "USB 3.2 · 10 Gb/s or more"
+		return "10 Gb/s or more · USB 3.2"
 	case bcd >= 0x310:
-		return "USB 3.2 Gen 2 · 10 Gb/s"
+		return "10 Gb/s · USB 3.1 Gen 2"
 	case bcd >= 0x300:
-		return "USB 3.2 Gen 1 (USB 3.0) · 5 Gb/s"
+		return "5 Gb/s · USB 3.0"
 	case bcd >= 0x200:
-		return "USB 2 · 480 Mb/s"
+		return "480 Mb/s · USB 2"
 	}
 	return ""
 }
