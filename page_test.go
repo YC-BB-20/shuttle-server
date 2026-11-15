@@ -184,7 +184,7 @@ func TestPagePickerStaysPutAndAlreadyThere(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
 		`#pickDlg { height:min(80vh, 640px);`, `#pickDlg .body, #pickDlg .list { scrollbar-gutter:stable; }`,
-		`$("newDirBtn").style.visibility =`, `.job.live .line, .job.live .sub, .job.live .speed { white-space:nowrap;`, `const b = el("div", "bar edge"`, `.frow .chip { min-width:11.5em;`, `c.classList.toggle("live", live);`, `already: "Already there · hash checked"`, `already2: "Already there · read twice"`,
+		`$("newDirBtn").style.visibility =`, `.job.going .sub, .job.going .speed { white-space:nowrap;`, `const b = el("div", "bar edge"`, `.frow .chip { min-width:11.5em;`, `c.classList.toggle("going", live);`, `already: "Already there · hash checked"`, `already2: "Already there · read twice"`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
@@ -283,7 +283,7 @@ func TestPageFolderHeadsAndVerifyBars(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
 		`tree: true,`, `function autoOpen(f, dir)`, `.then(() => autoOpen(f, ""))`, `e.stopPropagation(); openDir(f, fr.path)`,
-		`.bar.vbar {`, `.bar.vbar > i { background:var(--verify) !important; }`, `(isCheckStage(r.stage) ? " vbar" : "")`, `classList.toggle("vbar", vnow)`,
+		`.bar.vbar {`, `.bar.vbar > i { background:var(--verify) !important; }`, `(isCheckStage(r.stage) ? " vbar" : "")`, `classList.toggle("vbar", vnow && ver)`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
@@ -299,7 +299,7 @@ func TestPageCardLayout50(t *testing.T) {
 	for _, want := range []string{
 		`.qhead { display:grid;`, `.qhead h2 { grid-row:2; grid-column:1 / -1;`, `<div class="rspeed" hidden></div><div class="acts">`, `"average copy speed"`,
 		`line = "Now: " + v.stage +`, `<div class="paths"><p class="path from"></p><p class="path to"></p></div>`,
-		`top.append(c.querySelector(".brow"), bar, el("p", "fhead"))`, `c.querySelector(".detail").append(c.querySelector(".brow"))`, `q(".counts").textContent = "";`,
+		`top.append(c.querySelector(".brow"), bar, el("p", "fhead"))`, `c.querySelector(".detail").insertBefore(c.querySelector(".brow"), c.querySelector(".tail"))`, `q(".counts").textContent = "";`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
@@ -393,5 +393,22 @@ func TestPageDecimalSpeedsAndCopyRateInHistory(t *testing.T) {
 	}
 	if strings.Contains(s, `const rate = n => n > 0 ? size(Math.round(n)) + "/s"`) {
 		t.Error("speeds still 1024-based")
+	}
+}
+
+// v0.2.59: the queue item's name, places, speeds under the % line, no file
+// bar, and the Now line below the file list.
+func TestPageQueueItem59(t *testing.T) {
+	page := string(IndexHTML)
+	for _, want := range []string{`function jobName(v)`, `" folders"`, `"Destination: " + (at(v.to_disk, v.to_path)`, `"Source: " + (at(v.from_disk, v.from_path)`,
+		`<div class="sub"></div><p class="speed mute"></p></div>`, `<div class="tail"><p class="line"></p></div>`, `insertBefore(box, c.querySelector(".tail"))`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	for _, gone := range []string{`class="bar file"`, `c.classList.toggle("live"`} {
+		if strings.Contains(page, gone) {
+			t.Errorf("page still has %q", gone)
+		}
 	}
 }

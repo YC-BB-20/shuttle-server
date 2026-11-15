@@ -12,9 +12,9 @@ func TestPlaceOfAndChosenNames(t *testing.T) {
 	home, _ := os.UserHomeDir()
 	for p, want := range map[string][2]string{
 		"/Volumes/BB - backups/TestDest/TESTSQ13": {"BB - backups", "/TestDest/TESTSQ13"},
-		"/Volumes/Card/":                          {"Card", "/"},
+		"/Volumes/Card/": {"Card", "/"},
 		filepath.Join(home, "Desktop/TESTFOLDER"): {"This computer", "Desktop/TESTFOLDER"},
-		"/opt/data":                               {"This computer", "/opt/data"},
+		"/opt/data": {"This computer", "/opt/data"},
 	} {
 		if d, r := placeOf(p); d != want[0] || r != want[1] {
 			t.Errorf("%s: %q %q", p, d, r)
