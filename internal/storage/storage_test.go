@@ -63,7 +63,7 @@ func TestUSBSpeedFromReport(t *testing.T) {
 	json.Unmarshal([]byte(`{"SPUSBDataType":[{"_name":"USB31Bus","_items":[{"_name":"hub","device_speed":"high_speed","_items":[
 		{"_name":"T7","device_speed":"super_speed_plus","Media":[{"bsd_name":"disk4","volumes":[{"bsd_name":"disk4s2"}]}]}]}]}]}`), &tree)
 	raw := speedAbove(tree, "disk4")
-	if sp, det := usbSpeed(raw); sp != "10 Gb/s" || det != "USB 3.2 Gen 2" {
+	if sp, det := usbSpeed(raw); sp != "10 Gb/s" || det != "USB 3.2 Gen 2 (USB 3.1 Gen 2)" {
 		t.Fatalf("%q → %s %s", raw, sp, det)
 	}
 	if speedAbove(tree, "disk9") != "" {

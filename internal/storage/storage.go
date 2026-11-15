@@ -25,7 +25,7 @@ type Info struct {
 	Connection string `json:"connection,omitempty"` // USB, Thunderbolt, Internal, SATA, SD card, Disk image, Network
 	Speed      string `json:"speed,omitempty"`      // link speed as the system reports it, e.g. "10 Gb/s"
 	Detail     string `json:"detail,omitempty"`     // plain words, e.g. "USB 3.2 Gen 2"
-	Can        string `json:"can,omitempty"`        // what the drive itself can do, e.g. "USB 3.2 Gen 2 · 10 Gb/s" (v0.2.60)
+	Can        string `json:"can,omitempty"`        // what the drive itself can do, e.g. "10 Gb/s · USB 3.2 Gen 2 (USB 3.1 Gen 2)" (v0.2.60)
 	Slow       string `json:"slow,omitempty"`       // plain reason the disk runs slower than it could, if it does
 	Model      string `json:"model,omitempty"`      // the drive or enclosure, as the system names it
 	FileSystem string `json:"file_system,omitempty"`
@@ -330,7 +330,7 @@ func usbSpeed(raw string) (string, string) {
 	case strings.Contains(r, "super_speed_plus_by2"), strings.Contains(r, "20 gb"):
 		return "20 Gb/s", "USB 3.2 Gen 2x2"
 	case strings.Contains(r, "super_speed_plus"), strings.Contains(r, "10 gb"):
-		return "10 Gb/s", "USB 3.2 Gen 2"
+		return "10 Gb/s", "USB 3.2 Gen 2 (USB 3.1 Gen 2)"
 	case strings.Contains(r, "super_speed"), strings.Contains(r, "5 gb"):
 		return "5 Gb/s", "USB 3.2 Gen 1 (USB 3.0)"
 	case strings.Contains(r, "high_speed"), strings.Contains(r, "480"):
@@ -348,11 +348,11 @@ func driveCan(model string) string {
 	m := strings.ToLower(model)
 	switch {
 	case strings.Contains(m, "t9"):
-		return "USB 3.2 Gen 2x2 · 20 Gb/s"
+		return "20 Gb/s · USB 3.2 Gen 2x2"
 	case strings.Contains(m, "t5"), strings.Contains(m, "t7"):
-		return "USB 3.2 Gen 2 · 10 Gb/s"
+		return "10 Gb/s · USB 3.2 Gen 2 (USB 3.1 Gen 2)"
 	case strings.Contains(m, "t3"):
-		return "USB 3.2 Gen 1 (USB 3.0) · 5 Gb/s"
+		return "5 Gb/s · USB 3.2 Gen 1 (USB 3.0)"
 	}
 	return ""
 }

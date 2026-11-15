@@ -156,7 +156,7 @@ func TestTrashHasItems(t *testing.T) {
 }
 
 func TestDriveCanAndSlow(t *testing.T) {
-	if got := driveCan("Portable SSD T5"); got != "USB 3.2 Gen 2 · 10 Gb/s" {
+	if got := driveCan("Portable SSD T5"); got != "10 Gb/s · USB 3.2 Gen 2 (USB 3.1 Gen 2)" {
 		t.Fatalf("T5: %q", got)
 	}
 	if driveCan("Unknown Disk") != "" {
@@ -165,7 +165,7 @@ func TestDriveCanAndSlow(t *testing.T) {
 }
 
 func TestCanFromBCDAndTree(t *testing.T) {
-	for bcd, want := range map[int]string{784: "USB 3.2 Gen 2 · 10 Gb/s", 768: "USB 3.2 Gen 1 (USB 3.0) · 5 Gb/s", 0: ""} {
+	for bcd, want := range map[int]string{784: "10 Gb/s · USB 3.2 Gen 2 (USB 3.1 Gen 2)", 768: "5 Gb/s · USB 3.2 Gen 1 (USB 3.0)", 0: ""} {
 		if got := canFromBCD(bcd); got != want {
 			t.Fatalf("bcd %d: %q, want %q", bcd, got, want)
 		}

@@ -353,9 +353,9 @@ func canFromBCD(bcd int) string {
 	case bcd >= 0x320:
 		return "10 Gb/s or more · USB 3.2"
 	case bcd >= 0x310:
-		return "10 Gb/s · USB 3.1 Gen 2"
+		return "10 Gb/s · USB 3.2 Gen 2 (USB 3.1 Gen 2)"
 	case bcd >= 0x300:
-		return "5 Gb/s · USB 3.0"
+		return "5 Gb/s · USB 3.2 Gen 1 (USB 3.0)"
 	case bcd >= 0x200:
 		return "480 Mb/s · USB 2"
 	}

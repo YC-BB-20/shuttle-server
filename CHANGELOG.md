@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.62 — 15 November 2026
+
+- **USB names read the same everywhere: the current name, then the old one in brackets,** for example "USB 3.2 Gen 2 (USB 3.1 Gen 2)", the name printed on a T5. "Drive can do" now reads speed first, like the link line: "10 Gb/s · USB 3.2 Gen 2 (USB 3.1 Gen 2)".
+
 ## 0.2.61 — 15 November 2026
 
 - **"Drive can do" is read from the drive.** A USB drive declares the USB version it supports (3.1 means it can run at 10 Gb/s); Shuttle reads that from the system's device tree, so it works for any drive. The list of known models (Samsung T3, T5, T7, T9) is only a fallback when the device tree has no version.
