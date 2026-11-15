@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.57 — 15 November 2026
+
+- **XXH64 lists for other tools** (Settings → Hashes for other tools, off by default). With it on, every file also gets an XXH64, the hash most offload tools and checksum lists use, made while the copy is read back. When the copy finishes, the list is saved **next to the destination folder, not inside it**: for a destination "Day 1" it is "Day 1.xxh64" beside it, in the format of `xxhsum -H1`, so `xxhsum -c "Day 1.xxh64"` run there checks the copy. Only files whose copy is proven are listed. An existing list is never replaced (the next one is "Day 1 2.xxh64"). A copy that is checked by its own Verify item gets its list from that Verify; a copy with no check gets none. The job says where the list went.
+- **XXH128 stays the proof.** Nothing about how copies are checked has changed; the XXH64 is extra, for other tools.
+- `shuttle-server hash -H1 FILE` prints a file's XXH64, as `xxhsum -H1` does. Every release now checks Shuttle's XXH64 against the official `xxhsum` too, as it already did for XXH128.
+
 ## 0.2.56 — 14 November 2026
 
 - **Every finished job says how long it took, as minutes and seconds** (for example "took 12:34", or "1:05:09" from an hour). This is the job's own working time: time paused, waiting for a disk or waiting in the queue is left out, so it compares directly with other offload tools. It shows on the history line, on the job card, in the Status headline once nothing is running ("last copy took 12:34"), in the menu bar and in the log. The average speed on the history line is now worked out from that same time. A stopped job says how long it ran before you stopped it.

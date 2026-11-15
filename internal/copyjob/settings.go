@@ -18,6 +18,10 @@ type Settings struct {
 	// out "._" files; it applies only with SkipSystem on (off by default).
 	SkipSystem      bool `json:"skip_system_files"`
 	SkipAppleDouble bool `json:"skip_appledouble_files"`
+	// XXH64Lists also makes an XXH64 of every file as the copy is read back,
+	// and saves them as a list beside the destination folder, in the format
+	// of `xxhsum -H1`, for other tools (off by default; added in 0.2.57).
+	XXH64Lists bool `json:"xxh64_lists"`
 }
 
 // DefaultSettings are used until the owner saves a choice.

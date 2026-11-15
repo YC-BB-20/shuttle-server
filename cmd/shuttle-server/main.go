@@ -24,6 +24,7 @@ import (
 	"github.com/YC-BB-20/shuttle-server/internal/soak"
 	"github.com/YC-BB-20/shuttle-server/internal/version"
 	"github.com/YC-BB-20/shuttle-server/internal/xxh3"
+	"github.com/YC-BB-20/shuttle-server/internal/xxh64"
 )
 
 func main() {
@@ -57,9 +58,15 @@ func main() {
 	os.Exit(code)
 }
 
+// hash prints each file's XXH128, as `xxhsum -H2` does, or with -H1 its
+// XXH64, as `xxhsum -H1` does (v0.2.57).
 func hash(files []string) int {
+	h64 := len(files) > 0 && files[0] == "-H1"
+	if h64 || len(files) > 0 && files[0] == "-H2" {
+		files = files[1:]
+	}
 	if len(files) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: shuttle-server hash FILE...")
+		fmt.Fprintln(os.Stderr, "usage: shuttle-server hash [-H1|-H2] FILE...")
 		return 2
 	}
 	code := 0
@@ -71,16 +78,24 @@ func hash(files []string) int {
 			code = 1
 			continue
 		}
-		h := xxh3.New()
+		h, x := xxh3.New(), xxh64.New()
 		for {
 			n, err := f.Read(buf)
-			h.Write(buf[:n])
+			if h64 {
+				x.Write(buf[:n])
+			} else {
+				h.Write(buf[:n])
+			}
 			if err != nil {
 				break
 			}
 		}
 		f.Close()
-		fmt.Printf("%s  %s\n", h.Sum128(), p)
+		if h64 {
+			fmt.Printf("%016x  %s\n", x.Sum64(), p)
+		} else {
+			fmt.Printf("%s  %s\n", h.Sum128(), p)
+		}
 	}
 	return code
 }

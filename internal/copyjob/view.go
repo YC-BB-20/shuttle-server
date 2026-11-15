@@ -57,6 +57,9 @@ type View struct {
 	Rate       int64       `json:"rate,omitempty"`        // overall bytes of the job finished per second, smoothed
 	CopyRate   int64       `json:"copy_rate,omitempty"`   // average speed of all copying in this run, 0 until measured
 	WorkMs     int64       `json:"work_ms,omitempty"`     // time spent running so far, all runs; 0 in jobs finished before v0.2.56
+	X64List    string      `json:"xxh64_list,omitempty"`  // the XXH64 list saved beside the destination folder
+	X64Err     string      `json:"xxh64_error,omitempty"` // why the XXH64 list could not be saved
+	XXH64      bool        `json:"xxh64,omitempty"`       // this job makes XXH64s as it reads back
 	ETA        int64       `json:"eta_seconds,omitempty"` // time left, when it can be estimated
 	Space      *SpaceShort `json:"space,omitempty"`       // paused because it may not fit: the question for the owner
 	Error      string      `json:"error,omitempty"`       // a Verify job stopped on its own: a folder is missing
@@ -275,6 +278,7 @@ func baseView(j *Job) (View, state, live) {
 		Progress: progress(st, c, l), Space: st.SpaceAsk, Error: st.Error, From: st.Spec.From, Hidden: st.Hidden}
 	v.CopiedPart, v.ProvenPart = layers(st, c, l)
 	v.WorkMs = workClock(st, j.workSince.Load(), time.Now()) / 1e6
+	v.X64List, v.X64Err, v.XXH64 = st.X64List, st.X64Err, st.Spec.XXH64
 	if st.Phase == "done" && st.Choice == "stopped" {
 		v.Progress = 0 // a stopped copy shows what is proven, not a full bar
 		if st.Bytes > 0 {

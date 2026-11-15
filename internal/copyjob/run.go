@@ -314,7 +314,7 @@ func (j *Job) oneFile(ctx context.Context, e env, en *entry, srcPath, final stri
 		if d1 != s1 {
 			return rec, perFile("a different file with this name is already at the destination; it was left untouched")
 		}
-		rec.St, rec.D1 = "identical", d1.String()
+		rec.St, rec.D1, rec.X64 = "identical", d1.String(), j.take64(en.I)
 		return rec, nil
 	}
 	tmp := tempFor(final)
@@ -353,7 +353,7 @@ func (j *Job) oneFile(ctx context.Context, e env, en *entry, srcPath, final stri
 				return rec, perFile("could not give the copy its name: %v", err)
 			}
 			j.setLive(func(l *live) { l.temp = "" })
-			rec.St, rec.D1, rec.A = "verified", d1.String(), attempt+1
+			rec.St, rec.D1, rec.A, rec.X64 = "verified", d1.String(), attempt+1, j.take64(en.I)
 			return rec, nil
 		}
 	}
@@ -413,7 +413,7 @@ func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, fina
 		if d1 != s1 {
 			return nil, perFile("a different file with this name is already at the destination; it was left untouched")
 		}
-		rec.St, rec.S1, rec.D1 = "identical", s1.String(), d1.String()
+		rec.St, rec.S1, rec.D1, rec.X64 = "identical", s1.String(), d1.String(), j.take64(en.I)
 		return []Rec{rec}, nil
 	}
 	why := ""
@@ -473,7 +473,7 @@ func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, fina
 			}
 			continue
 		}
-		rec.C, rec.D1 = c, d1.String()
+		rec.C, rec.D1, rec.X64 = c, d1.String(), j.take64(en.I)
 		if !withS2 {
 			// The destination is checked; the source is not read again.
 			if err := name(); err != nil {
@@ -740,6 +740,7 @@ func (j *Job) run(ctx context.Context, e env, accepting func() bool) error {
 		}
 	}
 	jr.Flush()
+	j.noteX64List(j.writeX64List()) // before "done", so a finished job has its list
 	j.mu.Lock()
 	j.st.Phase, j.st.Finished, j.st.Checkpoints = "done", time.Now(), nil
 	j.st.CopyRate = copyAverage(j.copyClock(j.st.Finished)) // for history (v0.2.55)

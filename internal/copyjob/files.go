@@ -12,6 +12,7 @@ import (
 	"github.com/YC-BB-20/shuttle-server/internal/diskio"
 	"github.com/YC-BB-20/shuttle-server/internal/limits"
 	"github.com/YC-BB-20/shuttle-server/internal/xxh3"
+	"github.com/YC-BB-20/shuttle-server/internal/xxh64"
 )
 
 // Tunables; tests make them small.
@@ -138,15 +139,29 @@ func (j *Job) hashFileOpt(ctx context.Context, e env, d *diskio.Disk, path strin
 	}
 	defer f.Close()
 	h := xxh3.New()
+	// v0.2.57: a destination read also makes an XXH64 for other tools, when
+	// the job asks for it. XXH128 stays the proof.
+	var x *xxh64.Digest
+	if j.st.Spec.XXH64 && wants64(stage) {
+		x = xxh64.New()
+	}
 	var off int64
-	if c, ok := j.checkpoint(idx, stage); ok && c.Size == size && c.Mtime == mtime && h.UnmarshalBinary(c.State) == nil && int64(h.Size()) == c.Offset {
+	if c, ok := j.checkpoint(idx, stage); ok && c.Size == size && c.Mtime == mtime && h.UnmarshalBinary(c.State) == nil && int64(h.Size()) == c.Offset &&
+		(x == nil || (x.UnmarshalBinary(c.X64) == nil && int64(x.Size()) == c.Offset)) {
 		off = c.Offset
 	} else {
 		h.Reset()
+		if x != nil {
+			x.Reset()
+		}
 	}
 	save := func() error {
 		st, _ := h.MarshalBinary()
-		return j.saveCheckpoint(Checkpoint{Index: idx, Stage: stage, Offset: off, State: st, Size: size, Mtime: mtime})
+		c := Checkpoint{Index: idx, Stage: stage, Offset: off, State: st, Size: size, Mtime: mtime}
+		if x != nil {
+			c.X64, _ = x.MarshalBinary()
+		}
+		return j.saveCheckpoint(c)
 	}
 	per, nb := bufPlan(size-off, readBufs, e.budget.Total()/4)
 	lease, bufs, err := takeBufs(ctx, e.budget, per, nb)
@@ -227,6 +242,9 @@ func (j *Job) hashFileOpt(ctx context.Context, e env, d *diskio.Disk, path strin
 			return xxh3.Hash{}, perFile("file became shorter while being read")
 		}
 		h.Write(p.b[:p.n])
+		if x != nil {
+			x.Write(p.b[:p.n])
+		}
 		off += int64(p.n)
 		free <- p.b[:cap(p.b)]
 		if show {
@@ -243,7 +261,35 @@ func (j *Job) hashFileOpt(ctx context.Context, e env, d *diskio.Disk, path strin
 		}
 		return xxh3.Hash{}, perFile("changed while being read")
 	}
+	if x != nil {
+		j.put64(idx, x.Sum64())
+	}
 	return h.Sum128(), nil
+}
+
+// wants64 says whether a read is of the destination's copy (the read-back of
+// a copy, or of a Verify), which is where the XXH64 for other tools is made.
+func wants64(stage string) bool { return stage == "d1" || stage == "v1" || stage == "v2" }
+
+// put64 keeps the XXH64 of the file just read back, until its record takes
+// it with take64. One file is read back at a time on a destination, so one
+// slot is enough, and nothing grows with the number of files.
+func (j *Job) put64(idx int, v uint64) {
+	j.x64mu.Lock()
+	j.x64i, j.x64v, j.x64ok = idx, v, true
+	j.x64mu.Unlock()
+}
+
+// take64 is the XXH64 made by the last read-back of file idx, as 16 hex
+// digits, or "" if there is none.
+func (j *Job) take64(idx int) string {
+	j.x64mu.Lock()
+	defer j.x64mu.Unlock()
+	if !j.x64ok || j.x64i != idx {
+		return ""
+	}
+	j.x64ok = false
+	return fmt.Sprintf("%016x", j.x64v)
 }
 
 // copyFile copies src to tmp at disk speed. With hs set, the bytes read for

@@ -103,7 +103,7 @@ func (m *Manager) addVerify(s Spec) (*Job, error) {
 	now := time.Now()
 	id := now.Format("20060102-150405.000")
 	j := &Job{dir: filepath.Join(m.Dir, id), st: state{FormatVersion: FormatVersion, ID: id, Created: now, Choice: choice, Phase: "scan",
-		Spec:      Spec{Kind: KindVerify, Source: src, Dest: root, S2: s2, File: file, From: from, SkipSystem: cs.SkipSystem, SkipAppleDouble: cs.SkipSystem && cs.SkipAppleDouble},
+		Spec:      Spec{Kind: KindVerify, Source: src, Dest: root, S2: s2, File: file, From: from, SkipSystem: cs.SkipSystem, SkipAppleDouble: cs.SkipSystem && cs.SkipAppleDouble, XXH64: cs.XXH64Lists && file == ""},
 		SourceVol: srcVol, DestVol: v.ID, SameVolume: srcVol == v.ID && src != root}}
 	if err := os.MkdirAll(j.dir, 0o700); err != nil {
 		return nil, err
@@ -152,7 +152,7 @@ func (m *Manager) queueVerify(cj *Job) {
 			after = st.ID
 		}
 		j := &Job{dir: filepath.Join(m.Dir, id), st: state{FormatVersion: FormatVersion, ID: id, Created: time.Now(), Choice: choice, Phase: "scan", After: after,
-			Spec:      Spec{Kind: KindVerify, Source: src, Dest: st.Spec.Dest, S2: st.Spec.S2, From: []string{st.ID}, SkipSystem: st.Spec.SkipSystem, SkipAppleDouble: st.Spec.SkipAppleDouble},
+			Spec:      Spec{Kind: KindVerify, Source: src, Dest: st.Spec.Dest, S2: st.Spec.S2, From: []string{st.ID}, SkipSystem: st.Spec.SkipSystem, SkipAppleDouble: st.Spec.SkipAppleDouble, XXH64: st.Spec.XXH64},
 			SourceVol: srcVol, DestVol: st.DestVol, SameVolume: srcVol == st.DestVol}}
 		if err := os.MkdirAll(j.dir, 0o700); err != nil {
 			m.Log.Error("could not queue the Verify job for a copy", "job", st.ID, "err", err)
@@ -408,7 +408,7 @@ func (j *Job) verifyPhase(ctx context.Context, e env, jr *Journal, accepting fun
 					return err
 				}
 			}
-			rec.D1 = h.String()
+			rec.D1, rec.X64 = h.String(), j.take64(en.I)
 			switch {
 			case err != nil:
 				fail(err.Error())
@@ -422,7 +422,7 @@ func (j *Job) verifyPhase(ctx context.Context, e env, jr *Journal, accepting fun
 				extra = s2Verdict(en, filepath.Join(j.st.Spec.Source, filepath.FromSlash(en.P)), s2)
 				if extra.St == "failed" {
 					rec, extra = extra, Rec{}
-					rec.C, rec.D1, rec.T = en.H, h.String(), time.Now().Unix()
+					rec.C, rec.D1, rec.T, rec.X64 = en.H, h.String(), time.Now().Unix(), ""
 				}
 			}
 		}
@@ -509,6 +509,8 @@ func (j *Job) runVerify(ctx context.Context, e env, accepting func() bool) error
 		}
 		jr.Flush()
 	}
+	jr.Flush()
+	j.noteX64List(j.writeX64List())
 	j.mu.Lock()
 	j.st.Phase, j.st.Finished, j.st.Checkpoints = "done", time.Now(), nil
 	j.endWorkLocked(j.st.Finished)

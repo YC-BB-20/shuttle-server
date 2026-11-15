@@ -128,6 +128,7 @@ func (m *Manager) Add(s Spec) (*Job, error) {
 	s.Only = only
 	cs := m.Settings()
 	s.SkipSystem, s.SkipAppleDouble = cs.SkipSystem, cs.SkipSystem && cs.SkipAppleDouble
+	s.XXH64 = cs.XXH64Lists
 	if inside(dst, src) || inside(src, dst) {
 		return nil, errors.New("the source and destination cannot be inside each other")
 	}
@@ -460,6 +461,7 @@ func (m *Manager) runOne(ctx context.Context, j *Job) {
 		m.Log.Info("copy job finished", "job", j.st.ID, "verified", c.Verified, "already_there", c.Identical,
 			"failed", c.Failed, "s2_ok", c.Strong, "s2_warnings", c.S2Warn, "copied_only", c.Hashed,
 			"took", took.String())
+		m.logX64List(j)
 		m.queueVerify(j)
 	case errors.Is(cause, errOwnerPause), ctx.Err() != nil:
 		j.setLive(func(l *live) { l.reason, l.missing = "", "" })
@@ -482,6 +484,20 @@ func (m *Manager) runOne(ctx context.Context, j *Job) {
 		}
 		m.Log.Error("copy job hit a problem; it will try again", "job", j.st.ID, "err", err)
 		m.wait(ctx, j, "Problem: "+err.Error()+" — trying again shortly")
+	}
+}
+
+// logX64List notes in the log where a finished job's XXH64 list went, or
+// why it could not be saved (v0.2.57).
+func (m *Manager) logX64List(j *Job) {
+	j.mu.Lock()
+	p, e := j.st.X64List, j.st.X64Err
+	j.mu.Unlock()
+	switch {
+	case e != "":
+		m.Log.Warn("the XXH64 list could not be saved", "job", j.st.ID, "err", e)
+	case p != "":
+		m.Log.Info("XXH64 list saved beside the destination folder", "job", j.st.ID, "list", p)
 	}
 }
 

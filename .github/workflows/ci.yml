@@ -28,7 +28,7 @@ jobs:
           GOOS=darwin GOARCH=amd64 go vet ./...
       - name: go test
         run: go test ./...
-      - name: XXH128 cross-check against the official xxhsum
+      - name: XXH128 and XXH64 cross-check against the official xxhsum
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq xxhash
           xxhsum --version 2>&1 | head -1
@@ -40,6 +40,9 @@ jobs:
           ./ss hash t/* > ours.txt
           xxhsum -H2 t/* > theirs.txt
           diff ours.txt theirs.txt && echo "All $(wc -l < ours.txt) files match xxhsum -H2"
+          ./ss hash -H1 t/* > ours64.txt
+          xxhsum -H1 t/* > theirs64.txt
+          diff ours64.txt theirs64.txt && echo "All $(wc -l < ours64.txt) files match xxhsum -H1 (XXH64)"
 
   build:
     needs: test

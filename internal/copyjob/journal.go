@@ -24,8 +24,9 @@ type Rec struct {
 	P   string `json:"p,omitempty"` // path, kept only for failures and warnings
 	Err string `json:"err,omitempty"`
 	T   int64  `json:"t"`
-	A   int    `json:"a,omitempty"`  // copy attempts it took (1 or 2); added in 0.2.7
-	Ms  int64  `json:"ms,omitempty"` // how long the file took, in milliseconds; added in 0.2.7
+	A   int    `json:"a,omitempty"`   // copy attempts it took (1 or 2); added in 0.2.7
+	Ms  int64  `json:"ms,omitempty"`  // how long the file took, in milliseconds; added in 0.2.7
+	X64 string `json:"x64,omitempty"` // XXH64 of the copy as read back, for other tools; added in 0.2.57
 }
 
 // Journal is append-only. Each line is "crc32 json". Records are written at

@@ -3,6 +3,7 @@ package copyjob
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/YC-BB-20/shuttle-server/internal/xxh3"
+	"github.com/YC-BB-20/shuttle-server/internal/xxh64"
 )
 
 // v0.2.55: buffers are sized to the file and to a share of the budget.
@@ -137,16 +139,74 @@ func TestWorkTimeKeptAfterFinish(t *testing.T) {
 	if v.WorkMs < 90_000 || v.WorkMs > 90_000+30_000 {
 		t.Fatalf("work time %d ms", v.WorkMs)
 	}
-	b, err := os.ReadFile(j.path("job.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	// "finished" shows in memory a moment before job.json is written.
 	var st state
-	if err := json.Unmarshal(b, &st); err != nil || st.WorkNs <= int64(90*time.Second) {
-		t.Fatalf("saved work time %d (%v)", st.WorkNs, err)
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		b, err := os.ReadFile(j.path("job.json"))
+		st = state{}
+		if err == nil && json.Unmarshal(b, &st) == nil && st.Phase == "done" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("finish not saved")
+		}
+	}
+	if st.WorkNs <= int64(90*time.Second) {
+		t.Fatalf("saved work time %d", st.WorkNs)
 	}
 	time.Sleep(20 * time.Millisecond)
 	if v2, _, _ := baseView(j); v2.WorkMs != st.WorkNs/1e6 {
 		t.Fatalf("clock still running after finish: %d vs %d", v2.WorkMs, st.WorkNs/1e6)
+	}
+}
+
+// v0.2.57: a read-back paused mid-file continues its XXH64 from the saved
+// state too, and a checkpoint without one starts the file again.
+func TestReadBackXXH64PauseResume(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "src")
+	os.MkdirAll(src, 0o755)
+	data := make([]byte, 1<<20+5)
+	rand.New(rand.NewSource(4)).Read(data)
+	p := filepath.Join(src, "clip.mov")
+	if err := os.WriteFile(p, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := newManager(t, filepath.Join(root, "state"))
+	j, err := m.Add(Spec{Source: src, Dest: filepath.Join(root, "dst")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.st.Spec.XXH64 = true
+	sd, _ := m.Disks.For(src)
+	e := env{budget: m.Budget, src: sd, dst: sd}
+	want := fmt.Sprintf("%016x", xxh64.Sum(data))
+
+	chunkDelay = 3 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	_, err = j.hashFile(ctx, e, sd, p, 0, "d1", false)
+	cancel()
+	chunkDelay = 0
+	c, ok := j.checkpoint(0, "d1")
+	if err == nil || !ok || c.Offset <= 0 || len(c.X64) == 0 {
+		t.Fatalf("checkpoint after pause: %+v %v %v", c, ok, err)
+	}
+	if h, err := j.hashFile(context.Background(), e, sd, p, 0, "d1", false); err != nil || h != xxh3.Sum128(data) {
+		t.Fatal("resumed XXH128 wrong", err)
+	}
+	if got := j.take64(0); got != want {
+		t.Fatalf("resumed XXH64 %s, want %s", got, want)
+	}
+	if j.take64(0) != "" {
+		t.Fatal("XXH64 taken twice")
+	}
+	// A checkpoint from before v0.2.57 has no XXH64 state: start from zero.
+	c.X64 = nil
+	j.saveCheckpoint(c)
+	if _, err := j.hashFile(context.Background(), e, sd, p, 0, "d1", false); err != nil {
+		t.Fatal(err)
+	}
+	if got := j.take64(0); got != want {
+		t.Fatalf("XXH64 after an old checkpoint %s, want %s", got, want)
 	}
 }

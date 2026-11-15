@@ -334,6 +334,12 @@
     <p class="mute">Finder rewrites .DS_Store whenever a folder is opened, so a copy of one can never stay verified. Left-out files are counted on the copy, not hidden. Applies to new copies and verifies.</p>
     <p class="err" id="sysErr"></p>
   </section>
+  <section class="card" id="x64Set">
+    <h2>Hashes for other tools</h2>
+    <label class="opt"><input type="checkbox" id="x64On"><span>Also make an XXH64 of every file, and save the list next to the destination folder</span></label>
+    <p class="mute">Shuttle still proves every copy with XXH128. The XXH64 is made while the copy is read back, and the list (for a destination "Day 1", the file "Day 1.xxh64" beside it) is in the format of <code>xxhsum -H1</code>, so <code>xxhsum -c</code> and other tools that read XXH64 lists can check the copy. A copy with no check has no list. An existing list is never replaced. Applies to new copies and verifies.</p>
+    <p class="err" id="x64Err"></p>
+  </section>
   <section class="card" id="histSet">
     <h2>History</h2>
     <label class="opt"><input type="checkbox" id="showHidden"><span>Show hidden entries in the history</span></label>
@@ -1095,6 +1101,8 @@ function card(v) {
   else if (!old && v.state !== "running") line = "Added " + when(v.created);
   if (srcOnly && !old) line += (line ? " · " : "") + "The source read in full and compared with the hashes stored when it was copied; the copies are not read. Nothing is changed.";
   else if (ver && !old) line += (line ? " · " : "") + "Read in full and compared with the hashes stored when it was copied" + (again ? (v.s2 === "after" ? ", then the source is read again once every copy is checked" : ", with the source read again beside it") : "") + ". Nothing is changed.";
+  if (old && v.xxh64_list) line += (line ? " " : "") + "XXH64 list saved next to the destination folder: " + v.xxh64_list.split("/").pop() + ".";
+  else if (old && v.xxh64_error) line += (line ? " " : "") + "The XXH64 list could not be saved: " + v.xxh64_error + ".";
   q(".line").textContent = line; q(".line").title = line; q(".sub").title = sub;
   q(".bar.file").hidden = v.state !== "running" || scanning;
   q(".bar.file > i").style.width = v.state === "running" ? pct(v.file_done, v.file_size) + "%" : "0%";
@@ -1266,13 +1274,16 @@ function showSys(c) {
   $("skipDot").disabled = !c.skip_system_files; $("skipDot").closest(".opt").classList.toggle("mute", !c.skip_system_files);
   $("sysNote").textContent = c.skip_system_files ? "System files such as .DS_Store" + (c.skip_appledouble_files ? " and \"._\" files" : "") + " are left out (Settings)." : "System files such as .DS_Store are copied too (Settings).";
 }
-function loadSys() { fetch("/api/settings/copy").then(r => r.json()).then(showSys).catch(() => {}); }
-function saveSys() {
-  $("sysErr").textContent = "";
-  post("/api/settings/copy", { skip_system_files: $("skipSys").checked, skip_appledouble_files: $("skipSys").checked && $("skipDot").checked })
-    .then(showSys).catch(e => { $("sysErr").textContent = e.message; loadSys(); });
+// v0.2.57: every save sends all the choices, so one switch never resets another.
+let copySet = {};
+function showSet(c) { copySet = c; showSys(c); $("x64On").checked = !!c.xxh64_lists; }
+function loadSys() { fetch("/api/settings/copy").then(r => r.json()).then(showSet).catch(() => {}); }
+function saveSys(errBox) {
+  $("sysErr").textContent = ""; $("x64Err").textContent = "";
+  post("/api/settings/copy", Object.assign({}, copySet, { skip_system_files: $("skipSys").checked, skip_appledouble_files: $("skipSys").checked && $("skipDot").checked, xxh64_lists: $("x64On").checked }))
+    .then(showSet).catch(e => { $(errBox).textContent = e.message; loadSys(); });
 }
-$("skipSys").onchange = saveSys; $("skipDot").onchange = saveSys;
+$("skipSys").onchange = $("skipDot").onchange = () => saveSys("sysErr"); $("x64On").onchange = () => saveSys("x64Err");
 loadSys();
 $("keySave").onclick = () => {
   $("keyErr").textContent = "";
