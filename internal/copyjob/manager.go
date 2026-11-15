@@ -126,6 +126,15 @@ func (m *Manager) Add(s Spec) (*Job, error) {
 		}
 	}
 	s.Only = only
+	if len(only) > 0 {
+		dirs := 0
+		for _, n := range only {
+			if fi, err := os.Stat(filepath.Join(src, n)); err == nil && fi.IsDir() {
+				dirs++
+			}
+		}
+		s.OnlyDirs = &dirs
+	}
 	cs := m.Settings()
 	s.SkipSystem, s.SkipAppleDouble = cs.SkipSystem, cs.SkipSystem && cs.SkipAppleDouble
 	s.Algo = normAlgo(cs.Hash)

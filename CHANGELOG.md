@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.59 — 15 November 2026
+
+- **Queue item tidied.** A copy is named after its folder; when files or folders were picked one by one, after the one picked, or "2 folders", "3 files", "2 folders, 1 file". The %, GB and time left line is larger, and the source and destination disk speeds sit right under it. The second progress bar is gone. Opened, the "Now:" line sits below the file list.
+- **Source and destination as disk → path:** for example "Source: This computer → Desktop/TESTFOLDER" and "Destination: BB - backups → /TestDest/TESTSQ13". The full path shows when you hover.
+- Fixed: a running copy showed a stray dot in its top-left corner, and its details used the small grey text of the "Live" badge.
+
 ## 0.2.58 — 15 November 2026
 
 - **Choose the hash copies use** (Settings → Hash for copies): XXH128 (the default, as before), XXH64, or both. Every read of a copy makes the chosen hash — the source as it is copied, the copy read back, and the source read again — and they must match. With both, each read makes both, and both must match. A copy keeps the hash it started with; a Verify reads each file with the hash its copy made, so older copies still verify after the setting changes.

@@ -12,12 +12,21 @@ import (
 
 // View is what the page shows for a job.
 type View struct {
-	ID         string      `json:"id"`
-	Source     string      `json:"source"`
-	Dest       string      `json:"dest"`
-	S2         string      `json:"s2"`
-	Hash       string      `json:"hash"`
-	Only       int         `json:"only,omitempty"` // how many files and folders were picked one by one; 0 means the whole folder
+	ID       string `json:"id"`
+	Source   string `json:"source"`
+	Dest     string `json:"dest"`
+	S2       string `json:"s2"`
+	Hash     string `json:"hash"`
+	Only     int    `json:"only,omitempty"`      // how many files and folders were picked one by one; 0 means the whole folder
+	OnlyDirs *int   `json:"only_dirs,omitempty"` // how many of those are folders (v0.2.59; not known for older jobs)
+	OnlyName string `json:"only_name,omitempty"` // the one name picked, when just one was
+	// Where the source and destination are, for the queue (v0.2.59): the
+	// disk's name ("This computer" for the computer's own disk) and the
+	// path on it (inside the home folder, from there).
+	FromDisk   string      `json:"from_disk"`
+	FromPath   string      `json:"from_path"`
+	ToDisk     string      `json:"to_disk"`
+	ToPath     string      `json:"to_path"`
 	Kind       string      `json:"kind,omitempty"` // "verify" for a Verify job
 	VerifyFile string      `json:"verify_file,omitempty"`
 	Created    time.Time   `json:"created"`
@@ -277,6 +286,12 @@ func baseView(j *Job) (View, state, live) {
 	v.CopiedPart, v.ProvenPart = layers(st, c, l)
 	v.WorkMs = workClock(st, j.workSince.Load(), time.Now()) / 1e6
 	v.Algo = normAlgo(st.Spec.Algo)
+	v.OnlyDirs = st.Spec.OnlyDirs
+	if len(st.Spec.Only) == 1 {
+		v.OnlyName = st.Spec.Only[0]
+	}
+	v.FromDisk, v.FromPath = placeOf(st.Spec.Source)
+	v.ToDisk, v.ToPath = placeOf(st.Spec.Dest)
 	if st.Phase == "done" && st.Choice == "stopped" {
 		v.Progress = 0 // a stopped copy shows what is proven, not a full bar
 		if st.Bytes > 0 {
@@ -1145,4 +1160,25 @@ func IsCheckStage(stage string) bool {
 		}
 	}
 	return false
+}
+
+// placeOf splits a path into the disk it is on and the path on that disk:
+// "/Volumes/BB - backups/TestDest" is ("BB - backups", "/TestDest"); a path
+// in the home folder is ("This computer", "Desktop/TESTFOLDER"); any other
+// path on the computer's own disk is ("This computer", the full path).
+func placeOf(p string) (disk, rel string) {
+	p = filepath.Clean(p)
+	if r, ok := strings.CutPrefix(p, "/Volumes/"); ok {
+		name, rest, _ := strings.Cut(r, "/")
+		return name, "/" + rest
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" && home != "/" {
+		if r, ok := strings.CutPrefix(p, filepath.Clean(home)+"/"); ok {
+			return "This computer", r
+		}
+		if p == filepath.Clean(home) {
+			return "This computer", "home folder"
+		}
+	}
+	return "This computer", p
 }

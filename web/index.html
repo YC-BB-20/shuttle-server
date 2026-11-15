@@ -140,8 +140,7 @@
   .speed { font-size:14px; color:var(--mute); margin:0 0 6px; font-variant-numeric:tabular-nums; }
   .job .line { font-size:14px; font-variant-numeric:tabular-nums; }
   /* While a copy runs, text that changes every second keeps one line each, so the page never jumps. */
-  .job.live .line, .job.live .sub, .job.live .speed { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-height:1.4em; }
-  .bar.file { height:4px; }
+  .job.going .sub, .job.going .speed { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-height:1.4em; }
   .frow { cursor:pointer; }
   .frow:hover { background:color-mix(in srgb, var(--accent) 6%, var(--card)); }
   .kv { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:4px 12px; margin:0 0 12px; font-size:14px; }
@@ -222,6 +221,7 @@
   .job.verify .ico { width:24px; height:24px; font-size:12px; border-radius:6px; }
   .job.verify .route { font-size:13px; }
   .job.verify .sub { font-size:12px; }
+  .job .m .speed { margin:2px 0 0; font-size:13px; }
   .job .of { font-size:12px; color:var(--verify); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .job .detail .bar:not(.ok) > i { background:var(--copy); } .job.verify .detail .bar:not(.ok) > i { background:var(--verify); }
   .route { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); gap:6px; max-width:560px; align-items:baseline; font-size:15px; font-weight:600; }
@@ -229,13 +229,13 @@
   .route > .arr { color:var(--mute); font-weight:400; }
   .route .dk { color:var(--mute); font-weight:400; font-size:13px; }
   .job .bar { height:4px; margin:4px 0 2px; }
-  .job .sub { font-size:13px; color:var(--mute); overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+  .job .sub { font-size:15px; color:var(--mute); overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
   .job .sub.bad { color:var(--bad); } .job .sub.warn { color:var(--warn); }
   .job .acts { display:flex; gap:6px; flex:none; }
   .job .counts:empty, .job .speed:empty { display:none; }
   .job .rspeed { flex:none; text-align:right; font-size:13px; color:var(--mute); white-space:nowrap; font-variant-numeric:tabular-nums; }
   .job .rspeed b { display:block; font-size:17px; color:var(--fg); }
-  @media (max-width:600px) { .job .rspeed small { display:none; } .job .rspeed b { font-size:15px; } }
+  @media (max-width:600px) { .job .rspeed small { display:none; } .job .rspeed b { font-size:15px; } .job.going .sub, .job.going .speed { white-space:normal; } }
   /* v0.2.50: From and To on one line when they fit. */
   .job .paths { display:flex; flex-wrap:wrap; gap:0 24px; }
   .job .paths .path { flex:0 1 auto; min-width:0; margin:0; }
@@ -1013,14 +1013,23 @@ const cards = {};
 const stateText = { running: "Running", waiting: "Waiting", paused: "Paused", queued: "Queued", finished: "Finished", stopped: "Stopped" };
 const base = p => { const parts = (p || "").split("/").filter(Boolean); return parts.length ? parts[parts.length - 1] : p; };
 const passRate = v => Math.max(v.source_rate || 0, v.dest_rate || 0);
+// A copy's name (v0.2.59): the folder's name for a whole folder; the one
+// thing picked; else how many folders and files were picked.
+function jobName(v) {
+  if (!v.only) return base(v.source);
+  if (v.only_name) return v.only_name;
+  if (v.only_dirs == null) return base(v.source) + " (" + v.only + " chosen)";
+  const d = v.only_dirs, f = v.only - d;
+  return [d && d + (d === 1 ? " folder" : " folders"), f && f + (f === 1 ? " file" : " files")].filter(Boolean).join(", ");
+}
 function card(v) {
   let c = cards[v.id];
   if (!c) {
     c = document.createElement("section"); c.className = "job";
     c.innerHTML = '<div class="r"><span class="ico"></span><div class="m"><div class="route"><span class="s"></span><span class="arr">→</span><span class="d"></span></div><div class="of" hidden></div>' +
-      '<div class="bar"><i></i></div><div class="sub"></div></div><div class="rspeed" hidden></div><div class="acts"></div></div>' +
-      '<div class="detail"><div class="paths"><p class="path from"></p><p class="path to"></p></div><p class="line"></p><div class="bar file"><i></i></div><p class="speed mute"></p><p class="fcounts" hidden></p>' +
-      '<p class="counts mute"></p><p class="warn same" hidden>Source and destination are on the same disk: this copy does not protect against that disk failing.</p><div class="checks" hidden></div><div class="brow"><div class="btns"></div><div class="fpage"></div></div></div>';
+      '<div class="bar"><i></i></div><div class="sub"></div><p class="speed mute"></p></div><div class="rspeed" hidden></div><div class="acts"></div></div>' +
+      '<div class="detail"><div class="paths"><p class="path from"></p><p class="path to"></p></div><p class="fcounts" hidden></p>' +
+      '<p class="counts mute"></p><p class="warn same" hidden>Source and destination are on the same disk: this copy does not protect against that disk failing.</p><div class="checks" hidden></div><div class="brow"><div class="btns"></div><div class="fpage"></div></div><div class="tail"><p class="line"></p></div></div>';
     cards[v.id] = c;
     // Tapping a copy opens its details and files; tapping it again closes them.
     c.onclick = e => {
@@ -1040,14 +1049,17 @@ function card(v) {
   // A Verify names the copy it checks, so it is clear which copy it belongs to.
   const of = q(".of"), cp = ver && v.from && v.from.length === 1 && cards[v.from[0]] && cards[v.from[0]]._v;
   of.hidden = !ver;
-  if (ver) of.textContent = "↳ Checks the copy " + (cp ? base(cp.source) + (cp.only ? " (" + cp.only + " chosen)" : "") + " → " + base(cp.dest) + (cp.created ? " · " + when(cp.created) : "") :
+  if (ver) of.textContent = "↳ Checks the copy " + (cp ? jobName(cp) + " → " + base(cp.dest) + (cp.created ? " · " + when(cp.created) : "") :
     v.from && v.from.length > 1 ? "of " + v.from.length + " copies" : "made earlier");
   const place = ver && v.verify_file ? v.dest + "/" + v.verify_file : v.dest;
   // Folder names with their disk beside them; a Verify says which kind it is.
-  q(".s").replaceChildren(ver ? verKind(v) : base(v.source) + (v.only ? " (" + v.only + " chosen)" : ""), ...(ver ? [] : [el("span", "dk", " · " + diskOf(v.source))]));
+  q(".s").replaceChildren(ver ? verKind(v) : jobName(v), ...(ver ? [] : [el("span", "dk", " · " + diskOf(v.source))]));
   q(".s").title = ver ? verKindHelp(v) : v.source;
   q(".d").replaceChildren(base(place), el("span", "dk", " · " + diskOf(place))); q(".d").title = place;
-  q(".from").textContent = ver ? "Checks " + place : "From " + v.source; q(".to").textContent = ver ? "" : "To " + v.dest;
+  // v0.2.59: each place as its disk → the path on it.
+  const at = (d, p) => d ? d + " → " + p : "";
+  q(".from").textContent = ver ? "Checks " + place : "Source: " + (at(v.from_disk, v.from_path) || v.source); q(".from").title = v.source;
+  q(".to").textContent = ver ? "" : "Destination: " + (at(v.to_disk, v.to_path) || v.dest); q(".to").title = v.dest;
   // Icon: what state it is in, at a glance.
   const ico = q(".ico");
   // Purple for a copy, pink for a verify; green once done, red for a problem.
@@ -1058,7 +1070,7 @@ function card(v) {
   const pc = (p >= 100 || p === Math.floor(p) ? Math.floor(p) : p.toFixed(1)) + "%";
   const mb = q(".r .bar > i"); mb.style.width = (scanning ? 0 : p) + "%";
   const vnow = v.state === "running" && !scanning && (ver || isCheckStage(v.stage));
-  q(".r .bar").classList.toggle("vbar", vnow && ver); q(".bar.file").classList.toggle("vbar", vnow);
+  q(".r .bar").classList.toggle("vbar", vnow && ver);
   mb.style.background = v.missing ? "var(--bad)" : v.state === "running" ? "var(--" + kind + ")" :
     v.state === "finished" ? (problems ? "var(--bad)" : "var(--ok)") : "var(--mute)";
   // A copy at work: purple grows as files are written, pink follows as each is read back and matches.
@@ -1104,10 +1116,8 @@ function card(v) {
   if (srcOnly && !old) line += (line ? " · " : "") + "The source read in full and compared with the hashes stored when it was copied; the copies are not read. Nothing is changed.";
   else if (ver && !old) line += (line ? " · " : "") + "Read in full and compared with the hashes stored when it was copied" + (again ? (v.s2 === "after" ? ", then the source is read again once every copy is checked" : ", with the source read again beside it") : "") + ". Nothing is changed.";
   q(".line").textContent = line; q(".line").title = line; q(".sub").title = sub;
-  q(".bar.file").hidden = v.state !== "running" || scanning;
-  q(".bar.file > i").style.width = v.state === "running" ? pct(v.file_done, v.file_size) + "%" : "0%";
   const live = v.state === "running" && !scanning;
-  c.classList.toggle("live", live);
+  c.classList.toggle("going", live);
   if (fv[v.id]) {
     fv[v.id].live = live && v.file ? { file: v.file, stage: v.stage, file_done: v.file_done, file_size: v.file_size } : null;
     const lw = fv[v.id].live;
@@ -1206,7 +1216,7 @@ function renderMonitor(list) {
   // v0.2.53: one bar (the queue's). Above it, the job running now; at the
   // right end of the % line, its speed. File details live in the queue and history.
   const rp = run ? Math.round((run.progress || 0) * 100) : 0;
-  $("monCopy").textContent = run ? base(run.source) + " → " + base(run.dest) + " · " + (run.phase === "scan" ? "scanning, " + run.scanned + " files so far" :
+  $("monCopy").textContent = run ? (run.kind === "verify" ? base(run.source) : jobName(run)) + " → " + base(run.dest) + " · " + (run.phase === "scan" ? "scanning, " + run.scanned + " files so far" :
     rp + "% · " + (run.state === "waiting" ? (run.missing ? "waiting for the disk" : "waiting") : run.eta_seconds ? left(run.eta_seconds) : "working out the time left")) : "";
   $("monRate").textContent = run && run.state === "running" && run.phase !== "scan" ? (rate(run.kind === "verify" ? run.rate : run.copy_rate) || "measuring…") : "";
 }
@@ -1447,7 +1457,7 @@ const fileChip = { checkwait: "waiting", already: "ok", already2: "ok", proven: 
 // / Show fewer sit beside Verify files.
 const treeMin = 20, filePage = 50;
 function toggleFiles(v, c) {
-  if (fv[v.id]) { c.querySelector(".detail").append(c.querySelector(".brow")); fv[v.id].box.remove(); c.querySelector(".fpage").replaceChildren(); delete fv[v.id]; return; }
+  if (fv[v.id]) { c.querySelector(".detail").insertBefore(c.querySelector(".brow"), c.querySelector(".tail")); fv[v.id].box.remove(); c.querySelector(".fpage").replaceChildren(); delete fv[v.id]; return; }
   const box = el("div", "files");
   // One file: no filters, the one row says it all.
   const one = v.files <= 1;
@@ -1462,7 +1472,7 @@ function toggleFiles(v, c) {
   // files, beside the filters or the heading (v0.2.50).
   const top = el("div", "ftop"); top.append(c.querySelector(".brow"), bar, el("p", "fhead"));
   box.append(top, el("div", "frows"), el("p", "mute note"));
-  c.querySelector(".detail").append(box); loadFiles(f, false);
+  c.querySelector(".detail").insertBefore(box, c.querySelector(".tail")); loadFiles(f, false); // the Now line stays below the files (v0.2.59)
 }
 const filesURL = (f, dir, from, limit) => "/api/jobs/" + f.v.id + "/files?filter=" + f.filter + "&from=" + from + "&limit=" + limit + (f.tree ? "&tree=1&dir=" + encodeURIComponent(dir) : "");
 // One folder's files and folders; append adds its next page.

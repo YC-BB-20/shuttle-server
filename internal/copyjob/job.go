@@ -50,6 +50,9 @@ type Spec struct {
 	// Only lists the chosen files and folders inside Source, by name; empty
 	// means the whole folder.
 	Only []string `json:"only,omitempty"`
+	// OnlyDirs is how many of Only are folders, counted when the job is
+	// added, so the queue can name the job (v0.2.59); nil in older jobs.
+	OnlyDirs *int `json:"only_dirs,omitempty"`
 	// Verify jobs (added in 0.2.9): Kind "verify", Source and Dest are the
 	// folder checked, File one file in it (empty: the whole folder), From the
 	// copy jobs whose stored hashes it compares with, oldest first.
