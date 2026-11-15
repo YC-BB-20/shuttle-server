@@ -92,6 +92,37 @@ func Run(o Options) ([]Sample, error) {
 	go func() { m.Run(ctx); close(stopped) }()
 	defer func() { cancel(); <-stopped }() // the copy saves its place before Run returns
 
+	// Warm up with the large files first: their buffers (up to the budget)
+	// are then in use before sampling starts, so a slow machine that reaches
+	// them only late in the run does not read as growth (v0.2.56).
+	var warm Sample // the most memory used while warming up, kept as the first sample
+	if o.BigFiles > 0 {
+		var big []string
+		for i := 0; i < o.BigFiles; i++ {
+			big = append(big, fmt.Sprintf("big%02d.mov", i))
+		}
+		if _, err := m.Add(copyjob.Spec{Source: src, Dest: filepath.Join(o.Dir, "dst-warmup"), S2: "now", Only: big}); err != nil {
+			return nil, err
+		}
+	warm:
+		for {
+			done := true
+			for _, v := range m.Views() {
+				done = done && (v.State == "finished" || v.State == "stopped")
+			}
+			warm.Memory = max(warm.Memory, limits.GoMemory())
+			if done {
+				warm.Goroutines, warm.Threads, warm.OpenFiles = runtime.NumGoroutine(), pprof.Lookup("threadcreate").Count(), openFiles()
+				break warm
+			}
+			select {
+			case <-ctx.Done():
+				return nil, nil
+			case <-time.After(50 * time.Millisecond):
+			}
+		}
+	}
+
 	csvf, err := os.Create(filepath.Join(o.Dir, "soak.csv"))
 	if err != nil {
 		return nil, err
@@ -102,6 +133,9 @@ func Run(o Options) ([]Sample, error) {
 	start := time.Now()
 	round := 0
 	var samples []Sample
+	if warm.Memory > 0 {
+		samples = append(samples, warm)
+	}
 	tick := time.NewTicker(o.Every)
 	defer tick.Stop()
 	for {
