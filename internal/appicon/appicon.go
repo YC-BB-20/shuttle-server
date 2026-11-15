@@ -1,4 +1,4 @@
-// Package appicon draws Shuttle Server's app icon (a purple square with an up
+// Package appicon draws Shuttle Server's app icon (the page's logo: a purple square with an up
 // and a down arrow) and turns it into a macOS .icns file, so Shuttle's
 // helper apps show their own icon and name in System Settings and Finder.
 // Pure Go for the drawing; macOS's own iconutil makes the .icns.
@@ -11,46 +11,64 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
 )
 
-var purple = color.NRGBA{R: 0x7c, G: 0x3a, B: 0xed, A: 0xff}
+// The page's own logo (the favicon in web/index.html), in its 64-unit space:
+// a purple rounded square with an up arrow and a down arrow in round white
+// strokes 5 units wide.
+var purple = color.NRGBA{R: 0x7a, G: 0x3c, B: 0xc8, A: 0xff}
 
-// inShape reports whether the point (x, y), in 0..1, is on the icon.
-func inShape(x, y float64) (square, arrow bool) {
-	const m, r = 0.04, 0.22 // margin and corner radius
-	cx, cy := x, y
-	switch {
-	case x < m+r:
-		cx = m + r
-	case x > 1-m-r:
-		cx = 1 - m - r
-	}
-	switch {
-	case y < m+r:
-		cy = m + r
-	case y > 1-m-r:
-		cy = 1 - m - r
-	}
-	dx, dy := x-cx, y-cy
-	square = x >= m && x <= 1-m && y >= m && y <= 1-m && dx*dx+dy*dy <= r*r
-	tri := func(ax, ay, by, hw float64) bool { // apex (ax, ay), base at by, half width hw
-		t := (y - ay) / (by - ay)
-		return t >= 0 && t <= 1 && abs(x-ax) <= hw*t
-	}
-	up := (x >= 0.33 && x <= 0.39 && y >= 0.38 && y <= 0.76) || tri(0.36, 0.22, 0.42, 0.12)
-	down := (x >= 0.61 && x <= 0.67 && y >= 0.24 && y <= 0.62) || tri(0.64, 0.78, 0.58, 0.12)
-	return square, up || down
+type seg struct{ x1, y1, x2, y2 float64 }
+
+var arrows = []seg{
+	{22, 46, 22, 18}, {22, 18, 14, 26}, {22, 18, 30, 26}, // up
+	{42, 18, 42, 46}, {42, 46, 34, 38}, {42, 46, 50, 38}, // down
 }
 
-func abs(v float64) float64 {
-	if v < 0 {
-		return -v
+const (
+	corner = 14.0
+	half   = 2.5 // half the stroke width
+)
+
+func distToSeg(px, py float64, s seg) float64 {
+	dx, dy := s.x2-s.x1, s.y2-s.y1
+	t := ((px-s.x1)*dx + (py-s.y1)*dy) / (dx*dx + dy*dy)
+	if t < 0 {
+		t = 0
+	} else if t > 1 {
+		t = 1
 	}
-	return v
+	ex, ey := px-(s.x1+t*dx), py-(s.y1+t*dy)
+	return math.Sqrt(ex*ex + ey*ey)
+}
+
+// inShape reports whether the point (x, y), in 0..1, is on the square and on an arrow.
+func inShape(x, y float64) (square, arrow bool) {
+	px, py := x*64, y*64
+	cx, cy := px, py
+	if px < corner {
+		cx = corner
+	} else if px > 64-corner {
+		cx = 64 - corner
+	}
+	if py < corner {
+		cy = corner
+	} else if py > 64-corner {
+		cy = 64 - corner
+	}
+	dx, dy := px-cx, py-cy
+	square = dx*dx+dy*dy <= corner*corner
+	for _, a := range arrows {
+		if distToSeg(px, py, a) <= half {
+			return square, true
+		}
+	}
+	return square, false
 }
 
 // Render draws the icon at size×size pixels, smoothed by 4×4 sampling.

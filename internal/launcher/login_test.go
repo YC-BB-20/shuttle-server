@@ -20,6 +20,9 @@ func TestLoginOnOffAndRefresh(t *testing.T) {
 	if !strings.Contains(s, "<key>RunAtLoad</key><true/>") || strings.Contains(s, "KeepAlive") || strings.Contains(s, "Background") {
 		t.Fatal("wrong keys:", s)
 	}
+	if !strings.Contains(s, "<string>local.shuttle-server.launcher</string>") || !strings.Contains(plist, "local.shuttle-server.launcher") {
+		t.Fatal("the login item must be tied to the Shuttle Server app, by the app's own identifier")
+	}
 	if !strings.Contains(s, "/Users/a b/bin/shuttle-server") || !strings.Contains(s, "/d&amp;x") {
 		t.Fatal("paths:", s)
 	}

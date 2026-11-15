@@ -10,7 +10,9 @@ import (
 	"github.com/YC-BB-20/shuttle-server/internal/fsx"
 )
 
-// The login item is a launchd agent: macOS starts it when the owner logs in.
+// The login item is a launchd agent, tied to the "Shuttle Server" app in
+// Applications (AssociatedBundleIdentifiers) so System Settings → Login Items
+// shows that name and icon instead of "shuttle-server". It is: macOS starts it when the owner logs in.
 // It only starts Shuttle (RunAtLoad, no KeepAlive), so "Stop Shuttle" really
 // stops it until the next login. It is not "Background" type, which would
 // throttle disk access (DESIGN.md section 18).
@@ -28,6 +30,8 @@ const agentPlist = `<?xml version="1.0" encoding="UTF-8"?>
     <string>-data</string>
     <string>%s</string>
   </array>
+  <key>AssociatedBundleIdentifiers</key>
+  <array><string>local.shuttle-server.launcher</string></array>
   <key>RunAtLoad</key><true/>
   <key>WorkingDirectory</key><string>%s</string>
   <key>StandardOutPath</key><string>/dev/null</string>

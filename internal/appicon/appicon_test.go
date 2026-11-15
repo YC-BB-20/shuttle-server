@@ -13,11 +13,11 @@ func TestIconIsAPurpleSquareWithWhiteArrows(t *testing.T) {
 	if err != nil || img.Bounds().Dx() != 256 {
 		t.Fatal(err)
 	}
-	r, g, b, a := img.At(128, 40).RGBA() // inside the square, between the arrows' tops: purple
-	if a>>8 != 255 || r>>8 != 0x7c || g>>8 != 0x3a || b>>8 != 0xed {
+	r, g, b, a := img.At(128, 40).RGBA() // inside the square, between the arrows: purple
+	if a>>8 != 255 || r>>8 != 0x7a || g>>8 != 0x3c || b>>8 != 0xc8 {
 		t.Fatalf("background not purple: %x %x %x %x", r>>8, g>>8, b>>8, a>>8)
 	}
-	if r, g, b, _ := img.At(92, 150).RGBA(); r>>8 != 255 || g>>8 != 255 || b>>8 != 255 { // up arrow's shaft
+	if r, g, b, _ := img.At(88, 128).RGBA(); r>>8 != 255 || g>>8 != 255 || b>>8 != 255 { // up arrow's shaft
 		t.Fatal("arrow not white")
 	}
 	if _, _, _, a := img.At(1, 1).RGBA(); a != 0 { // outside the rounded corner

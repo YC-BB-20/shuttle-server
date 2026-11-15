@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.66 — 15 November 2026
+
+- **Shuttle Server shows under its own name and logo in System Settings → Login Items & Extensions,** not as "shuttle-server" with a plain icon. The start-at-login item is now tied to the "Shuttle Server" app in Applications, which has the page's logo (purple, up and down arrows, redrawn to match it exactly). An existing login item is updated the next time Shuttle starts.
+
 ## 0.2.65 — 15 November 2026
 
 - **Back to the plain menu bar helper.** 0.2.64's "Shuttle Server" helper app crashed with "method types do not match the superclass method types" and macOS flagged it as an Intel-only component. It is gone, and Shuttle removes the folder it made. The launcher app in Applications keeps the new icon.
