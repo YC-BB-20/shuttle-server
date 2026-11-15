@@ -240,6 +240,10 @@ func Run(opts Options) (code int) {
 	if p, err := filepath.EvalSymlinks(binPath); err == nil {
 		binPath = p
 	}
+	if renamed := launcher.PrettyName(binPath); renamed != binPath {
+		log.Info("named the program file \"Shuttle Server\" (\"shuttle-server\" still starts it)", "path", renamed)
+		binPath = renamed
+	}
 	updater := &update.Updater{Repo: cfg.UpdateRepo, KeyPath: filepath.Join(data, "secrets", "github-update-key"),
 		BinPath: binPath, Version: version.Version, Commit: version.Commit, Log: log, Restart: restart,
 		CopyBusy: func() bool { return jobs != nil && jobs.Busy() }}

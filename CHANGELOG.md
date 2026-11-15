@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.69 — 15 November 2026
+
+- **The program file is now named "Shuttle Server"** (Shuttle renames it once, at start, and leaves "shuttle-server" as a shortcut so the old start command still works). macOS lists the start-at-login item by the program file's name, so Login Items & Extensions should now read "Shuttle Server", with the logo set in 0.2.68.
+
 ## 0.2.68 — 15 November 2026
 
 - **The program file carries the Shuttle logo** so System Settings → Login Items & Extensions can show it. 0.2.67's link inside the app is gone (macOS showed it with a shortcut arrow and still read the file's own name). macOS lists an item by its file name, which Shuttle cannot change without an Apple developer signature, so the entry still reads "shuttle-server".
