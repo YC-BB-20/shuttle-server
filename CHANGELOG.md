@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.65 — 15 November 2026
+
+- **Back to the plain menu bar helper.** 0.2.64's "Shuttle Server" helper app crashed with "method types do not match the superclass method types" and macOS flagged it as an Intel-only component. It is gone, and Shuttle removes the folder it made. The launcher app in Applications keeps the new icon.
+
 ## 0.2.64 — 15 November 2026
 
 - **Shuttle has its own name and icon in macOS.** The menu bar icon is now run by a small app called "Shuttle Server" (purple, with an up and a down arrow) that Shuttle makes on your Mac, so System Settings shows that name and icon instead of "osascript". The "Shuttle Server" launcher app in Applications has the same icon. If the app cannot be made or quits at once, Shuttle uses the plain helper from before, and says so in the log.

@@ -1,20 +1,11 @@
 // Shuttle Server menu bar icon. Run by Shuttle Server itself with
 //   osascript -l JavaScript menubar.js <status file> <server pid>
-// or, as the "Shuttle Server" helper app made from this file (app.go), with
-// SHUTTLE_STATUS and SHUTTLE_PID set.
 // It only reads the status file and opens the page. It quits by itself when
 // the status file stops being updated, so it never outlives the server.
 ObjC.import('Cocoa');
 
-// Started as the "Shuttle Server" app, the paths arrive in the environment;
-// started by osascript they arrive as arguments.
-function envVar(k) {
-  const v = $.NSProcessInfo.processInfo.environment.objectForKey(k);
-  return v.isNil() ? '' : ObjC.unwrap(v);
-}
-
 function run(argv) {
-  const statusPath = argv[0] || envVar('SHUTTLE_STATUS'), serverPid = String(argv[1] || envVar('SHUTTLE_PID'));
+  const statusPath = argv[0], serverPid = String(argv[1]);
   const app = $.NSApplication.sharedApplication;
   app.setActivationPolicy($.NSApplicationActivationPolicyAccessory); // no Dock icon
 
