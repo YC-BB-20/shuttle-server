@@ -148,7 +148,11 @@ func attach(ctx context.Context, in *Info, whole string) {
 		}
 		if raw != "" {
 			in.Speed, in.Detail = usbSpeed(raw)
-			in.Can = driveCan(in.Model)
+			// What the drive says it can do beats the model table, which only
+			// fills in when the device tree has no USB version.
+			if in.Can = canFromBCD(tp.BCD); in.Can == "" {
+				in.Can = driveCan(in.Model)
+			}
 			switch {
 			case strings.Contains(strings.ToLower(raw), "limited"):
 				if in.Can != "" {

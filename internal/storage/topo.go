@@ -26,6 +26,7 @@ type Path struct {
 	Speed string   // raw USB speed from the device tree, used only when the report has none
 	Thund bool     // reached through a Thunderbolt/USB4 controller (PCIe tunnel), not plain USB
 	Port  int      // port number on Apple silicon, -1 when not known
+	BCD   int      // the USB version the drive itself declares (bcdUSB, e.g. 0x310), 0 when not known
 }
 
 type node struct {
@@ -36,7 +37,7 @@ type node struct {
 // Keys of the device tree worth keeping; everything else is skipped while
 // reading.
 var wantProps = map[string]bool{"BSD Name": true, "locationID": true, "USB Product Name": true, "kUSBProductString": true,
-	"Device Speed": true, "USBSpeed": true, "Device Model Name": true, "Device Vendor Name": true}
+	"Device Speed": true, "USBSpeed": true, "bcdUSB": true, "Device Model Name": true, "Device Vendor Name": true}
 
 var wholeRE = regexp.MustCompile(`^disk[0-9]+$`)
 
@@ -150,6 +151,7 @@ func pathFromChain(chain []node) Path {
 			p.USBID = "0x" + strings.ToLower(strconv.FormatInt(id, 16))
 		}
 		p.Speed = ioSpeed(dev.props["Device Speed"])
+		p.BCD, _ = strconv.Atoi(dev.props["bcdUSB"])
 	}
 	switch {
 	case p.Port >= 0:
@@ -340,4 +342,22 @@ func linuxPath(link string) Path {
 		}
 	}
 	return p
+}
+
+// canFromBCD is what a USB drive says it can do, from the USB version it
+// declares to the computer (bcdUSB, in hex: 0x300 USB 3.0, 0x310 USB 3.1,
+// 0x320 USB 3.2). A drive that declares 3.1 or newer supports the 10 Gb/s
+// mode; "" when the version is not known.
+func canFromBCD(bcd int) string {
+	switch {
+	case bcd >= 0x320:
+		return "USB 3.2 · 10 Gb/s or more"
+	case bcd >= 0x310:
+		return "USB 3.2 Gen 2 · 10 Gb/s"
+	case bcd >= 0x300:
+		return "USB 3.2 Gen 1 (USB 3.0) · 5 Gb/s"
+	case bcd >= 0x200:
+		return "USB 2 · 480 Mb/s"
+	}
+	return ""
 }

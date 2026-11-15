@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.61 — 15 November 2026
+
+- **"Drive can do" is read from the drive.** A USB drive declares the USB version it supports (3.1 means it can run at 10 Gb/s); Shuttle reads that from the system's device tree, so it works for any drive. The list of known models (Samsung T3, T5, T7, T9) is only a fallback when the device tree has no version.
+
 ## 0.2.60 — 15 November 2026
 
 - **Storage shows the link and what the drive can do.** A USB disk now reads "USB link: 5 Gb/s · USB 3.2 Gen 1 (USB 3.0)", then "Drive can do: USB 3.2 Gen 2 · 10 Gb/s" for drives Shuttle knows (Samsung T3, T5, T7, T9; other drives show no line, since the system does not report it).

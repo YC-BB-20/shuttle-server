@@ -163,3 +163,23 @@ func TestDriveCanAndSlow(t *testing.T) {
 		t.Fatal("unknown model must give no capability")
 	}
 }
+
+func TestCanFromBCDAndTree(t *testing.T) {
+	for bcd, want := range map[int]string{784: "USB 3.2 Gen 2 · 10 Gb/s", 768: "USB 3.2 Gen 1 (USB 3.0) · 5 Gb/s", 0: ""} {
+		if got := canFromBCD(bcd); got != want {
+			t.Fatalf("bcd %d: %q, want %q", bcd, got, want)
+		}
+	}
+	tree := `+-o Portable SSD T5@00200000  <class IOUSBHostDevice, id 0x1, registered>
+    |   "locationID" = 2097152
+    |   "bcdUSB" = 784
+    |   "Device Speed" = 3
+    +-o Media  <class IOMedia, id 0x2>
+      |   "BSD Name" = "disk5"
+`
+	sc := bufio.NewScanner(strings.NewReader(tree))
+	p := pathFromChain(parseIOReg(sc)["disk5"])
+	if p.BCD != 784 || p.USBID != "0x200000" {
+		t.Fatalf("got bcd %d id %q", p.BCD, p.USBID)
+	}
+}
