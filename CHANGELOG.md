@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.60 — 15 November 2026
+
+- **Storage shows the link and what the drive can do.** A USB disk now reads "USB link: 5 Gb/s · USB 3.2 Gen 1 (USB 3.0)", then "Drive can do: USB 3.2 Gen 2 · 10 Gb/s" for drives Shuttle knows (Samsung T3, T5, T7, T9; other drives show no line, since the system does not report it).
+- **A yellow "Slowed down" line** appears when the disk runs below what it could: a link the system calls limited (cable, adapter, hub or port), or USB 2.
+
 ## 0.2.59 — 15 November 2026
 
 - **Queue item tidied.** A copy is named after its folder; when files or folders were picked one by one, after the one picked, or "2 folders", "3 files", "2 folders, 1 file". The %, GB and time left line is larger, and the source and destination disk speeds sit right under it. The second progress bar is gone. Opened, the "Now:" line sits below the file list.

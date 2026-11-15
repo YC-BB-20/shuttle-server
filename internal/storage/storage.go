@@ -25,6 +25,8 @@ type Info struct {
 	Connection string `json:"connection,omitempty"` // USB, Thunderbolt, Internal, SATA, SD card, Disk image, Network
 	Speed      string `json:"speed,omitempty"`      // link speed as the system reports it, e.g. "10 Gb/s"
 	Detail     string `json:"detail,omitempty"`     // plain words, e.g. "USB 3.2 Gen 2"
+	Can        string `json:"can,omitempty"`        // what the drive itself can do, e.g. "USB 3.2 Gen 2 · 10 Gb/s" (v0.2.60)
+	Slow       string `json:"slow,omitempty"`       // plain reason the disk runs slower than it could, if it does
 	Model      string `json:"model,omitempty"`      // the drive or enclosure, as the system names it
 	FileSystem string `json:"file_system,omitempty"`
 	Solid      *bool  `json:"solid_state,omitempty"`
@@ -146,8 +148,16 @@ func attach(ctx context.Context, in *Info, whole string) {
 		}
 		if raw != "" {
 			in.Speed, in.Detail = usbSpeed(raw)
-			if strings.Contains(strings.ToLower(raw), "limited") {
-				in.Detail += " — the drive can go faster: the cable, adapter, hub or port is holding it back"
+			in.Can = driveCan(in.Model)
+			switch {
+			case strings.Contains(strings.ToLower(raw), "limited"):
+				if in.Can != "" {
+					in.Slow = "Running at " + in.Speed + " though the drive can do more: the cable, adapter, hub or port is holding it back."
+				} else {
+					in.Slow = "Running at " + in.Speed + ", below what the drive can do (its top speed is not reported): the cable, adapter, hub or port is holding it back."
+				}
+			case in.Speed == "480 Mb/s":
+				in.Slow = "Running as USB 2 (480 Mb/s): a USB 2 cable, port or hub is in the way."
 			}
 		}
 		if tp.Thund {
@@ -325,6 +335,22 @@ func usbSpeed(raw string) (string, string) {
 		return "40 Gb/s", "USB4"
 	}
 	return raw, ""
+}
+
+// driveCan is what a known drive model can do by itself, from its makers'
+// published specs; "" when the model is not known. The system report only
+// says a link is "limited", never to what.
+func driveCan(model string) string {
+	m := strings.ToLower(model)
+	switch {
+	case strings.Contains(m, "t9"):
+		return "USB 3.2 Gen 2x2 · 20 Gb/s"
+	case strings.Contains(m, "t5"), strings.Contains(m, "t7"):
+		return "USB 3.2 Gen 2 · 10 Gb/s"
+	case strings.Contains(m, "t3"):
+		return "USB 3.2 Gen 1 (USB 3.0) · 5 Gb/s"
+	}
+	return ""
 }
 
 // speedAbove walks the report and returns the speed of the nearest device

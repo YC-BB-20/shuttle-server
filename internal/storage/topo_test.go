@@ -154,3 +154,12 @@ func TestTrashHasItems(t *testing.T) {
 		t.Error("item in the Trash not seen")
 	}
 }
+
+func TestDriveCanAndSlow(t *testing.T) {
+	if got := driveCan("Portable SSD T5"); got != "USB 3.2 Gen 2 · 10 Gb/s" {
+		t.Fatalf("T5: %q", got)
+	}
+	if driveCan("Unknown Disk") != "" {
+		t.Fatal("unknown model must give no capability")
+	}
+}
