@@ -253,6 +253,13 @@ func Run(opts Options) (code int) {
 		}
 	}
 
+	if launcher.LoginSupported() {
+		go func() {
+			if err := launcher.SetFileIcon(ctx, binPath); err != nil {
+				log.Warn("could not give the program its icon in Login Items", "err", err)
+			}
+		}()
+	}
 	var login server.Login
 	if launcher.LoginSupported() {
 		login = loginItem{bin: binPath, data: data}

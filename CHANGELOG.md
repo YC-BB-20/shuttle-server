@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.68 — 15 November 2026
+
+- **The program file carries the Shuttle logo** so System Settings → Login Items & Extensions can show it. 0.2.67's link inside the app is gone (macOS showed it with a shortcut arrow and still read the file's own name). macOS lists an item by its file name, which Shuttle cannot change without an Apple developer signature, so the entry still reads "shuttle-server".
+
 ## 0.2.67 — 15 November 2026
 
 - **The start-at-login item runs Shuttle from inside the "Shuttle Server" app** (a link to the program in the app's folder), so macOS can list it as "Shuttle Server" with the logo instead of "shuttle-server". The link follows the program when it is updated. macOS may still call an app that is not signed by an Apple developer "unidentified developer".
