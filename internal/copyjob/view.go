@@ -64,6 +64,7 @@ type View struct {
 	CopiedPart float64     `json:"copied_part"`           // a copy: 0 to 1 of its bytes written so far (the purple layer)
 	ProvenPart float64     `json:"proven_part"`           // a copy: 0 to 1 of its bytes read back and matching (the pink layer)
 	Rate       int64       `json:"rate,omitempty"`        // overall bytes of the job finished per second, smoothed
+	AvgRate    int64       `json:"avg_rate,omitempty"`    // overall bytes of the job finished per second, averaged over the whole run (v0.2.70)
 	CopyRate   int64       `json:"copy_rate,omitempty"`   // average speed of all copying in this run, 0 until measured
 	WorkMs     int64       `json:"work_ms,omitempty"`     // time spent running so far, all runs; 0 in jobs finished before v0.2.56
 	Algo       string      `json:"algo"`                  // which hashes this job makes: xxh128, xxh64 or both (v0.2.58)
@@ -81,6 +82,8 @@ type rateMemo struct {
 	sr, dr   int64
 	work     float64 // progress in bytes at t
 	rate     float64 // smoothed
+	sumWork  float64 // work done while running this run, in bytes
+	sumSec   float64 // seconds spent running this run, pauses left out
 }
 
 // progress is how far a job is, 0 to 1, counting the passes it makes: with
@@ -244,14 +247,17 @@ func (m *Manager) Views() []View {
 				if w := max(0, work-r.work) / dt; r.rate == 0 || dt > 10 { // fresh, or back from a pause
 					r.rate = w
 				} else {
+					r.sumWork += max(0, work-r.work)
+					r.sumSec += dt
 					r.rate = 0.85*r.rate + 0.15*w // smooth: big files finish in jumps
 				}
 				r.t, r.src, r.dst, r.work = now, s, d, work
 			}
 			v.SrcRate, v.DstRate, v.Rate = r.sr, r.dr, int64(r.rate)
+			v.AvgRate = avgWorkRate(r.sumWork, r.sumSec)
 			v.CopyRate = copyAverage(j.copyClock(now))
-			if r.rate > 0 && st.Phase != "scan" {
-				v.ETA = int64((1 - v.Progress) * float64(st.Bytes) / r.rate)
+			if er := cmpRate(v.AvgRate, r.rate); er > 0 && st.Phase != "scan" {
+				v.ETA = int64((1 - v.Progress) * float64(st.Bytes) / er)
 			}
 			m.mu.Unlock()
 		case l.reason != "":
@@ -1142,6 +1148,21 @@ const copyMeasure = 2 * time.Second
 // done: bytes written by copy passes divided by the time spent in them. Time
 // spent reading back, re-reading or comparing files already there is left
 // out, so it neither drags the average down nor resets it.
+// cmpRate prefers the run's average speed to the smoothed current one.
+func cmpRate(avg int64, cur float64) float64 {
+	if avg > 0 {
+		return float64(avg)
+	}
+	return cur
+}
+
+func avgWorkRate(work, sec float64) int64 {
+	if sec < 10 || work <= 0 {
+		return 0
+	}
+	return int64(work / sec)
+}
+
 func copyAverage(bytes, ns int64) int64 {
 	if ns < int64(copyMeasure) || bytes <= 0 {
 		return 0

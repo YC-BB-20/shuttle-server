@@ -1210,8 +1210,10 @@ function renderMonitor(list) {
   active.forEach(v => { const b = sizeOf(v); if (!b) unknown++; else { total += b; done += (v.phase === "scan" ? 0 : v.progress || 0) * b; } });
   const p = total ? done / total * 100 : 0;
   $("monPc").textContent = (unknown && !total) ? "Scanning" : (p >= 100 ? 100 : p.toFixed(p < 10 ? 1 : 0)) + "%";
-  const r = run && run.state === "running" ? run.rate : 0;
-  const qleft = r > 0 ? (total - done) / r : 0;
+  // v0.2.70: the average speed of the running job over its whole run (not the speed of the file
+  // it is on), applied to everything left in the queue, jobs not started yet included.
+  const r = run && run.state === "running" ? (run.avg_rate || run.rate) : 0;
+  const qleft = r > 0 ? Math.max(0, total - done) / r : 0;
   $("monOf").textContent = [size(done) + " of " + size(total) + (unknown ? " (+" + unknown + (unknown === 1 ? " item" : " items") + " not sized yet: still listing its files)" : ""),
     qleft ? left(qleft) + " for the whole queue" : run && run.state === "running" ? "working out the time left" : ""].filter(Boolean).join(" · ");
   // v0.2.54: two layers, as on each copy: written in purple, read back and matching in pink over it.
@@ -1509,19 +1511,23 @@ function loadFiles(f, append, refresh, fewer) {
     // A top holding only one folder opens it at once.
     if (f.tree && !r.rows.length && r.folders.length === 1 && !f.auto.has(r.folders[0].path)) { f.auto.add(r.folders[0].path); f.open.add(r.folders[0].path); open.push(r.folders[0].path); }
     return open.reduce((pr, d) => pr.then(() => getDir(f, d, false, Math.min(200, Math.max(filePage, (f.nodes[d] || { rows: [] }).rows.length)))), Promise.resolve());
-  }).then(() => autoOpen(f, "")).then(() => drawFiles(f)).catch(() => {}).finally(() => { f.busy = false; });
+  }).then(() => autoOpen(f, "", 0)).then(() => drawFiles(f)).catch(() => {}).finally(() => { f.busy = false; });
 }
 // Every file sits under its folder's name, in a row that closes and opens
 // again (v0.2.49), even with one folder. Up to treeMin files every folder
-// starts open; above that, folders start closed (a lone one opens). A folder
-// the owner closed stays closed.
-function autoOpen(f, dir) {
-  const n = f.nodes[dir];
-  if (!n || f.v.files > treeMin) return Promise.resolve();
-  const todo = n.folders.filter(fr => !f.auto.has(fr.path));
+// starts open. v0.2.70: a bigger job opens too, so its files show at once,
+// but bounded: at most autoPer folders in each folder, autoMax folders in
+// the whole job, and it goes down only through folders that hold folders
+// only. A folder the owner closed stays closed.
+const autoPer = 10, autoMax = 40;
+function autoOpen(f, dir, depth) {
+  const n = f.nodes[dir], big = f.v.files > treeMin;
+  if (!n || depth > 6) return Promise.resolve();
+  const todo = n.folders.filter(fr => !f.auto.has(fr.path)).slice(0, big ? Math.min(autoPer, autoMax - f.auto.size) : n.folders.length);
+  if (big && n.rows.length) todo.length = 0; // a folder with files of its own: its subfolders stay closed
   todo.forEach(fr => { f.auto.add(fr.path); f.open.add(fr.path); });
   return n.folders.filter(fr => f.open.has(fr.path)).reduce((pr, fr) => pr.then(() => (f.nodes[fr.path] && !todo.includes(fr) ? null : getDir(f, fr.path, false, filePage)))
-    .then(() => autoOpen(f, fr.path)), Promise.resolve());
+    .then(() => autoOpen(f, fr.path, depth + 1)), Promise.resolve());
 }
 function openDir(f, dir) {
   if (f.open.has(dir)) { f.open.delete(dir); drawFiles(f); return; }

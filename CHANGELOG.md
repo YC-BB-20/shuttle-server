@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.70 — 15 November 2026
+
+- **"Time left for the whole queue" is now an estimate for everything left,** not for the file being copied. It uses the running job's average speed over its whole run (pauses left out), applied to all remaining work, jobs not started yet included. A job's own time left uses the same average, so it no longer jumps with each big file.
+- **A job item opens with its folders open.** Big jobs used to open as closed folders. Now the first folders (up to 10 in a folder, 40 in a job) open at once, going down through folders that hold only folders; a folder with files of its own keeps its subfolders closed, and a folder you close stays closed.
+
 ## 0.2.69 — 15 November 2026
 
 - **The program file is now named "Shuttle Server"** (Shuttle renames it once, at start, and leaves "shuttle-server" as a shortcut so the old start command still works). macOS lists the start-at-login item by the program file's name, so Login Items & Extensions should now read "Shuttle Server", with the logo set in 0.2.68.
