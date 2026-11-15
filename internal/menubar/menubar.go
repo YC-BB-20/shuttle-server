@@ -84,14 +84,27 @@ func Run(ctx context.Context, o Options) {
 	}
 	write()
 
-	cmd := o.Command
-	if cmd == nil {
+	env := []string{"SHUTTLE_STATUS=" + status, "SHUTTLE_PID=" + strconv.Itoa(os.Getpid())}
+	// plain is the osascript helper, the fallback.
+	plain := func() []string {
 		path := filepath.Join(o.Dir, "menubar.js")
 		if err := os.WriteFile(path, script, 0o600); err != nil {
 			o.Log.Warn("menu bar icon not shown: could not write its script", "err", err)
-			return
+			return nil
 		}
-		cmd = []string{"/usr/bin/osascript", "-l", "JavaScript", path, status, strconv.Itoa(os.Getpid())}
+		return []string{"/usr/bin/osascript", "-l", "JavaScript", path, status, strconv.Itoa(os.Getpid())}
+	}
+	cmd := o.Command
+	usingApp := false
+	if cmd == nil {
+		if exe, err := BuildApp(ctx, o.Dir); err == nil {
+			cmd, usingApp = []string{exe}, true
+		} else {
+			o.Log.Warn("menu bar icon: could not make the Shuttle Server app, using the plain helper", "err", err)
+			if cmd = plain(); cmd == nil {
+				return
+			}
+		}
 	}
 
 	exited := make(chan string, 1)
@@ -115,6 +128,7 @@ func Run(ctx context.Context, o Options) {
 		}
 		starts = append(recent, now)
 		c := exec.Command(cmd[0], cmd[1:]...)
+		c.Env = append(os.Environ(), env...)
 		c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // Ctrl-C reaches Shuttle only; Shuttle stops the helper
 		tail := &tailBuffer{max: 2048}
 		c.Stdout, c.Stderr = tail, tail
@@ -154,6 +168,12 @@ func Run(ctx context.Context, o Options) {
 			// while (hours, across sleeps) and then quit is simply restarted.
 			if time.Since(startedAt) >= o.forgiveAfter() {
 				starts = nil
+			} else if usingApp {
+				// The app quit at once: go back to the plain helper rather than lose the icon.
+				o.Log.Warn("menu bar: the Shuttle Server app quit at once; using the plain helper")
+				if p := plain(); p != nil {
+					cmd, usingApp, starts = p, false, nil
+				}
 			}
 			start()
 		}

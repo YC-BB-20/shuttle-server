@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.64 — 15 November 2026
+
+- **Shuttle has its own name and icon in macOS.** The menu bar icon is now run by a small app called "Shuttle Server" (purple, with an up and a down arrow) that Shuttle makes on your Mac, so System Settings shows that name and icon instead of "osascript". The "Shuttle Server" launcher app in Applications has the same icon. If the app cannot be made or quits at once, Shuttle uses the plain helper from before, and says so in the log.
+
 ## 0.2.63 — 15 November 2026
 
 - **Start at login.** Settings has a new "Start at login" switch, and the menu bar icon has "Open at login" with a tick. Either one turns it on or off; the other follows within seconds. On macOS it is a launchd agent in ~/Library/LaunchAgents that only starts Shuttle (no automatic restart, so Stop Shuttle stays stopped until the next login). Turning it on does not start a second copy now. An update keeps the agent pointing at the program.

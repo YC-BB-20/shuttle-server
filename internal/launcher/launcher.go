@@ -5,11 +5,14 @@
 package launcher
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/YC-BB-20/shuttle-server/internal/appicon"
 )
 
 const plist = `<?xml version="1.0" encoding="UTF-8"?>
@@ -20,6 +23,7 @@ const plist = `<?xml version="1.0" encoding="UTF-8"?>
   <key>CFBundleIdentifier</key><string>local.shuttle-server.launcher</string>
   <key>CFBundleExecutable</key><string>launch</string>
   <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleIconFile</key><string>Shuttle</string>
   <key>CFBundleShortVersionString</key><string>1</string>
   <key>LSUIElement</key><true/>
 </dict>
@@ -66,7 +70,7 @@ func Refresh(bin, data, port string) (bool, error) {
 	if err != nil {
 		return false, nil
 	}
-	if string(cur) == scriptFor(bin, data, port) {
+	if _, noIcon := os.Stat(iconPath(AppPath())); string(cur) == scriptFor(bin, data, port) && noIcon == nil {
 		return false, nil
 	}
 	_, err = installAt(AppPath(), bin, data, port)
@@ -96,5 +100,14 @@ func installAt(app, bin, data, port string) (string, error) {
 	if err := os.WriteFile(filepath.Join(macos, "launch"), []byte(scriptFor(bin, data, port)), 0o755); err != nil {
 		return "", err
 	}
+	// The icon is a nicety: without it the app still works.
+	if runtime.GOOS == "darwin" {
+		res := filepath.Join(app, "Contents", "Resources")
+		if os.MkdirAll(res, 0o755) == nil {
+			appicon.WriteICNS(context.Background(), iconPath(app))
+		}
+	}
 	return app, nil
 }
+
+func iconPath(app string) string { return filepath.Join(app, "Contents", "Resources", "Shuttle.icns") }
