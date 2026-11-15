@@ -282,7 +282,7 @@ func TestPageCopySize(t *testing.T) {
 func TestPageFolderHeadsAndVerifyBars(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
-		`tree: true,`, `function autoOpen(f, dir, depth)`, `const autoPer = 10, autoMax = 40;`, `run.avg_rate || run.rate`, `.then(() => autoOpen(f, "", 0))`, `e.stopPropagation(); openDir(f, fr.path)`,
+		`tree: true,`, `function autoOpen(f, dir, depth)`, `const autoPer = 10, autoMax = 40;`, `body.est_bytes = lastCount.bytes`, `v.est_bytes ? v.est_bytes`, `run.avg_rate || run.rate`, `.then(() => autoOpen(f, "", 0))`, `e.stopPropagation(); openDir(f, fr.path)`,
 		`.bar.vbar {`, `.bar.vbar > i { background:var(--verify) !important; }`, `(isCheckStage(r.stage) ? " vbar" : "")`, `classList.toggle("vbar", vnow && ver)`,
 	} {
 		if !strings.Contains(s, want) {

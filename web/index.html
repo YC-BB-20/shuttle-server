@@ -728,6 +728,8 @@ $("startBtn").onclick = () => {
   const proof = !dest ? { check: "none" } : $("ckSep").checked ? { check: "none", verify: $("ckPaused").checked ? "paused" : "run", s2 } :
     { hash: $("whenEnd").checked ? "later" : "copy", s2 };
   const body = Object.assign({ source: $("src").value, dest: $("dst").value, only: srcOnly }, proof);
+  const p0 = $("src").value.trim();
+  if (lastCount && lastCount.key === p0 + "\n" + (p0 === srcOnlyAt ? srcOnly : []).join("\n")) { body.est_bytes = lastCount.bytes; body.est_files = lastCount.files; }
   const added = () => { $("newDlg").close(); $("src").value = ""; $("dst").value = ""; setOnly([]); };
   post("/api/jobs", body).then(async r => {
     if (!r.space) return added();
@@ -804,6 +806,8 @@ $("srcAll").onclick = () => setOnly([]);
 // asking about something else replaces it.
 let sizeTimer = 0, sizeKey = "";
 const nf = n => Number(n).toLocaleString();
+// v0.2.71: the last finished count, sent with the copy so the queue knows its size before its scan.
+let lastCount = null;
 function askSize(path, only, out, lead) {
   clearTimeout(sizeTimer);
   if (!path || path[0] !== "/") { sizeKey = ""; out.textContent = ""; return; }
@@ -814,6 +818,7 @@ function askSize(path, only, out, lead) {
     if (sizeKey !== key || !($("pickDlg").open || $("newDlg").open)) return;
     fetch("/api/size?path=" + encodeURIComponent(path) + only.map(n => "&only=" + encodeURIComponent(n)).join("")).then(r => r.json()).then(c => {
       if (sizeKey !== key) return;
+      if (c.done && !c.error) lastCount = { key, bytes: c.bytes, files: c.files };
       out.textContent = c.error ? c.error : (c.done ? lead : "Counting… ") + size(c.bytes) + " in " + nf(c.files) + (c.files === 1 ? " file" : " files") +
         (c.done ? "" : " so far") + (c.skipped ? " · " + nf(c.skipped) + " links or unreadable items are not copied" : "");
       if (!c.done && !c.error) sizeTimer = setTimeout(tick, 700);
@@ -1205,8 +1210,9 @@ function renderMonitor(list) {
   const run = active.find(v => v.state === "running") || active.find(v => v.state === "waiting");
   let total = 0, done = 0, unknown = 0;
   // A Verify item that has not started yet reads what its copy writes, so it is sized by its copy.
-  const sizeOf = v => v.bytes && v.phase !== "scan" ? v.bytes :
-    v.kind === "verify" && /-verify$/.test(v.id) ? ((active.find(c => c.id + "-verify" === v.id) || {}).bytes || 0) : 0;
+  // v0.2.71: a copy not yet scanned is sized by the picker's count taken when it was added.
+  const sizeOf = v => v.bytes && v.phase !== "scan" ? v.bytes : v.est_bytes ? v.est_bytes :
+    v.kind === "verify" && /-verify$/.test(v.id) ? ((a => a.bytes && a.phase !== "scan" ? a.bytes : a.est_bytes || 0)(active.find(c => c.id + "-verify" === v.id) || {})) : 0;
   active.forEach(v => { const b = sizeOf(v); if (!b) unknown++; else { total += b; done += (v.phase === "scan" ? 0 : v.progress || 0) * b; } });
   const p = total ? done / total * 100 : 0;
   $("monPc").textContent = (unknown && !total) ? "Scanning" : (p >= 100 ? 100 : p.toFixed(p < 10 ? 1 : 0)) + "%";

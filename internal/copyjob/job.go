@@ -53,6 +53,11 @@ type Spec struct {
 	// OnlyDirs is how many of Only are folders, counted when the job is
 	// added, so the queue can name the job (v0.2.59); nil in older jobs.
 	OnlyDirs *int `json:"only_dirs,omitempty"`
+	// EstBytes and EstFiles (v0.2.71) are what the folder picker counted
+	// when the copy was added, by the same walk and rules as the scan. Only
+	// a hint for the queue's totals until the job's own scan has finished.
+	EstBytes int64 `json:"est_bytes,omitempty"`
+	EstFiles int64 `json:"est_files,omitempty"`
 	// Verify jobs (added in 0.2.9): Kind "verify", Source and Dest are the
 	// folder checked, File one file in it (empty: the whole folder), From the
 	// copy jobs whose stored hashes it compares with, oldest first.

@@ -97,6 +97,7 @@ func (m *Manager) Add(s Spec) (*Job, error) {
 		return m.addVerify(s)
 	}
 	s.Kind, s.File, s.From, s.Paused = "", "", nil, false
+	s.EstBytes, s.EstFiles = max(0, s.EstBytes), max(0, s.EstFiles)
 	src, err := filepath.Abs(strings.TrimSpace(s.Source))
 	if err != nil {
 		return nil, err

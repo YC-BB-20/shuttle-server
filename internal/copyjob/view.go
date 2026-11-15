@@ -41,6 +41,7 @@ type View struct {
 	FileSize   int64       `json:"file_size"`
 	Files      int         `json:"files"`
 	Bytes      int64       `json:"bytes"`
+	EstBytes   int64       `json:"est_bytes,omitempty"` // what the picker counted when the copy was added; used until the scan has the real size (v0.2.71)
 	Scanned    int         `json:"scanned"`
 	ScannedB   int64       `json:"scanned_bytes"`
 	Verified   int         `json:"verified"`
@@ -284,7 +285,7 @@ func baseView(j *Job) (View, state, live) {
 	j.mu.Unlock()
 	v := View{ID: st.ID, Source: st.Spec.Source, Dest: st.Spec.Dest, S2: st.Spec.S2, Hash: st.Spec.Hash, Only: len(st.Spec.Only),
 		Kind: st.Spec.Kind, VerifyFile: st.Spec.File,
-		Created: st.Created, Finished: st.Finished, CopyRate: st.CopyRate, Phase: st.Phase, Files: st.Files, Bytes: st.Bytes, Skipped: st.Skipped, System: st.SystemSkipped,
+		Created: st.Created, Finished: st.Finished, CopyRate: st.CopyRate, Phase: st.Phase, Files: st.Files, Bytes: st.Bytes, EstBytes: st.Spec.EstBytes, Skipped: st.Skipped, System: st.SystemSkipped,
 		Verified: c.Verified, Identical: c.Identical, Failed: c.Failed, Strong: c.Strong, S2Warn: c.S2Warn, Copied: c.Copied, Hashed: c.Hashed,
 		Check: st.Spec.Check, VerifyNext: st.Spec.Verify, VerifyJob: st.VerifyJob, After: st.After,
 		Proven: c.BytesProven, SameVolume: st.SameVolume, Scanned: l.scanned, ScannedB: l.scannedBytes,

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.71 — 15 November 2026
+
+- **A copy is sized as soon as it is added.** The size the folder picker already counted (same walk, same rules as the copy's scan) now goes with the copy into the queue, so the whole-queue total and time left include it at once instead of "not sized yet". The copy's own scan still runs to list the files and replaces the estimate with the real size. A copy added before the picker had finished counting still shows "not sized yet" until its scan starts.
+
 ## 0.2.70 — 15 November 2026
 
 - **"Time left for the whole queue" is now an estimate for everything left,** not for the file being copied. It uses the running job's average speed over its whole run (pauses left out), applied to all remaining work, jobs not started yet included. A job's own time left uses the same average, so it no longer jumps with each big file.
