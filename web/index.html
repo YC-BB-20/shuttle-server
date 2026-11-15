@@ -334,11 +334,13 @@
     <p class="mute">Finder rewrites .DS_Store whenever a folder is opened, so a copy of one can never stay verified. Left-out files are counted on the copy, not hidden. Applies to new copies and verifies.</p>
     <p class="err" id="sysErr"></p>
   </section>
-  <section class="card" id="x64Set">
-    <h2>Hashes for other tools</h2>
-    <label class="opt"><input type="checkbox" id="x64On"><span>Also make an XXH64 of every file, and save the list next to the destination folder</span></label>
-    <p class="mute">Shuttle still proves every copy with XXH128. The XXH64 is made while the copy is read back, and the list (for a destination "Day 1", the file "Day 1.xxh64" beside it) is in the format of <code>xxhsum -H1</code>, so <code>xxhsum -c</code> and other tools that read XXH64 lists can check the copy. A copy with no check has no list. An existing list is never replaced. Applies to new copies and verifies.</p>
-    <p class="err" id="x64Err"></p>
+  <section class="card" id="hashSet">
+    <h2>Hash for copies</h2>
+    <label class="opt"><input type="radio" name="hashAlgo" value="xxh128"><span>XXH128 (recommended)</span></label>
+    <label class="opt"><input type="radio" name="hashAlgo" value="xxh64"><span>XXH64</span></label>
+    <label class="opt"><input type="radio" name="hashAlgo" value="both"><span>Both XXH128 and XXH64</span></label>
+    <p class="mute">The hash every read of a copy makes: the source as it is copied, the copy read back, and the source read again. With both, each read makes both and both must match. Applies to new copies; a copy keeps the hash it started with, and a Verify reads each file with the hash its copy made. Each file's info shows the hashes.</p>
+    <p class="err" id="hashErr"></p>
   </section>
   <section class="card" id="histSet">
     <h2>History</h2>
@@ -1101,8 +1103,6 @@ function card(v) {
   else if (!old && v.state !== "running") line = "Added " + when(v.created);
   if (srcOnly && !old) line += (line ? " · " : "") + "The source read in full and compared with the hashes stored when it was copied; the copies are not read. Nothing is changed.";
   else if (ver && !old) line += (line ? " · " : "") + "Read in full and compared with the hashes stored when it was copied" + (again ? (v.s2 === "after" ? ", then the source is read again once every copy is checked" : ", with the source read again beside it") : "") + ". Nothing is changed.";
-  if (old && v.xxh64_list) line += (line ? " " : "") + "XXH64 list saved next to the destination folder: " + v.xxh64_list.split("/").pop() + ".";
-  else if (old && v.xxh64_error) line += (line ? " " : "") + "The XXH64 list could not be saved: " + v.xxh64_error + ".";
   q(".line").textContent = line; q(".line").title = line; q(".sub").title = sub;
   q(".bar.file").hidden = v.state !== "running" || scanning;
   q(".bar.file > i").style.width = v.state === "running" ? pct(v.file_done, v.file_size) + "%" : "0%";
@@ -1276,14 +1276,15 @@ function showSys(c) {
 }
 // v0.2.57: every save sends all the choices, so one switch never resets another.
 let copySet = {};
-function showSet(c) { copySet = c; showSys(c); $("x64On").checked = !!c.xxh64_lists; }
+function showSet(c) { copySet = c; showSys(c); document.querySelectorAll('input[name="hashAlgo"]').forEach(r => { r.checked = r.value === (c.hash || "xxh128"); }); }
 function loadSys() { fetch("/api/settings/copy").then(r => r.json()).then(showSet).catch(() => {}); }
 function saveSys(errBox) {
-  $("sysErr").textContent = ""; $("x64Err").textContent = "";
-  post("/api/settings/copy", Object.assign({}, copySet, { skip_system_files: $("skipSys").checked, skip_appledouble_files: $("skipSys").checked && $("skipDot").checked, xxh64_lists: $("x64On").checked }))
+  $("sysErr").textContent = ""; $("hashErr").textContent = "";
+  const algo = document.querySelector('input[name="hashAlgo"]:checked');
+  post("/api/settings/copy", Object.assign({}, copySet, { skip_system_files: $("skipSys").checked, skip_appledouble_files: $("skipSys").checked && $("skipDot").checked, hash: algo ? algo.value : "xxh128" }))
     .then(showSet).catch(e => { $(errBox).textContent = e.message; loadSys(); });
 }
-$("skipSys").onchange = $("skipDot").onchange = () => saveSys("sysErr"); $("x64On").onchange = () => saveSys("x64Err");
+$("skipSys").onchange = $("skipDot").onchange = () => saveSys("sysErr"); document.querySelectorAll('input[name="hashAlgo"]').forEach(r => { r.onchange = () => saveSys("hashErr"); });
 loadSys();
 $("keySave").onclick = () => {
   $("keyErr").textContent = "";
@@ -1617,6 +1618,19 @@ function againButton(fi, side) {
   };
   const w = el("div"); w.append(b); return w;
 }
+// v0.2.58: a stored hash is XXH128 (32 hex digits), XXH64 (16), or both as
+// "XXH128+XXH64"; each kind gets its own labelled line.
+const algoName = { xxh128: "XXH128", xxh64: "XXH64", both: "XXH128 and XXH64" };
+function hashParts(h) {
+  const p = (h || "").split("+");
+  if (p.length === 2) return [["XXH128", p[0]], ["XXH64", p[1]]];
+  return h ? [[h.length === 16 ? "XXH64" : "XXH128", h]] : [];
+}
+function hashEl(h) {
+  const w = el("span");
+  hashParts(h).forEach(([k, v], n) => { if (n) w.append(el("br")); w.append(el("span", "mute", k + " "), el("span", "hash", v)); });
+  return w;
+}
 // A copied file's three reads (v0.2.44): the source as it was copied (or read
 // on its own first), the destination read back, and the source read a second
 // time. Each comes from the copy itself or from the newest Verify that read
@@ -1640,7 +1654,7 @@ function proofSlots(fi) {
     const d = el("div", "hrow"); d.append(el("div", "mute", label));
     const v = el("div");
     if (h) {
-      v.append(el("span", "hash", h));
+      v.append(hashEl(h));
       if (ref && h !== ref) v.append(el("span", "nomatch", "  ✗ differs"));
       else if (ref && side !== "first") v.append(el("span", "match", "  ✓ same as the first"));
       v.append(el("div", "mute", from));
@@ -1670,12 +1684,16 @@ function proofSlots(fi) {
     const d = el("div", "hrow"); d.append(el("div", "mute", (r.which === "dest" ? "Destination" : "Source") + " — read again " + new Date(r.time).toLocaleString()));
     const v = el("div");
     if (r.error) v.append(el("span", "bad", r.error));
-    else { v.append(el("span", "hash", r.hash)); if (ref) v.append(el("span", r.hash === ref ? "match" : "nomatch", r.hash === ref ? "  ✓ same as the first" : "  ✗ differs")); }
+    else { v.append(hashEl(r.hash)); if (ref) v.append(el("span", r.hash === ref ? "match" : "nomatch", r.hash === ref ? "  ✓ same as the first" : "  ✗ differs")); }
     if (r.changed) v.append(el("div", "warn", "The source's size or modified time has changed since it was copied."));
     d.append(v); return d;
   });
-  return [el("h3", "", "Fingerprints (XXH128 hashes)"), el("p", "mute", ver ? "What this Verify read, against the hash stored when the file was copied. All three must be the same for the copy to be fully verified." : "Three separate full reads: the source as it was copied, the copy read back, and the source read again. All must be the same for the copy to be fully verified."),
-    ...rows, ...(older.length ? [el("h3", "", "Earlier checks")] : []), ...older, ...rech, el("p", "bad againmsg", "")];
+  const made = [...new Set([ref, d1, s2].concat(vs.flatMap(r => [r.d1, r.s2]), (fi.rechecks || []).map(r => r.hash), fi.hash.x64 || []).flatMap(h => hashParts(h).map(p => p[0])))];
+  const kinds = el("p", "mute", "Hashes made: " + (made.length ? made.join(" and ") : "none yet") + (fi.algo ? " · this " + (ver ? "Verify" : "copy") + " was set to " + algoName[fi.algo] : "") + ".");
+  const legacy = [];
+  if (fi.hash.x64) { const d = el("div", "hrow"), v = el("div"); d.append(el("div", "mute", "Destination — XXH64 made for a list (version 0.2.57)")); v.append(hashEl(fi.hash.x64)); d.append(v); legacy.push(d); }
+  return [el("h3", "", "Fingerprints (" + (made.length ? made.join(" and ") : "hashes") + ")"), kinds, el("p", "mute", ver ? "What this Verify read, against the hash stored when the file was copied. All three must be the same for the copy to be fully verified." : "Three separate full reads: the source as it was copied, the copy read back, and the source read again. All must be the same for the copy to be fully verified."),
+    ...rows, ...legacy, ...(older.length ? [el("h3", "", "Earlier checks")] : []), ...older, ...rech, el("p", "bad againmsg", "")];
 }
 function fileInfo(id, i) {
   infoAt = { id, i };

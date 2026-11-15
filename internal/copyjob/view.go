@@ -57,9 +57,7 @@ type View struct {
 	Rate       int64       `json:"rate,omitempty"`        // overall bytes of the job finished per second, smoothed
 	CopyRate   int64       `json:"copy_rate,omitempty"`   // average speed of all copying in this run, 0 until measured
 	WorkMs     int64       `json:"work_ms,omitempty"`     // time spent running so far, all runs; 0 in jobs finished before v0.2.56
-	X64List    string      `json:"xxh64_list,omitempty"`  // the XXH64 list saved beside the destination folder
-	X64Err     string      `json:"xxh64_error,omitempty"` // why the XXH64 list could not be saved
-	XXH64      bool        `json:"xxh64,omitempty"`       // this job makes XXH64s as it reads back
+	Algo       string      `json:"algo"`                  // which hashes this job makes: xxh128, xxh64 or both (v0.2.58)
 	ETA        int64       `json:"eta_seconds,omitempty"` // time left, when it can be estimated
 	Space      *SpaceShort `json:"space,omitempty"`       // paused because it may not fit: the question for the owner
 	Error      string      `json:"error,omitempty"`       // a Verify job stopped on its own: a folder is missing
@@ -278,7 +276,7 @@ func baseView(j *Job) (View, state, live) {
 		Progress: progress(st, c, l), Space: st.SpaceAsk, Error: st.Error, From: st.Spec.From, Hidden: st.Hidden}
 	v.CopiedPart, v.ProvenPart = layers(st, c, l)
 	v.WorkMs = workClock(st, j.workSince.Load(), time.Now()) / 1e6
-	v.X64List, v.X64Err, v.XXH64 = st.X64List, st.X64Err, st.Spec.XXH64
+	v.Algo = normAlgo(st.Spec.Algo)
 	if st.Phase == "done" && st.Choice == "stopped" {
 		v.Progress = 0 // a stopped copy shows what is proven, not a full bar
 		if st.Bytes > 0 {
@@ -851,6 +849,8 @@ type Hashes struct {
 	S1 string `json:"s1,omitempty"` // source read on its own first
 	D1 string `json:"d1,omitempty"` // copy read back
 	S2 string `json:"s2,omitempty"` // source read again
+	// X64: the XXH64 a v0.2.57 job made of the copy read back for its list.
+	X64 string `json:"x64,omitempty"`
 }
 
 // FileInfo is everything known about one file of a job.
@@ -865,6 +865,7 @@ type FileInfo struct {
 	Kind       string       `json:"kind,omitempty"`    // "verify" when the file belongs to a Verify job
 	Already    bool         `json:"already,omitempty"` // it was already at the destination: compared, not copied
 	Hash       Hashes       `json:"hash"`
+	Algo       string       `json:"algo"` // which hashes this job makes: xxh128, xxh64 or both (v0.2.58)
 	Events     []Event      `json:"events"`
 	Rechecks   []Recheck    `json:"rechecks"`       // "Read again" results, oldest first
 	RecheckNow []RecheckNow `json:"recheck_now"`    // waiting or being read
@@ -1029,7 +1030,7 @@ func (m *Manager) FileInfo(id string, i int) (FileInfo, error) {
 		for _, h := range []struct {
 			dst *string
 			v   string
-		}{{&fi.Hash.C, r.C}, {&fi.Hash.S1, r.S1}, {&fi.Hash.D1, r.D1}, {&fi.Hash.S2, r.S2}} {
+		}{{&fi.Hash.C, r.C}, {&fi.Hash.S1, r.S1}, {&fi.Hash.D1, r.D1}, {&fi.Hash.S2, r.S2}, {&fi.Hash.X64, r.X64}} {
 			if h.v != "" {
 				*h.dst = h.v
 			}
@@ -1047,6 +1048,7 @@ func (m *Manager) FileInfo(id string, i int) (FileInfo, error) {
 		return true
 	})
 	fi.Kind = spec.Kind
+	fi.Algo = normAlgo(spec.Algo)
 	fi.Rechecks = j.rechecksOf(i)
 	if fi.Rechecks == nil {
 		fi.Rechecks = []Recheck{}

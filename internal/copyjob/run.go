@@ -12,7 +12,6 @@ import (
 
 	"github.com/YC-BB-20/shuttle-server/internal/diskio"
 	"github.com/YC-BB-20/shuttle-server/internal/location"
-	"github.com/YC-BB-20/shuttle-server/internal/xxh3"
 )
 
 // entry is one manifest line.
@@ -122,7 +121,7 @@ func mustDisk(p string) *diskio.Disk {
 }
 
 type hashRes struct {
-	h   xxh3.Hash
+	h   sum
 	err error
 }
 
@@ -224,7 +223,7 @@ func (j *Job) copyPhase(ctx context.Context, e env, jr *Journal, accepting func(
 		}
 		srcPath := src.Path(cur.P)
 		final := filepath.Join(dst, filepath.FromSlash(cur.P))
-		var s1 xxh3.Hash
+		var s1 sum
 		if pre != nil {
 			s1, err = pre.h, pre.err
 		} else {
@@ -295,13 +294,13 @@ func (j *Job) copyPhase(ctx context.Context, e env, jr *Journal, accepting func(
 	return nil
 }
 
-func (j *Job) hashFileQuiet(ctx context.Context, e env, d *diskio.Disk, p string, idx int, stage string) (xxh3.Hash, error) {
+func (j *Job) hashFileQuiet(ctx context.Context, e env, d *diskio.Disk, p string, idx int, stage string) (sum, error) {
 	return j.hashFileOpt(ctx, e, d, p, idx, stage, true, false)
 }
 
 // oneFile copies and proves one file. startNext begins the next file's S1
 // once the copy itself is done.
-func (j *Job) oneFile(ctx context.Context, e env, en *entry, srcPath, final string, s1 xxh3.Hash, startNext func()) (Rec, error) {
+func (j *Job) oneFile(ctx context.Context, e env, en *entry, srcPath, final string, s1 sum, startNext func()) (Rec, error) {
 	rec := Rec{I: en.I, N: en.S, S1: s1.String()}
 	if _, err := os.Lstat(final); err == nil {
 		// Never overwrite: compare what is there instead.
@@ -314,7 +313,7 @@ func (j *Job) oneFile(ctx context.Context, e env, en *entry, srcPath, final stri
 		if d1 != s1 {
 			return rec, perFile("a different file with this name is already at the destination; it was left untouched")
 		}
-		rec.St, rec.D1, rec.X64 = "identical", d1.String(), j.take64(en.I)
+		rec.St, rec.D1 = "identical", d1.String()
 		return rec, nil
 	}
 	tmp := tempFor(final)
@@ -353,7 +352,7 @@ func (j *Job) oneFile(ctx context.Context, e env, en *entry, srcPath, final stri
 				return rec, perFile("could not give the copy its name: %v", err)
 			}
 			j.setLive(func(l *live) { l.temp = "" })
-			rec.St, rec.D1, rec.A, rec.X64 = "verified", d1.String(), attempt+1, j.take64(en.I)
+			rec.St, rec.D1, rec.A = "verified", d1.String(), attempt+1
 			return rec, nil
 		}
 	}
@@ -413,7 +412,7 @@ func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, fina
 		if d1 != s1 {
 			return nil, perFile("a different file with this name is already at the destination; it was left untouched")
 		}
-		rec.St, rec.S1, rec.D1, rec.X64 = "identical", s1.String(), d1.String(), j.take64(en.I)
+		rec.St, rec.S1, rec.D1 = "identical", s1.String(), d1.String()
 		return []Rec{rec}, nil
 	}
 	why := ""
@@ -425,7 +424,7 @@ func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, fina
 		if attempt == 0 && copied != "" {
 			c = copied
 		} else {
-			hs := xxh3.New()
+			hs := newHasher(j.algo())
 			j.setLive(func(l *live) { l.stage = "Copying (the source is hashed as it is read)" })
 			if err := j.copyFile(ctx, e, srcPath, tmp, en.I, hs); err != nil {
 				if errors.Is(err, errNoSpace) {
@@ -433,7 +432,7 @@ func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, fina
 				}
 				return nil, err
 			}
-			c = hs.Sum128().String()
+			c = hs.Sum().String()
 			at = tmp
 			if err := name(); err != nil {
 				return nil, err
@@ -473,7 +472,7 @@ func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, fina
 			}
 			continue
 		}
-		rec.C, rec.D1, rec.X64 = c, d1.String(), j.take64(en.I)
+		rec.C, rec.D1 = c, d1.String()
 		if !withS2 {
 			// The destination is checked; the source is not read again.
 			if err := name(); err != nil {
@@ -522,7 +521,7 @@ func (j *Job) copyOnly(ctx context.Context, e env, en *entry, srcPath, final str
 		return j.oneFileHashed(ctx, e, en, srcPath, final, "")
 	}
 	tmp := tempFor(final)
-	hs := xxh3.New()
+	hs := newHasher(j.algo())
 	j.setLive(func(l *live) { l.stage = "Copying (the source is hashed as it is read)" })
 	if err := j.copyFile(ctx, e, srcPath, tmp, en.I, hs); err != nil {
 		if errors.Is(err, errNoSpace) {
@@ -533,7 +532,7 @@ func (j *Job) copyOnly(ctx context.Context, e env, en *entry, srcPath, final str
 	if err := j.placeProven(tmp, final, en); err != nil {
 		return nil, err
 	}
-	return []Rec{{I: en.I, N: en.S, St: "copied", C: hs.Sum128().String()}}, nil
+	return []Rec{{I: en.I, N: en.S, St: "copied", C: hs.Sum().String()}}, nil
 }
 
 // unname takes the real name away from a copy that failed its check, so a
@@ -740,7 +739,6 @@ func (j *Job) run(ctx context.Context, e env, accepting func() bool) error {
 		}
 	}
 	jr.Flush()
-	j.noteX64List(j.writeX64List()) // before "done", so a finished job has its list
 	j.mu.Lock()
 	j.st.Phase, j.st.Finished, j.st.Checkpoints = "done", time.Now(), nil
 	j.st.CopyRate = copyAverage(j.copyClock(j.st.Finished)) // for history (v0.2.55)

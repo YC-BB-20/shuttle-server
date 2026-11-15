@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.58 — 15 November 2026
+
+- **Choose the hash copies use** (Settings → Hash for copies): XXH128 (the default, as before), XXH64, or both. Every read of a copy makes the chosen hash — the source as it is copied, the copy read back, and the source read again — and they must match. With both, each read makes both, and both must match. A copy keeps the hash it started with; a Verify reads each file with the hash its copy made, so older copies still verify after the setting changes.
+- **The file info shows the hashes made**, each on its own line labelled XXH128 or XXH64, and which hash the copy was set to. Hashes from Verifies and "Read again" are shown the same way.
+- **XXH64 list files are no longer made.** Writing checksum lists beside the destination will come back later as its own function. The 0.2.57 setting is gone; copies it made keep their lists, and their XXH64s still show in each file's info.
+
 ## 0.2.57 — 15 November 2026
 
 - **XXH64 lists for other tools** (Settings → Hashes for other tools, off by default). With it on, every file also gets an XXH64, the hash most offload tools and checksum lists use, made while the copy is read back. When the copy finishes, the list is saved **next to the destination folder, not inside it**: for a destination "Day 1" it is "Day 1.xxh64" beside it, in the format of `xxhsum -H1`, so `xxhsum -c "Day 1.xxh64"` run there checks the copy. Only files whose copy is proven are listed. An existing list is never replaced (the next one is "Day 1 2.xxh64"). A copy that is checked by its own Verify item gets its list from that Verify; a copy with no check gets none. The job says where the list went.

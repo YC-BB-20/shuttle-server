@@ -18,14 +18,14 @@ type Settings struct {
 	// out "._" files; it applies only with SkipSystem on (off by default).
 	SkipSystem      bool `json:"skip_system_files"`
 	SkipAppleDouble bool `json:"skip_appledouble_files"`
-	// XXH64Lists also makes an XXH64 of every file as the copy is read back,
-	// and saves them as a list beside the destination folder, in the format
-	// of `xxhsum -H1`, for other tools (off by default; added in 0.2.57).
-	XXH64Lists bool `json:"xxh64_lists"`
+	// Hash is which hashes a new copy makes and proves with: "xxh128" (the
+	// default), "xxh64" or "both" (added in 0.2.58; it replaced 0.2.57's
+	// XXH64 lists, which are a later function).
+	Hash string `json:"hash"`
 }
 
 // DefaultSettings are used until the owner saves a choice.
-var DefaultSettings = Settings{FormatVersion: 1, SkipSystem: true}
+var DefaultSettings = Settings{FormatVersion: 1, SkipSystem: true, Hash: AlgoXXH128}
 
 func (m *Manager) settingsPath() string {
 	return filepath.Join(filepath.Dir(m.Dir), "copy-settings.json")
@@ -44,6 +44,7 @@ func (m *Manager) Settings() Settings {
 				s = r
 			}
 		}
+		s.Hash = normAlgo(s.Hash)
 		m.set = &s
 	}
 	return *m.set
@@ -52,6 +53,7 @@ func (m *Manager) Settings() Settings {
 // SetSettings saves the choices with an atomic write.
 func (m *Manager) SetSettings(s Settings) (Settings, error) {
 	s.FormatVersion = 1
+	s.Hash = normAlgo(s.Hash)
 	b, _ := json.MarshalIndent(s, "", "  ")
 	m.setMu.Lock()
 	defer m.setMu.Unlock()

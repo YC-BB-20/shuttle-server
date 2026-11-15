@@ -66,10 +66,10 @@ func TestReadBackPipelinedPauseResume(t *testing.T) {
 	}
 	sd, _ := m.Disks.For(src)
 	e := env{budget: m.Budget, src: sd, dst: sd}
-	want := xxh3.Sum128(data)
+	want := xxh3.Sum128(data).String()
 
 	got, err := j.hashFile(context.Background(), e, sd, p, 0, "d1", true)
-	if err != nil || got != want {
+	if err != nil || got.String() != want {
 		t.Fatalf("straight read: %v %v", got, err)
 	}
 
@@ -86,7 +86,7 @@ func TestReadBackPipelinedPauseResume(t *testing.T) {
 		t.Fatalf("checkpoint after pause: %+v %v", c, ok)
 	}
 	got, err = j.hashFile(context.Background(), e, sd, p, 0, "s2", true)
-	if err != nil || got != want {
+	if err != nil || got.String() != want {
 		t.Fatalf("resumed from %d: %v %v", c.Offset, got, err)
 	}
 
@@ -160,9 +160,9 @@ func TestWorkTimeKeptAfterFinish(t *testing.T) {
 	}
 }
 
-// v0.2.57: a read-back paused mid-file continues its XXH64 from the saved
-// state too, and a checkpoint without one starts the file again.
-func TestReadBackXXH64PauseResume(t *testing.T) {
+// v0.2.58: each hash choice pauses and resumes mid-file from its saved
+// state, and a checkpoint saved by another choice starts the file again.
+func TestHashChoicePauseResume(t *testing.T) {
 	root := t.TempDir()
 	src := filepath.Join(root, "src")
 	os.MkdirAll(src, 0o755)
@@ -177,36 +177,36 @@ func TestReadBackXXH64PauseResume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	j.st.Spec.XXH64 = true
 	sd, _ := m.Disks.For(src)
 	e := env{budget: m.Budget, src: sd, dst: sd}
-	want := fmt.Sprintf("%016x", xxh64.Sum(data))
-
-	chunkDelay = 3 * time.Millisecond
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
-	_, err = j.hashFile(ctx, e, sd, p, 0, "d1", false)
-	cancel()
-	chunkDelay = 0
-	c, ok := j.checkpoint(0, "d1")
-	if err == nil || !ok || c.Offset <= 0 || len(c.X64) == 0 {
-		t.Fatalf("checkpoint after pause: %+v %v %v", c, ok, err)
-	}
-	if h, err := j.hashFile(context.Background(), e, sd, p, 0, "d1", false); err != nil || h != xxh3.Sum128(data) {
-		t.Fatal("resumed XXH128 wrong", err)
-	}
-	if got := j.take64(0); got != want {
-		t.Fatalf("resumed XXH64 %s, want %s", got, want)
-	}
-	if j.take64(0) != "" {
-		t.Fatal("XXH64 taken twice")
-	}
-	// A checkpoint from before v0.2.57 has no XXH64 state: start from zero.
-	c.X64 = nil
-	j.saveCheckpoint(c)
-	if _, err := j.hashFile(context.Background(), e, sd, p, 0, "d1", false); err != nil {
-		t.Fatal(err)
-	}
-	if got := j.take64(0); got != want {
-		t.Fatalf("XXH64 after an old checkpoint %s, want %s", got, want)
+	h128, h64 := xxh3.Sum128(data).String(), fmt.Sprintf("%016x", xxh64.Sum(data))
+	wants := map[string]string{AlgoXXH128: h128, AlgoXXH64: h64, AlgoBoth: h128 + "+" + h64}
+	var prev Checkpoint
+	for _, algo := range []string{AlgoXXH128, AlgoXXH64, AlgoBoth} {
+		j.st.Spec.Algo = algo
+		if prev.State != nil {
+			// A checkpoint of the previous choice: read from the start.
+			j.saveCheckpoint(prev)
+			if h, err := j.hashFile(context.Background(), e, sd, p, 0, "d1", false); err != nil || h.String() != wants[algo] {
+				t.Fatalf("%s after another kind's checkpoint: %s %v", algo, h, err)
+			}
+			j.dropCheckpoint(0, "d1")
+		}
+		chunkDelay = 3 * time.Millisecond
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+		_, err = j.hashFile(ctx, e, sd, p, 0, "d1", false)
+		cancel()
+		chunkDelay = 0
+		c, ok := j.checkpoint(0, "d1")
+		if err == nil || !ok || c.Offset <= 0 {
+			t.Fatalf("%s checkpoint after pause: %+v %v %v", algo, c, ok, err)
+		}
+		prev = c
+		if h, err := j.hashFile(context.Background(), e, sd, p, 0, "d1", false); err != nil || h.String() != wants[algo] {
+			t.Fatalf("%s resumed: %s %v", algo, h, err)
+		}
+		if algoOf(wants[algo], "") != algo {
+			t.Fatalf("algoOf(%s) wrong", algo)
+		}
 	}
 }

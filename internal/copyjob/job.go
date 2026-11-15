@@ -57,10 +57,10 @@ type Spec struct {
 	// .DS_Store; SkipAppleDouble also "._" files. Copied from Settings when
 	// the job is added, so a job keeps its rule after a restart.
 	SkipSystem bool `json:"skip_system,omitempty"`
-	// XXH64 (added in 0.2.57): also make an XXH64 of every file as the
-	// destination is read back, and save the list beside the destination
-	// folder for other tools. XXH128 stays the proof.
-	XXH64           bool     `json:"xxh64,omitempty"`
+	// Algo (added in 0.2.58) is which hashes every read of this job makes:
+	// "xxh128" (also "", every job before it), "xxh64" or "both". Copied from
+	// Settings when the job is added.
+	Algo            string   `json:"algo,omitempty"`
 	SkipAppleDouble bool     `json:"skip_appledouble,omitempty"`
 	Kind            string   `json:"kind,omitempty"`
 	File            string   `json:"file,omitempty"`
@@ -102,7 +102,6 @@ type Checkpoint struct {
 	Stage  string `json:"stage"` // s1, copy, d1, s2
 	Offset int64  `json:"offset"`
 	State  []byte `json:"state,omitempty"` // saved hasher
-	X64    []byte `json:"x64,omitempty"`   // saved XXH64, when the job makes one (v0.2.57)
 	Size   int64  `json:"size"`
 	Mtime  int64  `json:"mtime"`
 }
@@ -126,12 +125,10 @@ type state struct {
 	CheckEnd      int64                 `json:"check_journal_end,omitempty"` // journal size when the check pass began
 	Checkpoints   map[string]Checkpoint `json:"checkpoints,omitempty"`
 	Finished      time.Time             `json:"finished,omitzero"`
-	CopyRate      int64                 `json:"copy_rate,omitempty"`   // average while copying in the last run, kept for history (v0.2.55)
-	WorkNs        int64                 `json:"work_ns,omitempty"`     // time spent running, all runs added up: not paused, waiting or queued (v0.2.56)
-	X64List       string                `json:"xxh64_list,omitempty"`  // where the XXH64 list was saved (v0.2.57)
-	X64Err        string                `json:"xxh64_error,omitempty"` // why it could not be saved
-	VerifyJob     string                `json:"verify_job,omitempty"`  // the Verify job that follows this copy
-	After         string                `json:"after,omitempty"`       // a Verify job: the copy it waits for (added with it, v0.2.16)
+	CopyRate      int64                 `json:"copy_rate,omitempty"`  // average while copying in the last run, kept for history (v0.2.55)
+	WorkNs        int64                 `json:"work_ns,omitempty"`    // time spent running, all runs added up: not paused, waiting or queued (v0.2.56)
+	VerifyJob     string                `json:"verify_job,omitempty"` // the Verify job that follows this copy
+	After         string                `json:"after,omitempty"`      // a Verify job: the copy it waits for (added with it, v0.2.16)
 	// Free space (added in 0.2.24): the bytes to write counted when the job
 	// was added (nil: not known), the owner's "continue anyway", and the
 	// question waiting for an answer when the copy no longer fits.
@@ -166,11 +163,6 @@ type Job struct {
 	// the copy's own speed is not mixed with the read-back and re-read.
 	copyBytes, copyNs, copySince atomic.Int64 // copySince: unix ns the current copy pass began, 0 if none
 	workSince                    atomic.Int64 // unix ns this run began, 0 when not running
-	// The XXH64 of the file last read back, until its record takes it (v0.2.57).
-	x64mu sync.Mutex
-	x64i  int
-	x64v  uint64
-	x64ok bool
 }
 
 // startWork starts the job's work clock for a run.

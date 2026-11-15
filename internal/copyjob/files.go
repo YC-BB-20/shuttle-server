@@ -12,7 +12,6 @@ import (
 	"github.com/YC-BB-20/shuttle-server/internal/diskio"
 	"github.com/YC-BB-20/shuttle-server/internal/limits"
 	"github.com/YC-BB-20/shuttle-server/internal/xxh3"
-	"github.com/YC-BB-20/shuttle-server/internal/xxh64"
 )
 
 // Tunables; tests make them small.
@@ -101,7 +100,7 @@ func statSM(p string) (int64, int64, error) {
 
 // hashFile reads a whole file and hashes it, resuming from a checkpoint and
 // saving one every CheckpointEvery bytes and when interrupted.
-func (j *Job) hashFile(ctx context.Context, e env, d *diskio.Disk, path string, idx int, stage string, isSrc bool) (xxh3.Hash, error) {
+func (j *Job) hashFile(ctx context.Context, e env, d *diskio.Disk, path string, idx int, stage string, isSrc bool) (sum, error) {
 	return j.hashFileOpt(ctx, e, d, path, idx, stage, isSrc, true)
 }
 
@@ -122,51 +121,46 @@ func (j *Job) gone(d *diskio.Disk, isSrc bool) bool {
 
 // hashFileOpt is hashFile; show=false keeps it off the progress line (the
 // next file's S1, read in parallel).
-func (j *Job) hashFileOpt(ctx context.Context, e env, d *diskio.Disk, path string, idx int, stage string, isSrc, show bool) (xxh3.Hash, error) {
+func (j *Job) hashFileOpt(ctx context.Context, e env, d *diskio.Disk, path string, idx int, stage string, isSrc, show bool) (sum, error) {
+	return j.hashFileAlgo(ctx, e, d, path, idx, stage, isSrc, show, j.algo())
+}
+
+// algo is which hashes this job makes (v0.2.58).
+func (j *Job) algo() string { return normAlgo(j.st.Spec.Algo) }
+
+// hashFileAlgo is hashFileOpt with the kind of hash chosen by the caller: a
+// Verify reads each file with the kind its stored record holds.
+func (j *Job) hashFileAlgo(ctx context.Context, e env, d *diskio.Disk, path string, idx int, stage string, isSrc, show bool, algo string) (sum, error) {
 	size, mtime, err := statSM(path)
 	if err != nil {
 		if j.gone(d, isSrc) {
-			return xxh3.Hash{}, diskio.ErrGone
+			return sum{}, diskio.ErrGone
 		}
-		return xxh3.Hash{}, perFile("could not read: %v", err)
+		return sum{}, perFile("could not read: %v", err)
 	}
 	f, err := diskio.OpenRead(path)
 	if err != nil {
 		if j.gone(d, isSrc) {
-			return xxh3.Hash{}, diskio.ErrGone
+			return sum{}, diskio.ErrGone
 		}
-		return xxh3.Hash{}, perFile("could not open: %v", err)
+		return sum{}, perFile("could not open: %v", err)
 	}
 	defer f.Close()
-	h := xxh3.New()
-	// v0.2.57: a destination read also makes an XXH64 for other tools, when
-	// the job asks for it. XXH128 stays the proof.
-	var x *xxh64.Digest
-	if j.st.Spec.XXH64 && wants64(stage) {
-		x = xxh64.New()
-	}
+	h := newHasher(algo)
 	var off int64
-	if c, ok := j.checkpoint(idx, stage); ok && c.Size == size && c.Mtime == mtime && h.UnmarshalBinary(c.State) == nil && int64(h.Size()) == c.Offset &&
-		(x == nil || (x.UnmarshalBinary(c.X64) == nil && int64(x.Size()) == c.Offset)) {
+	if c, ok := j.checkpoint(idx, stage); ok && c.Size == size && c.Mtime == mtime && h.UnmarshalBinary(c.State) == nil && int64(h.Size()) == c.Offset {
 		off = c.Offset
 	} else {
 		h.Reset()
-		if x != nil {
-			x.Reset()
-		}
 	}
 	save := func() error {
 		st, _ := h.MarshalBinary()
-		c := Checkpoint{Index: idx, Stage: stage, Offset: off, State: st, Size: size, Mtime: mtime}
-		if x != nil {
-			c.X64, _ = x.MarshalBinary()
-		}
-		return j.saveCheckpoint(c)
+		return j.saveCheckpoint(Checkpoint{Index: idx, Stage: stage, Offset: off, State: st, Size: size, Mtime: mtime})
 	}
 	per, nb := bufPlan(size-off, readBufs, e.budget.Total()/4)
 	lease, bufs, err := takeBufs(ctx, e.budget, per, nb)
 	if err != nil {
-		return xxh3.Hash{}, err
+		return sum{}, err
 	}
 	defer e.budget.Release(lease)
 	// One buffer is read while another is hashed, so the disk never waits
@@ -227,24 +221,21 @@ func (j *Job) hashFileOpt(ctx context.Context, e env, d *diskio.Disk, path strin
 		}
 		if ctx.Err() != nil {
 			save()
-			return xxh3.Hash{}, context.Cause(ctx)
+			return sum{}, context.Cause(ctx)
 		}
 		if err := p.err; err != nil {
 			if off > last {
 				save()
 			}
 			if errors.Is(err, diskio.ErrGone) || errors.Is(err, diskio.ErrStalled) {
-				return xxh3.Hash{}, err
+				return sum{}, err
 			}
-			return xxh3.Hash{}, perFile("read error: %v", err)
+			return sum{}, perFile("read error: %v", err)
 		}
 		if p.n == 0 {
-			return xxh3.Hash{}, perFile("file became shorter while being read")
+			return sum{}, perFile("file became shorter while being read")
 		}
 		h.Write(p.b[:p.n])
-		if x != nil {
-			x.Write(p.b[:p.n])
-		}
 		off += int64(p.n)
 		free <- p.b[:cap(p.b)]
 		if show {
@@ -257,39 +248,11 @@ func (j *Job) hashFileOpt(ctx context.Context, e env, d *diskio.Disk, path strin
 	}
 	if s2, m2, err := statSM(path); err != nil || s2 != size || m2 != mtime {
 		if err != nil && j.gone(d, isSrc) {
-			return xxh3.Hash{}, diskio.ErrGone
+			return sum{}, diskio.ErrGone
 		}
-		return xxh3.Hash{}, perFile("changed while being read")
+		return sum{}, perFile("changed while being read")
 	}
-	if x != nil {
-		j.put64(idx, x.Sum64())
-	}
-	return h.Sum128(), nil
-}
-
-// wants64 says whether a read is of the destination's copy (the read-back of
-// a copy, or of a Verify), which is where the XXH64 for other tools is made.
-func wants64(stage string) bool { return stage == "d1" || stage == "v1" || stage == "v2" }
-
-// put64 keeps the XXH64 of the file just read back, until its record takes
-// it with take64. One file is read back at a time on a destination, so one
-// slot is enough, and nothing grows with the number of files.
-func (j *Job) put64(idx int, v uint64) {
-	j.x64mu.Lock()
-	j.x64i, j.x64v, j.x64ok = idx, v, true
-	j.x64mu.Unlock()
-}
-
-// take64 is the XXH64 made by the last read-back of file idx, as 16 hex
-// digits, or "" if there is none.
-func (j *Job) take64(idx int) string {
-	j.x64mu.Lock()
-	defer j.x64mu.Unlock()
-	if !j.x64ok || j.x64i != idx {
-		return ""
-	}
-	j.x64ok = false
-	return fmt.Sprintf("%016x", j.x64v)
+	return h.Sum(), nil
 }
 
 // copyFile copies src to tmp at disk speed. With hs set, the bytes read for
@@ -297,7 +260,7 @@ func (j *Job) take64(idx int) string {
 // hash never holds up the disks unless it is slower than both. It continues a
 // partial copy from its checkpoint (with the hasher's saved state), and
 // flushes to the drive at the end, so the read-back reads what the drive holds.
-func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int, hs *xxh3.Hasher) error {
+func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int, hs *hasher) error {
 	start := time.Now()
 	j.copySince.Store(start.UnixNano())
 	defer func() { j.copySince.Store(0); j.copyNs.Add(int64(time.Since(start))) }()

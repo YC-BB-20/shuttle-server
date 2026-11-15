@@ -103,7 +103,7 @@ func (m *Manager) addVerify(s Spec) (*Job, error) {
 	now := time.Now()
 	id := now.Format("20060102-150405.000")
 	j := &Job{dir: filepath.Join(m.Dir, id), st: state{FormatVersion: FormatVersion, ID: id, Created: now, Choice: choice, Phase: "scan",
-		Spec:      Spec{Kind: KindVerify, Source: src, Dest: root, S2: s2, File: file, From: from, SkipSystem: cs.SkipSystem, SkipAppleDouble: cs.SkipSystem && cs.SkipAppleDouble, XXH64: cs.XXH64Lists && file == ""},
+		Spec:      Spec{Kind: KindVerify, Source: src, Dest: root, S2: s2, File: file, From: from, SkipSystem: cs.SkipSystem, SkipAppleDouble: cs.SkipSystem && cs.SkipAppleDouble, Algo: normAlgo(cs.Hash)},
 		SourceVol: srcVol, DestVol: v.ID, SameVolume: srcVol == v.ID && src != root}}
 	if err := os.MkdirAll(j.dir, 0o700); err != nil {
 		return nil, err
@@ -152,7 +152,7 @@ func (m *Manager) queueVerify(cj *Job) {
 			after = st.ID
 		}
 		j := &Job{dir: filepath.Join(m.Dir, id), st: state{FormatVersion: FormatVersion, ID: id, Created: time.Now(), Choice: choice, Phase: "scan", After: after,
-			Spec:      Spec{Kind: KindVerify, Source: src, Dest: st.Spec.Dest, S2: st.Spec.S2, From: []string{st.ID}, SkipSystem: st.Spec.SkipSystem, SkipAppleDouble: st.Spec.SkipAppleDouble, XXH64: st.Spec.XXH64},
+			Spec:      Spec{Kind: KindVerify, Source: src, Dest: st.Spec.Dest, S2: st.Spec.S2, From: []string{st.ID}, SkipSystem: st.Spec.SkipSystem, SkipAppleDouble: st.Spec.SkipAppleDouble, Algo: st.Spec.Algo},
 			SourceVol: srcVol, DestVol: st.DestVol, SameVolume: srcVol == st.DestVol}}
 		if err := os.MkdirAll(j.dir, 0o700); err != nil {
 			m.Log.Error("could not queue the Verify job for a copy", "job", st.ID, "err", err)
@@ -217,10 +217,16 @@ func (m *Manager) sourceOf(place string, from []string) (string, error) {
 	return src, nil
 }
 
-// slot is one stored hash in the scan's lookup file: 32 hex characters at
-// offset index*32, zeros where a file has no proven hash. The lookup file
-// lives on disk, so memory does not grow with the number of files.
-const slot = 32
+// slot is one stored hash in the scan's lookup file, at offset index*slot,
+// zeros where a file has no proven hash and after a shorter one: room for
+// XXH128+XXH64 (49 characters, v0.2.58), XXH128 (32) or XXH64 (16). The
+// lookup file lives on disk, so memory does not grow with the number of files.
+const slot = 49
+
+// storable says whether a stored hash fits the lookup file.
+func storable(h string) bool {
+	return len(h) == 16 || len(h) == 32 || (len(h) == slot && h[32] == '+')
+}
 
 // verifyScan builds this job's manifest from the copies it checks: every
 // file in scope with its stored hash (H). Newest copy first; a file that
@@ -258,11 +264,11 @@ func (j *Job) verifyScan(ctx context.Context) error {
 			var b [slot]byte // a failure or an unchecked copy clears it
 			switch r.St {
 			case "verified", "identical", "strong", "s2ok", "s2changed", "s2unstable":
-				if len(r.D1) == slot {
+				if storable(r.D1) {
 					copy(b[:], r.D1)
 				}
 			case "hashed": // copy only: the hash of what was read for the copy
-				if len(r.C) == slot {
+				if storable(r.C) {
 					copy(b[:], r.C)
 				}
 			}
@@ -303,7 +309,7 @@ func (j *Job) verifyScan(ctx context.Context) error {
 			if len(spec.From) > 1 {
 				newSeen = append(newSeen, fp)
 			}
-			out, _ := json.Marshal(entry{I: n, P: filepath.ToSlash(rel), S: e.S, M: e.M, O: e.O, H: string(b[:])})
+			out, _ := json.Marshal(entry{I: n, P: filepath.ToSlash(rel), S: e.S, M: e.M, O: e.O, H: strings.TrimRight(string(b[:]), "\x00")})
 			w.Write(append(out, '\n'))
 			n++
 			total += e.S
@@ -380,16 +386,17 @@ func (j *Job) verifyPhase(ctx context.Context, e env, jr *Journal, accepting fun
 			fail(fmt.Sprintf("wrong size: %d bytes instead of %d", size, en.S))
 		default:
 			withS2 := j.st.Spec.readsSource() && j.st.Spec.S2 == "now"
+			algo := algoOf(en.H, j.algo()) // the kind the copy's record holds
 			s2ch := make(chan hashRes, 1)
 			if withS2 {
 				sp := filepath.Join(j.st.Spec.Source, filepath.FromSlash(en.P))
 				go func() {
-					h, err := j.hashFileQuiet(ctx, e, e.src, sp, en.I, "s2")
+					h, err := j.hashFileAlgo(ctx, e, e.src, sp, en.I, "s2", true, false, algo)
 					s2ch <- hashRes{h, err}
 				}()
 				j.setLive(func(l *live) { l.stage = "Reading back the destination and the source" })
 			}
-			h, err := j.hashFile(ctx, e, e.dst, p, en.I, "v1", false)
+			h, err := j.hashFileAlgo(ctx, e, e.dst, p, en.I, "v1", false, true, algo)
 			var s2 hashRes
 			if withS2 {
 				s2 = <-s2ch // always wait: the source read must not outlive this file
@@ -403,12 +410,12 @@ func (j *Job) verifyPhase(ctx context.Context, e env, jr *Journal, accepting fun
 			if err == nil && h.String() != en.H {
 				j.dropCheckpoint(en.I, "v1")
 				j.setLive(func(l *live) { l.stage = "Reading back the destination again to confirm a difference" })
-				h, err = j.hashFile(ctx, e, e.dst, p, en.I, "v2", false)
+				h, err = j.hashFileAlgo(ctx, e, e.dst, p, en.I, "v2", false, true, algo)
 				if err != nil && !isFileErr(err) {
 					return err
 				}
 			}
-			rec.D1, rec.X64 = h.String(), j.take64(en.I)
+			rec.D1 = h.String()
 			switch {
 			case err != nil:
 				fail(err.Error())
@@ -422,7 +429,7 @@ func (j *Job) verifyPhase(ctx context.Context, e env, jr *Journal, accepting fun
 				extra = s2Verdict(en, filepath.Join(j.st.Spec.Source, filepath.FromSlash(en.P)), s2)
 				if extra.St == "failed" {
 					rec, extra = extra, Rec{}
-					rec.C, rec.D1, rec.T, rec.X64 = en.H, h.String(), time.Now().Unix(), ""
+					rec.C, rec.D1, rec.T = en.H, h.String(), time.Now().Unix()
 				}
 			}
 		}
@@ -510,7 +517,6 @@ func (j *Job) runVerify(ctx context.Context, e env, accepting func() bool) error
 		jr.Flush()
 	}
 	jr.Flush()
-	j.noteX64List(j.writeX64List())
 	j.mu.Lock()
 	j.st.Phase, j.st.Finished, j.st.Checkpoints = "done", time.Now(), nil
 	j.endWorkLocked(j.st.Finished)
@@ -565,7 +571,7 @@ func (j *Job) verifySourcePhase(ctx context.Context, e env, jr *Journal, accepti
 		if _, _, serr := statSM(sp); serr != nil && j.gone(e.src, true) {
 			return diskio.ErrGone
 		}
-		res.h, res.err = j.hashFile(ctx, e, e.src, sp, en.I, "s2", true)
+		res.h, res.err = j.hashFileAlgo(ctx, e, e.src, sp, en.I, "s2", true, true, algoOf(en.H, j.algo()))
 		if res.err != nil && !isFileErr(res.err) {
 			return res.err
 		}
