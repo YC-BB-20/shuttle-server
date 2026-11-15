@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -268,4 +269,32 @@ func (s *Server) quit(w http.ResponseWriter, r *http.Request) (any, error) {
 	}
 	go s.Quit() // after this reply is sent
 	return map[string]bool{"ok": true}, nil
+}
+
+type loginState struct {
+	Supported bool `json:"supported"`
+	On        bool `json:"on"`
+}
+
+func (s *Server) loginState() any {
+	if s.Login == nil {
+		return loginState{}
+	}
+	return loginState{Supported: true, On: s.Login.Enabled()}
+}
+
+func (s *Server) saveLogin(w http.ResponseWriter, r *http.Request) (any, error) {
+	if s.Login == nil {
+		return nil, errors.New("starting at login is not available on this computer")
+	}
+	var in struct {
+		On bool `json:"on"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&in); err != nil {
+		return nil, errors.New("could not read the request")
+	}
+	if err := s.Login.Set(in.On); err != nil {
+		return nil, fmt.Errorf("could not change starting at login: %w", err)
+	}
+	return s.loginState(), nil
 }

@@ -32,6 +32,7 @@ type Line struct {
 	// Update is none, nokey, checking, downloading, installing, waiting, available or failed.
 	Update        string
 	UpdateVersion string
+	Login         bool // Shuttle starts when the owner logs in
 }
 
 // Options for Run. Command is the helper; empty means osascript.
@@ -70,7 +71,11 @@ func Run(ctx context.Context, o Options) {
 	status := StatusFile(o.Dir)
 	write := func() {
 		l := o.Get()
-		body := fmt.Sprintf("%d\n%s\n%s\n%s\n%s\n%s\n%s\n", time.Now().Unix(), l.Level, oneLine(l.Headline), l.Version, o.URL, l.Update, l.UpdateVersion)
+		login := "off"
+		if l.Login {
+			login = "on"
+		}
+		body := fmt.Sprintf("%d\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n", time.Now().Unix(), l.Level, oneLine(l.Headline), l.Version, o.URL, l.Update, l.UpdateVersion, login)
 		// A display file, not state: rename keeps it whole, no flush needed.
 		tmp := status + ".tmp"
 		if os.WriteFile(tmp, []byte(body), 0o600) == nil {

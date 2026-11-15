@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.63 — 15 November 2026
+
+- **Start at login.** Settings has a new "Start at login" switch, and the menu bar icon has "Open at login" with a tick. Either one turns it on or off; the other follows within seconds. On macOS it is a launchd agent in ~/Library/LaunchAgents that only starts Shuttle (no automatic restart, so Stop Shuttle stays stopped until the next login). Turning it on does not start a second copy now. An update keeps the agent pointing at the program.
+
 ## 0.2.62 — 15 November 2026
 
 - **USB names read the same everywhere: the current name, then the old one in brackets,** for example "USB 3.2 Gen 2 (USB 3.1 Gen 2)", the name printed on a T5. "Drive can do" now reads speed first, like the link line: "10 Gb/s · USB 3.2 Gen 2 (USB 3.1 Gen 2)".

@@ -29,8 +29,15 @@ type Server struct {
 	Updates Updates // works in safe mode too
 	Restart func()
 	Quit    func()
+	Login   Login             // nil where starting at login is not supported
 	Speed   *speedtest.Tester // nil in safe mode
 	sizes   sizer             // the copy size being counted for the picker
+}
+
+// Login is starting Shuttle when the owner logs in.
+type Login interface {
+	Enabled() bool
+	Set(on bool) error
 }
 
 // Updates are the update commands.
@@ -82,6 +89,8 @@ func (s *Server) HTTP() *http.Server {
 	mux.HandleFunc("POST /api/jobs", s.command(s.addJob))
 	mux.HandleFunc("GET /api/settings/copy", s.copySettings)
 	mux.HandleFunc("POST /api/settings/copy", s.command(s.saveCopySettings))
+	mux.HandleFunc("GET /api/settings/login", s.json(s.loginState))
+	mux.HandleFunc("POST /api/settings/login", s.always(s.saveLogin))
 	mux.HandleFunc("POST /api/restart", s.always(s.restart))
 	mux.HandleFunc("POST /api/quit", s.always(s.quit))
 	mux.HandleFunc("GET /api/update/history", s.history)

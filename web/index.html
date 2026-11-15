@@ -336,6 +336,12 @@
     <p class="mute">Finder rewrites .DS_Store whenever a folder is opened, so a copy of one can never stay verified. Left-out files are counted on the copy, not hidden. Applies to new copies and verifies.</p>
     <p class="err" id="sysErr"></p>
   </section>
+  <section class="card" id="loginSet" hidden>
+    <h2>Start at login</h2>
+    <label class="opt"><input type="checkbox" id="loginOn"><span>Open Shuttle Server when I log in to this Mac</span></label>
+    <p class="mute">Starts Shuttle in the background, with its menu bar icon, each time you log in. It does not start a second copy now, and Stop Shuttle in the menu bar keeps it stopped until the next login. The menu bar icon has the same switch.</p>
+    <p class="err" id="loginErr"></p>
+  </section>
   <section class="card" id="hashSet">
     <h2>Hash for copies</h2>
     <label class="opt"><input type="radio" name="hashAlgo" value="xxh128"><span>XXH128 (recommended)</span></label>
@@ -1299,6 +1305,11 @@ function saveSys(errBox) {
 }
 $("skipSys").onchange = $("skipDot").onchange = () => saveSys("sysErr"); document.querySelectorAll('input[name="hashAlgo"]').forEach(r => { r.onchange = () => saveSys("hashErr"); });
 loadSys();
+// v0.2.63: start at login, the same switch as in the menu bar.
+function showLogin(c) { $("loginSet").hidden = !c.supported; $("loginOn").checked = !!c.on; }
+function loadLogin() { fetch("/api/settings/login").then(r => r.json()).then(showLogin).catch(() => {}); }
+$("loginOn").onchange = () => { $("loginErr").textContent = ""; post("/api/settings/login", { on: $("loginOn").checked }).then(showLogin).catch(e => { $("loginErr").textContent = e.message; loadLogin(); }); };
+loadLogin(); setInterval(() => { if (!document.hidden) loadLogin(); }, 10000); // the menu bar can change it too
 $("keySave").onclick = () => {
   $("keyErr").textContent = "";
   post("/api/update/key", { key: $("keyIn").value }).then(() => { $("keyIn").value = ""; delete $("keyBox").dataset.open; })

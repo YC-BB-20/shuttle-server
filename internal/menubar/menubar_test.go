@@ -147,3 +147,35 @@ func TestHelperChecksServerBeforeQuitting(t *testing.T) {
 		}
 	}
 }
+
+// "Open at login" sits above Restart, shows a tick from the status file's
+// last line, and sends the opposite state to the server when pressed.
+func TestLoginItemInMenu(t *testing.T) {
+	for _, want := range []string{
+		"add('Open at login', 'loginAction:')",
+		"loginOn = f[7] === 'on'",
+		"loginItem.state = loginOn ? 1 : 0",
+		"post('/api/settings/login', JSON.stringify({ on: loginOn }))",
+	} {
+		if !strings.Contains(string(script), want) {
+			t.Errorf("menubar.js lacks %q", want)
+		}
+	}
+}
+
+func TestStatusFileCarriesLogin(t *testing.T) {
+	dir := t.TempDir()
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	var log strings.Builder
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		b, _ := os.ReadFile(StatusFile(dir))
+		lines := strings.Split(string(b), "\n")
+		if len(lines) < 8 || lines[7] != "on" {
+			t.Errorf("status file: %q", b)
+		}
+	}()
+	Run(ctx, Options{Dir: dir, Every: 20 * time.Millisecond, Get: func() Line { return Line{Level: "ok", Login: true} },
+		Log: slog.New(slog.NewTextHandler(&log, nil)), Command: []string{"/bin/sleep", "1"}})
+}

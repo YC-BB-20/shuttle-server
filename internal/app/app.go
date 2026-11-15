@@ -253,6 +253,16 @@ func Run(opts Options) (code int) {
 		}
 	}
 
+	var login server.Login
+	if launcher.LoginSupported() {
+		login = loginItem{bin: binPath, data: data}
+		if done, err := launcher.RefreshLogin(binPath, data); done {
+			log.Info("updated the start-at-login item")
+		} else if err != nil {
+			log.Warn("could not update the start-at-login item", "err", err)
+		}
+	}
+
 	hub := events.NewHub(cfg.PageUpdatesPerS, cfg.MaxOpenPages)
 	go hub.Run(ctx)
 
@@ -347,7 +357,7 @@ func Run(opts Options) (code int) {
 			}}
 	}
 	srv := (&server.Server{Page: shuttle.IndexHTML, Speed: speed, PageDir: cfg.PageDir, Hub: hub, Status: status, Jobs: actions, Listen: cfg.Listen,
-		Updates: updater, Restart: restart, Quit: quit,
+		Updates: updater, Restart: restart, Quit: quit, Login: login,
 		About: func() any {
 			return map[string]string{"version": version.Version, "commit": version.Commit, "changelog": shuttle.Changelog}
 		}}).HTTP()
@@ -369,7 +379,7 @@ func Run(opts Options) (code int) {
 			menubar.Run(ctx, menubar.Options{Dir: filepath.Join(data, "temp.noindex"), URL: pageURL, Log: log,
 				Get: func() menubar.Line {
 					s := snapshot()
-					l := menubar.Line{Level: s.Level, Headline: s.Headline, Version: s.Version, Update: "none"}
+					l := menubar.Line{Level: s.Level, Headline: s.Headline, Version: s.Version, Update: "none", Login: launcher.LoginEnabled()}
 					switch u := s.Update; {
 					case !u.KeySet:
 						l.Update = "nokey"

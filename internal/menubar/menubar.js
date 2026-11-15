@@ -13,7 +13,7 @@ function run(argv) {
   const menu = $.NSMenu.alloc.init;
   menu.autoenablesItems = false;
   let pageURL = 'http://localhost:8470';
-  let lastGood = Date.now(), lastLevel = '', updateState = 'none';
+  let lastGood = Date.now(), lastLevel = '', updateState = 'none', loginOn = false;
   // What the owner just pressed, shown at once until the server's state moves:
   // { kind: 'check' or 'install', from: state when pressed, at: time }.
   let pending = null;
@@ -52,6 +52,11 @@ function run(argv) {
       } },
       'restartServer:': { types: ['void', ['id']], implementation: function () {
         post('/api/restart', '{}');
+      } },
+      'loginAction:': { types: ['void', ['id']], implementation: function () {
+        loginOn = !loginOn; // shown at once; the server's answer follows in two seconds
+        loginItem.state = loginOn ? 1 : 0;
+        post('/api/settings/login', JSON.stringify({ on: loginOn }));
       } },
       'updateAction:': { types: ['void', ['id']], implementation: function () { updateClicked(); } },
       // The update item draws its own highlight, so it follows the menu's.
@@ -123,6 +128,8 @@ function run(argv) {
   layoutUpd();
   paintUpd();
   menu.addItem($.NSMenuItem.separatorItem);
+  const loginItem = add('Open at login', 'loginAction:');
+  menu.addItem($.NSMenuItem.separatorItem);
   add('Restart Shuttle', 'restartServer:');
   add('Stop Shuttle', 'quitServer:');
   item.menu = menu;
@@ -173,7 +180,7 @@ function run(argv) {
     const s = $.NSString.stringWithContentsOfFileEncodingError(statusPath, $.NSUTF8StringEncoding, $());
     const now = Date.now();
     if (!s.isNil()) {
-      // Lines: unix time, level, headline, version, page URL, update state, update version
+      // Lines: unix time, level, headline, version, page URL, update state, update version, login on/off
       const f = s.js.split('\n');
       if (now / 1000 - Number(f[0]) < 15) {
         lastGood = now;
@@ -183,6 +190,8 @@ function run(argv) {
         item.button.toolTip = 'Shuttle Server: ' + f[2];
         if (f[4]) pageURL = f[4];
         updateState = f[5] || 'none';
+        loginOn = f[7] === 'on';
+        loginItem.state = loginOn ? 1 : 0;
         const titles = {
           none: ['Check for updates', true],
           nokey: ['Set up updates…', true],
