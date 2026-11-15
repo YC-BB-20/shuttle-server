@@ -55,7 +55,11 @@ func xmlEscape(s string) string {
 
 func agentFor(bin, data string) string {
 	home, _ := os.UserHomeDir()
-	return fmt.Sprintf(agentPlist, xmlEscape(bin), xmlEscape(data), xmlEscape(home))
+	exe := bin
+	if linkOK(AppPath(), bin) {
+		exe = LinkPath() // run from inside the app, so macOS lists it as "Shuttle Server"
+	}
+	return fmt.Sprintf(agentPlist, xmlEscape(exe), xmlEscape(data), xmlEscape(home))
 }
 
 // LoginEnabled is true when the agent file exists.
@@ -68,6 +72,11 @@ func LoginEnabled() bool {
 // file; it does not start a second copy now, and macOS reads it at the next
 // login. Turning off removes only that file, which is Shuttle's own.
 func SetLogin(on bool, bin, data string) error {
+	if on {
+		if _, err := os.Stat(AppPath()); err == nil {
+			ensureLink(AppPath(), bin) // best effort: without it the item still works
+		}
+	}
 	return setLoginAt(LoginPath(), on, bin, data)
 }
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.67 — 15 November 2026
+
+- **The start-at-login item runs Shuttle from inside the "Shuttle Server" app** (a link to the program in the app's folder), so macOS can list it as "Shuttle Server" with the logo instead of "shuttle-server". The link follows the program when it is updated. macOS may still call an app that is not signed by an Apple developer "unidentified developer".
+
 ## 0.2.66 — 15 November 2026
 
 - **Shuttle Server shows under its own name and logo in System Settings → Login Items & Extensions,** not as "shuttle-server" with a plain icon. The start-at-login item is now tied to the "Shuttle Server" app in Applications, which has the page's logo (purple, up and down arrows, redrawn to match it exactly). An existing login item is updated the next time Shuttle starts.

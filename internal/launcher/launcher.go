@@ -70,7 +70,7 @@ func Refresh(bin, data, port string) (bool, error) {
 	if err != nil {
 		return false, nil
 	}
-	if _, noIcon := os.Stat(iconPath(AppPath())); string(cur) == scriptFor(bin, data, port) && noIcon == nil {
+	if _, noIcon := os.Stat(iconPath(AppPath())); string(cur) == scriptFor(bin, data, port) && noIcon == nil && linkOK(AppPath(), bin) {
 		return false, nil
 	}
 	_, err = installAt(AppPath(), bin, data, port)
@@ -100,6 +100,9 @@ func installAt(app, bin, data, port string) (string, error) {
 	if err := os.WriteFile(filepath.Join(macos, "launch"), []byte(scriptFor(bin, data, port)), 0o755); err != nil {
 		return "", err
 	}
+	if err := ensureLink(app, bin); err != nil {
+		return "", err
+	}
 	// The icon is a nicety: without it the app still works.
 	if runtime.GOOS == "darwin" {
 		res := filepath.Join(app, "Contents", "Resources")
@@ -108,6 +111,27 @@ func installAt(app, bin, data, port string) (string, error) {
 		}
 	}
 	return app, nil
+}
+
+// LinkPath is the program's link inside the app. The start-at-login item runs
+// it from there, so macOS sees the program as part of "Shuttle Server" and can
+// show that name and icon (an item outside any app is listed as its file name).
+func LinkPath() string { return linkPath(AppPath()) }
+
+func linkPath(app string) string { return filepath.Join(app, "Contents", "MacOS", "shuttle-server") }
+
+func linkOK(app, bin string) bool {
+	cur, err := os.Readlink(linkPath(app))
+	return err == nil && cur == bin
+}
+
+// ensureLink points the link at bin. The link is our own file, so replacing it is fine.
+func ensureLink(app, bin string) error {
+	if linkOK(app, bin) {
+		return nil
+	}
+	os.Remove(linkPath(app))
+	return os.Symlink(bin, linkPath(app))
 }
 
 func iconPath(app string) string { return filepath.Join(app, "Contents", "Resources", "Shuttle.icns") }
