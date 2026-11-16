@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.76 — 16 November 2026
+
+- **Menu bar icon: "Check for updates" is level with the other items.** Its text started about 8 points to the left of "Open Shuttle", "Open at login" and the rest, so it stuck out. It now starts at the same place.
+
 ## 0.2.75 — 16 November 2026
 
 - **Fixes the page not loading in v0.2.74** (it stayed on "Loading…" and "Connecting"). The new size-count code reused a name the page already used, which stopped the whole page script. Renamed, and a test now fails the build if any name is declared twice. Do not install v0.2.74.

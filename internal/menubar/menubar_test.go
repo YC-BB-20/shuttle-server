@@ -179,3 +179,11 @@ func TestStatusFileCarriesLogin(t *testing.T) {
 	Run(ctx, Options{Dir: dir, Every: 20 * time.Millisecond, Get: func() Line { return Line{Level: "ok", Login: true} },
 		Log: slog.New(slog.NewTextHandler(&log, nil)), Command: []string{"/bin/sleep", "1"}})
 }
+
+// v0.2.76: the update row draws its own label, so its left margin must match
+// the native items (which leave room for the check mark): 22 pt, not 14.
+func TestUpdateRowTextLevelWithOtherItems(t *testing.T) {
+	if !strings.Contains(string(script), "UPD_TEXT_X = 22,") {
+		t.Error("the update row's text is not level with the other menu items")
+	}
+}

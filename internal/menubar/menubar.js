@@ -86,7 +86,7 @@ function run(argv) {
   // own font, text colour and rounded highlight, so it looks like the others
   // (not a button, which drew grey and indented).
   let updEnabled = true, updHot = false;
-  const UPD_H = 22, UPD_TEXT_X = 14, UPD_INSET = 5; // native item metrics
+  const UPD_H = 22, UPD_TEXT_X = 22, UPD_INSET = 5; // native item metrics; text starts level with the other items (v0.2.76: was 14, 8 pt too far left)
   ObjC.registerSubclass({
     name: 'ShuttleUpdateView',
     superclass: 'NSView',
