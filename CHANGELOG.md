@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.72 — 16 November 2026
+
+- **A folder is listed once, and the list becomes the copy's file list.** The count made while you choose the folder (names and sizes only, no file data) is also written as the copy's list. When you press Start, the copy adopts it, so it is sized exactly the moment it enters the queue and does not list the folder again. The free-space check uses the same list, which also means a big folder is no longer skipped by the 8-second limit. The whole-queue time left now has a size for every item.
+- **Press Start before the count has finished** and a "Preparing: listing the files, N so far" line shows its progress; the copy is added when the list is complete. Closing the pop-up cancels it. If the folder cannot be counted, the copy lists it itself when it starts, as before.
+- **Settings → "Listing a waiting copy's files again":** if a copy waits in the queue longer than this before it begins, its folder is listed again first, so files added in the meantime are not missed. Choices: never, 15 or 30 minutes, 1 (default), 2, 4, 12 or 24 hours. A copy that has begun is never listed again. With "never", it copies exactly the list made when it was added.
+
 ## 0.2.71 — 15 November 2026
 
 - **A copy is sized as soon as it is added.** The size the folder picker already counted (same walk, same rules as the copy's scan) now goes with the copy into the queue, so the whole-queue total and time left include it at once instead of "not sized yet". The copy's own scan still runs to list the files and replaces the estimate with the real size. A copy added before the picker had finished counting still shows "not sized yet" until its scan starts.

@@ -22,10 +22,14 @@ type Settings struct {
 	// default), "xxh64" or "both" (added in 0.2.58; it replaced 0.2.57's
 	// XXH64 lists, which are a later function).
 	Hash string `json:"hash"`
+	// RelistMinutes (added in 0.2.72): a copy's files are listed once, when it
+	// is added. If it then waits in the queue longer than this before it
+	// begins, its folder is listed again. 0 means never; default 60.
+	RelistMinutes int `json:"relist_minutes"`
 }
 
 // DefaultSettings are used until the owner saves a choice.
-var DefaultSettings = Settings{FormatVersion: 1, SkipSystem: true, Hash: AlgoXXH128}
+var DefaultSettings = Settings{FormatVersion: 1, SkipSystem: true, Hash: AlgoXXH128, RelistMinutes: 60}
 
 func (m *Manager) settingsPath() string {
 	return filepath.Join(filepath.Dir(m.Dir), "copy-settings.json")
@@ -39,12 +43,13 @@ func (m *Manager) Settings() Settings {
 	if m.set == nil {
 		s := DefaultSettings
 		if b, err := os.ReadFile(m.settingsPath()); err == nil {
-			var r Settings
+			r := DefaultSettings // a setting missing from an older file keeps its default
 			if json.Unmarshal(b, &r) == nil {
 				s = r
 			}
 		}
 		s.Hash = normAlgo(s.Hash)
+		s.RelistMinutes = clampRelist(s.RelistMinutes)
 		m.set = &s
 	}
 	return *m.set
@@ -54,6 +59,7 @@ func (m *Manager) Settings() Settings {
 func (m *Manager) SetSettings(s Settings) (Settings, error) {
 	s.FormatVersion = 1
 	s.Hash = normAlgo(s.Hash)
+	s.RelistMinutes = clampRelist(s.RelistMinutes)
 	b, _ := json.MarshalIndent(s, "", "  ")
 	m.setMu.Lock()
 	defer m.setMu.Unlock()
@@ -63,3 +69,6 @@ func (m *Manager) SetSettings(s Settings) (Settings, error) {
 	m.set = &s
 	return s, nil
 }
+
+// clampRelist keeps the re-list time between never (0) and a week.
+func clampRelist(m int) int { return min(max(m, 0), 7*24*60) }

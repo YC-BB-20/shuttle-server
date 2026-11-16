@@ -92,7 +92,14 @@ func inside(child, parent string) bool {
 }
 
 // Add checks a request and queues it.
-func (m *Manager) Add(s Spec) (*Job, error) {
+func (m *Manager) Add(s Spec) (*Job, error) { return m.add(s, nil) }
+
+// AddDraft adds a copy with the list the picker's count made (v0.2.72). A
+// draft made for another folder or other rules is ignored and the copy lists
+// its folder itself.
+func (m *Manager) AddDraft(s Spec, d *Draft) (*Job, error) { return m.add(s, d) }
+
+func (m *Manager) add(s Spec, d *Draft) (*Job, error) {
 	if s.Kind == KindVerify {
 		return m.addVerify(s)
 	}
@@ -174,8 +181,17 @@ func (m *Manager) Add(s Spec) (*Job, error) {
 	ignoreSpace := s.IgnoreSpace
 	s.IgnoreSpace = false
 	var sizeAtAdd *int64
+	if !d.fits(src, s.Only, s.SkipSystem, s.SkipAppleDouble) {
+		d = nil
+	}
 	mctx, mcancel := context.WithTimeout(context.Background(), SizeTimeout)
-	need, merr := measure(mctx, location.Folder{Dir: src, Only: s.Only, System: s.SkipSystem, AppleDouble: s.SkipAppleDouble}, dst)
+	var need int64
+	var merr error
+	if d != nil {
+		need, merr = measureManifest(mctx, filepath.Join(d.Dir, "manifest.jsonl"), dst)
+	} else {
+		need, merr = measure(mctx, location.Folder{Dir: src, Only: s.Only, System: s.SkipSystem, AppleDouble: s.SkipAppleDouble}, dst)
+	}
 	mcancel()
 	if merr == nil {
 		sizeAtAdd = &need
@@ -210,6 +226,9 @@ func (m *Manager) Add(s Spec) (*Job, error) {
 		Choice: "run", Phase: "scan", SourceVol: sv.ID, DestVol: dv.ID, SameVolume: sv.ID == dv.ID, SizeAtAdd: sizeAtAdd, SpaceOK: ignoreSpace}}
 	if err := os.MkdirAll(j.dir, 0o700); err != nil {
 		return nil, err
+	}
+	if d != nil && !j.adopt(d) {
+		m.Log.Info("the list made while choosing could not be used; the copy lists its folder itself", "source", src)
 	}
 	if err := j.save(); err != nil {
 		return nil, err
@@ -442,7 +461,7 @@ func (m *Manager) runOne(ctx context.Context, j *Job) {
 	}()
 	j.startWork(time.Now())
 	err := j.run(jctx, env{budget: m.Budget, src: sd, dst: dd, afterCopy: m.AfterCopy, copyRead: m.CopyRead,
-		space: func() error { return m.checkSpaceAtStart(j) }}, m.Accepting)
+		space: func() error { return m.checkSpaceAtStart(j) }, relist: time.Duration(m.Settings().RelistMinutes) * time.Minute}, m.Accepting)
 	cancel(nil)
 	m.mu.Lock()
 	m.running = nil

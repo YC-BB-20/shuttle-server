@@ -50,6 +50,12 @@ type Updates interface {
 	InstallCommit(ctx context.Context, commit string) error
 }
 
+// drafter is an Actions that can adopt the list made while choosing (v0.2.72).
+type drafter interface {
+	DraftDir() string
+	AddDraft(copyjob.Spec, *copyjob.Draft) (*copyjob.Job, error)
+}
+
 // Actions are the commands the page may send about copy jobs.
 type Actions interface {
 	Add(copyjob.Spec) (*copyjob.Job, error)

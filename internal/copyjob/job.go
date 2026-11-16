@@ -126,6 +126,7 @@ type state struct {
 	Bytes         int64                 `json:"bytes"`
 	Skipped       int                   `json:"skipped"`
 	SystemSkipped int                   `json:"system_skipped,omitempty"` // system files left out (Settings)
+	ListedAt      time.Time             `json:"listed_at,omitempty"`      // the file list came from the picker's count at this time and has not been used yet (v0.2.72)
 	SourceVol     string                `json:"source_volume"`
 	DestVol       string                `json:"dest_volume"`
 	SameVolume    bool                  `json:"same_volume"`

@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/YC-BB-20/shuttle-server/internal/copyjob"
@@ -79,7 +81,14 @@ func (s *Server) addJob(w http.ResponseWriter, r *http.Request) (any, error) {
 	if spec.Kind != copyjob.KindVerify && (spec.Source == "" || spec.Dest == "") {
 		return nil, errors.New("choose a source folder and a destination folder")
 	}
-	if _, err := s.Jobs.Add(spec); err != nil {
+	add := func() error { _, err := s.Jobs.Add(spec); return err }
+	if d, ok := s.Jobs.(drafter); ok && spec.Kind != copyjob.KindVerify {
+		// v0.2.72: the list the picker's count made, if it is for this copy.
+		if dr := s.sizes.take(filepath.Clean(strings.TrimSpace(spec.Source)), spec.Only); dr != nil {
+			add = func() error { _, err := d.AddDraft(spec, dr); return err }
+		}
+	}
+	if err := add(); err != nil {
 		var se *copyjob.SpaceError
 		if errors.As(err, &se) {
 			// Not added: the page asks "continue anyway" (sent again with

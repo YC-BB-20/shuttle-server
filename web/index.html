@@ -350,6 +350,13 @@
     <p class="mute">The hash every read of a copy makes: the source as it is copied, the copy read back, and the source read again. With both, each read makes both and both must match. Applies to new copies; a copy keeps the hash it started with, and a Verify reads each file with the hash its copy made. Each file's info shows the hashes.</p>
     <p class="err" id="hashErr"></p>
   </section>
+  <section class="card" id="relistSet">
+    <h2>Listing a waiting copy's files again</h2>
+    <label class="opt"><span>List the folder again if a copy waited longer than</span>
+      <select id="relistMin"><option value="0">never</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">1 hour</option><option value="120">2 hours</option><option value="240">4 hours</option><option value="720">12 hours</option><option value="1440">24 hours</option></select></label>
+    <p class="mute">A copy's files are listed once, while you choose the folder, so the copy is sized the moment it is added. If it then waits in the queue longer than this before it begins, Shuttle lists the folder again first, so files added in the meantime are not missed. Never means it copies exactly the list made when it was added; a file that changed since is reported. Applies to copies that have not begun.</p>
+    <p class="err" id="relistErr"></p>
+  </section>
   <section class="card" id="histSet">
     <h2>History</h2>
     <label class="opt"><input type="checkbox" id="showHidden"><span>Show hidden entries in the history</span></label>
@@ -722,7 +729,35 @@ $("newBtn").onclick = () => {
   $("newDlg").showModal();
   $("srcSize").textContent = ""; srcSize();
 };
-$("startBtn").onclick = () => {
+// v0.2.72: the folder is listed once, while it is chosen, and the copy is sized
+// when it is added. Pressing Start before the count has finished waits for it,
+// with its progress; closing the pop-up cancels the wait.
+let startSeq = 0;
+$("newDlg").addEventListener("close", () => { startSeq++; $("startBtn").disabled = false; });
+function awaitCount(seq) {
+  const path = $("src").value.trim(), only = path === srcOnlyAt ? srcOnly : [], key = path + "\n" + only.join("\n");
+  if (!path || path[0] !== "/" || (lastCount && lastCount.key === key)) return Promise.resolve();
+  return new Promise(resolve => {
+    const tick = () => {
+      if (seq !== startSeq) return;
+      fetch("/api/size?path=" + encodeURIComponent(path) + only.map(n => "&only=" + encodeURIComponent(n)).join("")).then(r => r.json()).then(c => {
+        if (seq !== startSeq) return;
+        if (c.done) { lastCount = { key, bytes: c.bytes, files: c.files }; resolve(); return; }
+        if (c.error) { resolve(); return; } // it could not be counted: the copy lists its folder itself
+        $("newErr").textContent = "Preparing: listing the files, " + nf(c.files) + " so far (" + size(c.bytes) + ")…";
+        setTimeout(tick, 500);
+      }).catch(() => { if (seq === startSeq) setTimeout(tick, 1000); });
+    };
+    tick();
+  });
+}
+$("startBtn").onclick = async () => {
+  $("newErr").textContent = "";
+  const seq = ++startSeq;
+  $("startBtn").disabled = true;
+  await awaitCount(seq);
+  if (seq !== startSeq) return;
+  $("startBtn").disabled = false;
   $("newErr").textContent = "";
   const dest = $("ckDest").checked, s2 = $("ckSrc").checked ? "now" : "skip";
   const proof = !dest ? { check: "none" } : $("ckSep").checked ? { check: "none", verify: $("ckPaused").checked ? "paused" : "run", s2 } :
@@ -1303,14 +1338,15 @@ function showSys(c) {
 }
 // v0.2.57: every save sends all the choices, so one switch never resets another.
 let copySet = {};
-function showSet(c) { copySet = c; showSys(c); document.querySelectorAll('input[name="hashAlgo"]').forEach(r => { r.checked = r.value === (c.hash || "xxh128"); }); }
+function showSet(c) { copySet = c; showSys(c); $("relistMin").value = String(c.relist_minutes === undefined ? 60 : c.relist_minutes); document.querySelectorAll('input[name="hashAlgo"]').forEach(r => { r.checked = r.value === (c.hash || "xxh128"); }); }
 function loadSys() { fetch("/api/settings/copy").then(r => r.json()).then(showSet).catch(() => {}); }
 function saveSys(errBox) {
   $("sysErr").textContent = ""; $("hashErr").textContent = "";
   const algo = document.querySelector('input[name="hashAlgo"]:checked');
-  post("/api/settings/copy", Object.assign({}, copySet, { skip_system_files: $("skipSys").checked, skip_appledouble_files: $("skipSys").checked && $("skipDot").checked, hash: algo ? algo.value : "xxh128" }))
+  post("/api/settings/copy", Object.assign({}, copySet, { skip_system_files: $("skipSys").checked, skip_appledouble_files: $("skipSys").checked && $("skipDot").checked, hash: algo ? algo.value : "xxh128", relist_minutes: +$("relistMin").value }))
     .then(showSet).catch(e => { $(errBox).textContent = e.message; loadSys(); });
 }
+$("relistMin").onchange = () => { $("relistErr").textContent = ""; saveSys("relistErr"); };
 $("skipSys").onchange = $("skipDot").onchange = () => saveSys("sysErr"); document.querySelectorAll('input[name="hashAlgo"]').forEach(r => { r.onchange = () => saveSys("hashErr"); });
 loadSys();
 // v0.2.63: start at login, the same switch as in the menu bar.

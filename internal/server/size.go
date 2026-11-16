@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net/http"
+	"os"
 	"path/filepath"
 	"slices"
 	"sync"
@@ -36,19 +37,39 @@ type SizeCount struct {
 	Error   string   `json:"error,omitempty"`
 }
 
+// draftFresh is how long a finished count is answered again without listing
+// the folder anew (v0.2.72: the count is also the copy's file list).
+const draftFresh = 2 * time.Minute
+
 type sizer struct {
 	mu      sync.Mutex
 	cur     SizeCount
 	cancel  context.CancelFunc
 	lastAsk time.Time
 	running bool
+	dir     string         // where the list is written; "" counts without writing one
+	draft   *copyjob.Draft // the finished list of cur, adoptable by a new copy
+	listed  time.Time      // when cur finished
 }
+
+// take returns the finished list for this folder and these names, if there
+// is one. The list stays (a second copy of the same folder can use it too).
+func (z *sizer) take(path string, only []string) *copyjob.Draft {
+	z.mu.Lock()
+	defer z.mu.Unlock()
+	if z.draft != nil && z.cur.Done && z.cur.Path == path && slices.Equal(z.cur.Only, only) {
+		return z.draft
+	}
+	return nil
+}
+
+func (z *sizer) setDir(dir string) { z.mu.Lock(); z.dir = dir; z.mu.Unlock() }
 
 func (z *sizer) ask(path string, only []string, f location.Folder) SizeCount {
 	z.mu.Lock()
 	defer z.mu.Unlock()
 	z.lastAsk = time.Now()
-	if z.cur.Path == path && slices.Equal(z.cur.Only, only) && (z.running || z.cur.Done) {
+	if z.cur.Path == path && slices.Equal(z.cur.Only, only) && (z.running || z.cur.Done && (z.dir == "" || time.Since(z.listed) < draftFresh)) {
 		return z.cur
 	}
 	if z.cancel != nil {
@@ -56,7 +77,7 @@ func (z *sizer) ask(path string, only []string, f location.Folder) SizeCount {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), sizeLimit)
 	z.cancel, z.running = cancel, true
-	z.cur = SizeCount{Path: path, Only: only}
+	z.cur, z.draft = SizeCount{Path: path, Only: only}, nil
 	go z.count(ctx, cancel, f, path, only)
 	return z.cur
 }
@@ -77,18 +98,42 @@ func (z *sizer) count(ctx context.Context, cancel context.CancelFunc, f location
 		}
 		return time.Since(z.lastAsk) < sizeIdle
 	}
-	err := f.Walk(ctx, func(e location.Entry) error {
-		files++
-		bytes += e.Size
-		if files%2000 == 0 && !report(false, "") {
-			cancel() // nobody is looking any more, or something else was asked
+	var err error
+	if z.dir != "" {
+		// v0.2.72: the same walk writes the list a new copy will adopt.
+		dir := filepath.Join(z.dir, "cur")
+		os.RemoveAll(dir) // our own temp files from the last count
+		var d *copyjob.Draft
+		d, err = copyjob.WriteDraft(ctx, f, dir, func(n, b int64) {
+			files, bytes = n, b
+			if n%2000 == 0 && !report(false, "") {
+				cancel() // nobody is looking any more, or something else was asked
+			}
+		})
+		if err == nil {
+			files, bytes, skipped = d.Files, d.Bytes, int64(d.Skipped)
+			z.mu.Lock()
+			if mine() {
+				z.draft, z.listed = d, time.Now()
+			}
+			z.mu.Unlock()
+		} else {
+			os.RemoveAll(dir)
 		}
-		return nil
-	}, func(s location.Skipped) {
-		if s.Why != location.WhySystem {
-			skipped++
-		}
-	})
+	} else {
+		err = f.Walk(ctx, func(e location.Entry) error {
+			files++
+			bytes += e.Size
+			if files%2000 == 0 && !report(false, "") {
+				cancel()
+			}
+			return nil
+		}, func(s location.Skipped) {
+			if s.Why != location.WhySystem {
+				skipped++
+			}
+		})
+	}
 	switch {
 	case err == nil:
 		report(true, "")
@@ -134,5 +179,8 @@ func (s *Server) copySize(w http.ResponseWriter, r *http.Request) {
 		set = s.Jobs.Settings()
 	}
 	f := location.Folder{Dir: p, Only: only, System: set.SkipSystem, AppleDouble: set.SkipAppleDouble}
+	if d, ok := s.Jobs.(drafter); ok {
+		s.sizes.setDir(d.DraftDir())
+	}
 	writeJSON(w, http.StatusOK, s.sizes.ask(p, only, f))
 }

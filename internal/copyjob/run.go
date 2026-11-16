@@ -57,32 +57,44 @@ func (m *manifestIter) Next() bool {
 
 func (m *manifestIter) Close() { m.f.Close() }
 
-// scan walks the source and writes the manifest. Memory holds only counters.
-func (j *Job) scan(ctx context.Context, src location.Source) error {
-	j.setLive(func(l *live) { l.stage = "Scanning the source"; l.scanned, l.scannedBytes = 0, 0 })
-	f, err := os.Create(j.path("manifest.jsonl")) // our own file, rebuilt from the start
+// walker is what listManifest reads: a Source, or a bare Folder.
+type walker interface {
+	Walk(ctx context.Context, file func(location.Entry) error, skip func(location.Skipped)) error
+}
+
+// listing is what a walk wrote.
+type listing struct {
+	n               int
+	total           int64
+	skipped, system int
+}
+
+// listManifest walks src and writes the manifest and the skipped list, both
+// our own files, flushed for real. progress is called every 500 files.
+// Memory holds only counters.
+func listManifest(ctx context.Context, src walker, manifest, skippedList string, progress func(n int, total int64)) (listing, error) {
+	var l listing
+	f, err := os.Create(manifest)
 	if err != nil {
-		return err
+		return l, err
 	}
 	w := bufio.NewWriterSize(f, 256<<10)
-	sk, _ := os.Create(j.path("skipped.jsonl"))
+	sk, _ := os.Create(skippedList)
 	defer sk.Close()
-	n, skipped, system := 0, 0, 0
-	var total int64
 	err = src.Walk(ctx, func(e location.Entry) error {
-		b, _ := json.Marshal(entry{I: n, P: e.Rel, S: e.Size, M: e.Mtime, O: uint32(e.Mode)})
+		b, _ := json.Marshal(entry{I: l.n, P: e.Rel, S: e.Size, M: e.Mtime, O: uint32(e.Mode)})
 		w.Write(append(b, '\n'))
-		n++
-		total += e.Size
-		if n%500 == 0 {
-			j.setLive(func(l *live) { l.scanned, l.scannedBytes = n, total })
+		l.n++
+		l.total += e.Size
+		if l.n%500 == 0 && progress != nil {
+			progress(l.n, l.total)
 		}
 		return nil
 	}, func(s location.Skipped) {
 		if s.Why == location.WhySystem {
-			system++
+			l.system++
 		} else {
-			skipped++
+			l.skipped++
 		}
 		b, _ := json.Marshal(s)
 		sk.Write(append(b, '\n'))
@@ -94,6 +106,16 @@ func (j *Job) scan(ctx context.Context, src location.Source) error {
 		err = f.Sync()
 	}
 	f.Close()
+	return l, err
+}
+
+// scan walks the source and writes the manifest.
+func (j *Job) scan(ctx context.Context, src location.Source) error {
+	j.setLive(func(l *live) { l.stage = "Scanning the source"; l.scanned, l.scannedBytes = 0, 0 })
+	l, err := listManifest(ctx, src, j.path("manifest.jsonl"), j.path("skipped.jsonl"), func(n int, total int64) {
+		j.setLive(func(l *live) { l.scanned, l.scannedBytes = n, total })
+	})
+	n, total, skipped, system := l.n, l.total, l.skipped, l.system
 	if err != nil {
 		if ctx.Err() != nil {
 			return context.Cause(ctx)
@@ -689,6 +711,16 @@ func (j *Job) s2Phase(ctx context.Context, e env, jr *Journal) error {
 func (j *Job) run(ctx context.Context, e env, accepting func() bool) error {
 	if j.st.Spec.isVerify() {
 		return j.runVerify(ctx, e, accepting)
+	}
+	if relistDue(j.st, e.relist, time.Now()) {
+		// v0.2.72: the list was made when the copy was added and it has waited
+		// longer than the owner allows (Settings): list the folder again.
+		j.mu.Lock()
+		j.st.Phase, j.st.ListedAt = "scan", time.Time{}
+		j.mu.Unlock()
+		if err := j.save(); err != nil {
+			return err
+		}
 	}
 	if j.st.Phase == "scan" {
 		if err := j.scan(ctx, j.source()); err != nil {
