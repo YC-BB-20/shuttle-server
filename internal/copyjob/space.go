@@ -223,3 +223,12 @@ func (m *Manager) ContinueAnyway(id string) error {
 	m.Log.Info("owner let a copy continue although it may not fit", "job", id)
 	return m.Resume(id)
 }
+
+// CheckSpace is the early warning in New copy (v0.2.79): the same comparison
+// as when a copy is added, made as soon as the size and the destination are
+// known, before Start is pressed. It returns nil when the copy fits, and
+// nothing is added or changed either way. Files already at the destination
+// are not counted here, so the real copy may need less than need.
+func (m *Manager) CheckSpace(dst string, need int64) (*SpaceShort, error) {
+	return m.spaceFor(filepath.Clean(dst), need, nil)
+}

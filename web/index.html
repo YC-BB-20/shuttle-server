@@ -393,6 +393,7 @@
     <p class="mute sizeline" id="srcSize"></p>
     <label for="dst">Copy to (a new or existing folder on the destination)</label>
     <div class="row"><input type="text" id="dst" placeholder="/Volumes/BACKUP_1/Day 01/A001"><button type="button" data-pick="dst">Choose…</button></div>
+    <p class="warn" id="dstSpace" style="min-height:1.3em;margin:4px 0 0"></p>
     <label>Proof</label>
     <label class="opt"><input type="checkbox" id="ckCopy" checked disabled><span>Copy, hashing the source as it is read</span></label>
     <label class="opt"><input type="checkbox" id="ckDest" checked><span>Verify the destination: read each copy back</span></label>
@@ -868,6 +869,7 @@ function askSize(path, only, out, lead) {
     fetch("/api/size?path=" + encodeURIComponent(path) + only.map(n => "&only=" + encodeURIComponent(n)).join("")).then(r => r.json()).then(c => {
       if (sizeKey !== key) return;
       if (c.done && !c.error) lastCount = { key, bytes: c.bytes, files: c.files };
+      if (c.done && !c.error && $("newDlg").open) spaceWarn();
       if (!c.done && floor) { c = Object.assign({}, c, { bytes: Math.max(c.bytes, floor.bytes), files: Math.max(c.files, floor.files) }); }
       if (!c.error) lastShown = { path, only: only.slice(), bytes: c.bytes, files: c.files };
       if (c.error) fshow(out, c.error);
@@ -878,6 +880,24 @@ function askSize(path, only, out, lead) {
   sizeTimer = setTimeout(tick, 250);
 }
 $("pickDlg").addEventListener("close", () => { if ($("newDlg").open) srcSize(); });
+// v0.2.79: before Start, once the size is counted and a destination is
+// chosen, say if the copy may not fit there. It only warns; Start still asks.
+let spaceSeq = 0, spaceTimer = 0;
+function spaceWarn() {
+  clearTimeout(spaceTimer);
+  const my = ++spaceSeq, out = $("dstSpace"), d = $("dst").value.trim(), p = $("src").value.trim();
+  if (!lastCount || lastCount.key !== p + "\n" + (p === srcOnlyAt ? srcOnly : []).join("\n") || !d || d[0] !== "/") { out.textContent = ""; return; }
+  spaceTimer = setTimeout(() => {
+    fetch("/api/spacecheck?dest=" + encodeURIComponent(d) + "&bytes=" + lastCount.bytes).then(r => r.json()).then(r => {
+      if (my !== spaceSeq) return;
+      out.textContent = r.fits ? "" : r.space.message + " Files already at the destination are not counted when the copy starts.";
+    }).catch(() => { if (my === spaceSeq) out.textContent = ""; });
+  }, 300);
+}
+$("dst").addEventListener("input", spaceWarn);
+$("src").addEventListener("input", spaceWarn);
+$("pickDlg").addEventListener("close", () => { if ($("newDlg").open) spaceWarn(); });
+$("newDlg").addEventListener("close", () => { spaceSeq++; $("dstSpace").textContent = ""; });
 function srcSize() { const p = $("src").value.trim(); askSize(p, p === srcOnlyAt ? srcOnly : [], $("srcSize"), "Copy size: "); }
 function pickSize() {
   if (pickFor !== "src") { $("pickSize").replaceChildren(); return; }

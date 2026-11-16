@@ -117,3 +117,36 @@ func TestSpaceCheckedAgainWhenTheCopyStarts(t *testing.T) {
 	}
 	checkDest(t, filepath.Join(dst, "a"), files)
 }
+
+func TestCheckSpaceWarnsWithoutAddingAnything(t *testing.T) {
+	dst := t.TempDir()
+	m := newManager(t, t.TempDir())
+	m.FreeHook = func(string) uint64 { return 1000 }
+	short, err := m.CheckSpace(filepath.Join(dst, "new", "folder"), 1001)
+	if err != nil || short == nil || short.FitsAlone || short.Need != 1001 || short.Free != 1000 {
+		t.Fatalf("want a warning for a copy bigger than the free space: %v %+v", err, short)
+	}
+	if short, err = m.CheckSpace(dst, 1000); err != nil || short != nil {
+		t.Fatalf("a copy that just fits must not warn: %v %+v", err, short)
+	}
+	if len(m.Views()) != 0 {
+		t.Fatal("checking the space added a job")
+	}
+}
+
+func TestCheckSpaceCountsTheWholeQueueToTheSameDisk(t *testing.T) {
+	src, dst := t.TempDir(), t.TempDir()
+	files := makeTree(t, src, 1<<20)
+	size := treeSize(files)
+	m := newManager(t, t.TempDir()) // not running: the copies stay queued
+	m.FreeHook = func(string) uint64 { return uint64(size * 5 / 2) }
+	for _, d := range []string{"a", "b"} {
+		if _, err := m.Add(Spec{Source: src, Dest: filepath.Join(dst, d)}); err != nil {
+			t.Fatalf("copy %s: %v", d, err)
+		}
+	}
+	short, err := m.CheckSpace(filepath.Join(dst, "c"), size)
+	if err != nil || short == nil || !short.FitsAlone || short.QueuedJobs != 2 || short.Queued != 2*size {
+		t.Fatalf("want: fits alone, not with the 2 queued copies: %v %+v", err, short)
+	}
+}

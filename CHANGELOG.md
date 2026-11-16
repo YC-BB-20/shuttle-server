@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.79 — 16 November 2026
+
+- **Space warning before Start.** In New copy, once the size is counted and a destination is chosen, a line under the destination says if the copy may not fit there, counting the copies already queued to the same disk (and the free-space floor on the internal disk). It only warns; Start still asks as before. Files already at the destination are not counted when the copy starts, so the real need can be lower.
+
 ## 0.2.78 — 16 November 2026
 
 - **Select all in the folder picker.** ⌘A (Ctrl+A) ticks every folder and file in the folder you are looking at; ⌘⇧A (Ctrl+Shift+A) unticks them all. Only in "Choose what to copy"; typing in a field is not affected. Page only.

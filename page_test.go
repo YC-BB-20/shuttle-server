@@ -485,3 +485,13 @@ func TestPageQueueItem59(t *testing.T) {
 		}
 	}
 }
+
+// v0.2.79: New copy warns before Start when the counted size may not fit.
+func TestPageWarnsBeforeStartWhenCopyMayNotFit(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{`id="dstSpace"`, `function spaceWarn()`, `/api/spacecheck?dest=`, `$("dst").addEventListener("input", spaceWarn)`, `spaceWarn();`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}

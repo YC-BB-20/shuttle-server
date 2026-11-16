@@ -56,6 +56,12 @@ type drafter interface {
 	AddDraft(copyjob.Spec, *copyjob.Draft) (*copyjob.Job, error)
 }
 
+// spaceChecker is an Actions that can say whether a copy of a given size fits
+// on a destination (v0.2.79).
+type spaceChecker interface {
+	CheckSpace(dst string, need int64) (*copyjob.SpaceShort, error)
+}
+
 // Actions are the commands the page may send about copy jobs.
 type Actions interface {
 	Add(copyjob.Spec) (*copyjob.Job, error)
@@ -85,6 +91,7 @@ func (s *Server) HTTP() *http.Server {
 	mux.HandleFunc("POST /api/mkdir", s.always(s.mkdir))
 	mux.HandleFunc("GET /api/storage", s.storageList)
 	mux.HandleFunc("GET /api/size", s.copySize)
+	mux.HandleFunc("GET /api/spacecheck", s.spaceCheck)
 	mux.HandleFunc("GET /api/speedtest", s.speedStatus)
 	mux.HandleFunc("POST /api/speedtest/{action}", s.always(s.speedAction))
 	mux.HandleFunc("GET /api/jobs/{id}/problems", s.problems)
