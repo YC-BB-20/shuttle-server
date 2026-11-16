@@ -39,7 +39,7 @@
   .tabs { display:flex; gap:4px; background:var(--line); border-radius:9px; padding:2px; }
   .tabs button { border:0; background:transparent; padding:4px 12px; border-radius:7px; }
   .tabs button[aria-selected=true] { background:var(--card); font-weight:600; }
-  .sizeline { min-height:1.4em; margin:0 0 6px; font-variant-numeric:tabular-nums; }
+  .sizeline { min-height:2.8em; margin:0 0 6px; font-variant-numeric:tabular-nums; }
   [hidden] { display:none !important; }
   .settings > section { margin-bottom:12px; }
   .sechead { font-size:15px; margin:4px 0 8px; }
@@ -843,18 +843,25 @@ let sizeTimer = 0, sizeKey = "";
 const nf = n => Number(n).toLocaleString();
 // v0.2.71: the last finished count, sent with the copy so the queue knows its size before its scan.
 let lastCount = null;
-// v0.2.74: what the line last showed. While a bigger selection of the same
-// folder is counted again, the line never shows less than this, so adding a
-// folder keeps adding up instead of dropping to zero.
+// v0.2.74/77: what the line last showed. While the same folder is counted again
+// (a name added or removed), the numbers never show less than this, so the line
+// neither drops to zero when adding nor when removing; the final count replaces
+// it. Two lines (v0.2.77): the label on top, the numbers alone under it, so the
+// text does not move sideways while the numbers change.
 let lastShown = null;
-const keepsUp = (path, only) => lastShown && lastShown.path === path && lastShown.only.length && lastShown.only.every(n => only.includes(n));
+const keepsUp = (path) => lastShown && lastShown.path === path;
+const fshow = (out, head, bytes, files) => {
+  const a = document.createElement("div"), b = document.createElement("div");
+  a.textContent = head; b.textContent = bytes == null ? "" : size(bytes) + " · " + nf(files) + (files === 1 ? " file" : " files");
+  out.replaceChildren(a, b);
+};
 function askSize(path, only, out, lead) {
   clearTimeout(sizeTimer);
-  if (!path || path[0] !== "/") { sizeKey = ""; out.textContent = ""; return; }
+  if (!path || path[0] !== "/") { sizeKey = ""; out.replaceChildren(); return; }
   const key = path + "\n" + only.join("\n");
-  if (sizeKey !== key) out.textContent = "Counting…";
-  const floor = keepsUp(path, only) ? lastShown : null;
-  if (sizeKey !== key && floor) out.textContent = "Counting… " + size(floor.bytes) + " in " + nf(floor.files) + (floor.files === 1 ? " file" : " files") + " so far";
+  if (sizeKey !== key) fshow(out, "Counting…");
+  const floor = keepsUp(path) ? lastShown : null;
+  if (sizeKey !== key && floor) fshow(out, "Counting…", floor.bytes, floor.files);
   sizeKey = key;
   const tick = () => {
     if (sizeKey !== key || !($("pickDlg").open || $("newDlg").open)) return;
@@ -863,8 +870,8 @@ function askSize(path, only, out, lead) {
       if (c.done && !c.error) lastCount = { key, bytes: c.bytes, files: c.files };
       if (!c.done && floor) { c = Object.assign({}, c, { bytes: Math.max(c.bytes, floor.bytes), files: Math.max(c.files, floor.files) }); }
       if (!c.error) lastShown = { path, only: only.slice(), bytes: c.bytes, files: c.files };
-      out.textContent = c.error ? c.error : (c.done ? lead : "Counting… ") + size(c.bytes) + " in " + nf(c.files) + (c.files === 1 ? " file" : " files") +
-        (c.done ? "" : " so far") + (c.skipped ? " · " + nf(c.skipped) + " links or unreadable items are not copied" : "");
+      if (c.error) fshow(out, c.error);
+      else fshow(out, (c.done ? lead.replace(/:\s*$/, "") : "Counting…") + (c.skipped ? " · " + nf(c.skipped) + " links or unreadable items are not copied" : ""), c.bytes, c.files);
       if (!c.done && !c.error) sizeTimer = setTimeout(tick, 700);
     }).catch(() => { if (sizeKey === key) sizeTimer = setTimeout(tick, 2000); });
   };
@@ -873,7 +880,7 @@ function askSize(path, only, out, lead) {
 $("pickDlg").addEventListener("close", () => { if ($("newDlg").open) srcSize(); });
 function srcSize() { const p = $("src").value.trim(); askSize(p, p === srcOnlyAt ? srcOnly : [], $("srcSize"), "Copy size: "); }
 function pickSize() {
-  if (pickFor !== "src") { $("pickSize").textContent = ""; return; }
+  if (pickFor !== "src") { $("pickSize").replaceChildren(); return; }
   askSize(pickAt, [...chosen], $("pickSize"), chosen.size ? "The " + chosen.size + " chosen: " : "This whole folder: ");
 }
 $("src").oninput = () => setOnly([]);

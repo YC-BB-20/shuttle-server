@@ -333,10 +333,24 @@ func TestPageNoDuplicateTopLevelNames(t *testing.T) {
 // v0.2.74: adding a folder to the chosen ones never drops the count to zero.
 func TestPageCountKeepsAddingUp(t *testing.T) {
 	s := string(IndexHTML)
-	for _, want := range []string{`const keepsUp = (path, only)`, `Math.max(c.bytes, floor.bytes)`, `Math.max(c.files, floor.files)`} {
+	for _, want := range []string{`const keepsUp = (path) =>`, `Math.max(c.bytes, floor.bytes)`, `Math.max(c.files, floor.files)`} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
 		}
+	}
+}
+
+// v0.2.77: the count is two lines (label, then numbers) and removing a name
+// keeps the last numbers until the new count is done.
+func TestPageCountTwoLinesNoDropOnRemove(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{`const fshow = (out, head, bytes, files)`, `const keepsUp = (path) => lastShown && lastShown.path === path;`, `.sizeline { min-height:2.8em;`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	if strings.Contains(s, "lastShown.only.every") {
+		t.Error("removing a chosen name still restarts the count at zero")
 	}
 }
 
