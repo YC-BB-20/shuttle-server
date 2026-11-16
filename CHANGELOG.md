@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.78 — 16 November 2026
+
+- **Select all in the folder picker.** ⌘A (Ctrl+A) ticks every folder and file in the folder you are looking at; ⌘⇧A (Ctrl+Shift+A) unticks them all. Only in "Choose what to copy"; typing in a field is not affected. Page only.
+
 ## 0.2.77 — 16 November 2026
 
 - **The size count no longer jumps sideways or back to zero.** In the folder picker and New copy it is now two lines: the label on top ("Counting…", "The 2 chosen", "This whole folder"), the size and file count alone under it. Removing a chosen folder keeps the last numbers on screen until the new count is done, instead of dropping to zero. Page only.

@@ -988,6 +988,12 @@ function browse(path, keep) {
       lastPick = i;
       return true;
     };
+    // v0.2.78: ⌘A (Ctrl+A) ticks everything in this folder, ⌘⇧A (Ctrl+Shift+A) unticks all.
+    pickTickAll = on => {
+      if (pickFor !== "src") return;
+      boxes.forEach((cb, k) => { cb.checked = on; on ? chosen.add(d.folders[k].name) : chosen.delete(d.folders[k].name); });
+      lastPick = -1; useLabel(); pickSize();
+    };
     $("pickList").replaceChildren(...d.folders.map((f, i) => {
       const row = el("div", "pick");
       if (pickFor === "src") {
@@ -1026,6 +1032,13 @@ function browse(path, keep) {
     $("pickSize").textContent = ""; pickSize();
   }).catch(() => { $("pickErr").textContent = "Could not reach Shuttle Server."; });
 }
+// v0.2.78: the picker's select-all keys. Not while typing in a field.
+let pickTickAll = null;
+$("pickDlg").addEventListener("keydown", e => {
+  if (!(e.metaKey || e.ctrlKey) || e.altKey || e.key.toLowerCase() !== "a" || !pickTickAll) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName) && document.activeElement.type !== "checkbox") return;
+  e.preventDefault(); pickTickAll(!e.shiftKey);
+});
 $("newDirBtn").onclick = () => { $("newDirBox").hidden = false; $("newDirName").value = ""; $("pickErr").textContent = ""; $("newDirName").focus(); };
 $("newDirCancel").onclick = () => { $("newDirBox").hidden = true; };
 $("newDirBox").onsubmit = e => {

@@ -354,6 +354,16 @@ func TestPageCountTwoLinesNoDropOnRemove(t *testing.T) {
 	}
 }
 
+// v0.2.78: ⌘A / Ctrl+A ticks everything in the picker's folder, with Shift unticks all.
+func TestPagePickerSelectAllKeys(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{`pickTickAll = on =>`, `e.key.toLowerCase() !== "a"`, `pickTickAll(!e.shiftKey)`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}
+
 // v0.2.50: Queue under New copy, speed beside the pause button, Now: without
 // the file name, no repeated counts, From and To on one line, Verify files
 // at the left of the line above the files.
