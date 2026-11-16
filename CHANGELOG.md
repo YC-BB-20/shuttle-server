@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.75 — 16 November 2026
+
+- **Fixes the page not loading in v0.2.74** (it stayed on "Loading…" and "Connecting"). The new size-count code reused a name the page already used, which stopped the whole page script. Renamed, and a test now fails the build if any name is declared twice. Do not install v0.2.74.
+
 ## 0.2.74 — 16 November 2026
 
 - **The size count never drops back to zero when you add a folder.** Choosing one more folder to copy now keeps the total you already had on screen and keeps adding to it as the new count catches up, instead of restarting from 0. If you take something away, or choose a different folder, the count starts fresh, since the old total would be too high.

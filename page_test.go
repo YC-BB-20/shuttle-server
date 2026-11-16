@@ -301,6 +301,35 @@ func TestPageFoldersStartClosed(t *testing.T) {
 	}
 }
 
+// v0.2.75: a name declared twice at the top of the page script is a syntax
+// error that stops the whole page (v0.2.74 shipped one: "Loading..." forever).
+func TestPageNoDuplicateTopLevelNames(t *testing.T) {
+	s := string(IndexHTML)
+	a, b := strings.Index(s, "<script"), strings.LastIndex(s, "</script>")
+	if a < 0 || b < a {
+		t.Fatal("no script in the page")
+	}
+	seen := map[string]bool{}
+	for _, ln := range strings.Split(s[a:b], "\n") {
+		for _, kw := range []string{"let ", "const ", "var ", "function "} {
+			if !strings.HasPrefix(ln, kw) {
+				continue
+			}
+			name := strings.TrimPrefix(ln, kw)
+			end := strings.IndexFunc(name, func(r rune) bool {
+				return !(r == '_' || r == '$' || r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z')
+			})
+			if end > 0 {
+				name = name[:end]
+			}
+			if seen[name] {
+				t.Errorf("the page declares %q twice at the top level", name)
+			}
+			seen[name] = true
+		}
+	}
+}
+
 // v0.2.74: adding a folder to the chosen ones never drops the count to zero.
 func TestPageCountKeepsAddingUp(t *testing.T) {
 	s := string(IndexHTML)
