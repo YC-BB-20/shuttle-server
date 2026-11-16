@@ -181,6 +181,10 @@ func (j *Job) copyPhase(ctx context.Context, e env, jr *Journal, accepting func(
 			if !accepting() {
 				return waitErr{"Waiting for memory to free up"}
 			}
+			skip, ch := j.turnCheck(e, cur, src.Path(cur.P), jr)
+			if skip {
+				continue
+			}
 			j.setLive(func(l *live) { l.file = cur.P })
 			began := time.Now()
 			recs, err := j.copyOnly(ctx, e, cur, src.Path(cur.P), filepath.Join(dst, filepath.FromSlash(cur.P)))
@@ -196,6 +200,7 @@ func (j *Job) copyPhase(ctx context.Context, e env, jr *Journal, accepting func(
 			}
 			if len(recs) > 0 {
 				recs[0].Ms = time.Since(began).Milliseconds()
+				ch.mark(&recs[0])
 			}
 			for _, r := range recs {
 				jr.Append(r)
@@ -213,6 +218,10 @@ func (j *Job) copyPhase(ctx context.Context, e env, jr *Journal, accepting func(
 			if !accepting() {
 				return waitErr{"Waiting for memory to free up"}
 			}
+			skip, ch := j.turnCheck(e, cur, src.Path(cur.P), jr)
+			if skip {
+				continue
+			}
 			j.setLive(func(l *live) { l.file = cur.P })
 			began := time.Now()
 			recs, err := j.oneFileHashed(ctx, e, cur, src.Path(cur.P), filepath.Join(dst, filepath.FromSlash(cur.P)), "")
@@ -225,6 +234,7 @@ func (j *Job) copyPhase(ctx context.Context, e env, jr *Journal, accepting func(
 			}
 			if len(recs) > 0 {
 				recs[0].Ms = time.Since(began).Milliseconds()
+				ch.mark(&recs[0])
 			}
 			for _, r := range recs {
 				jr.Append(r)
@@ -245,6 +255,12 @@ func (j *Job) copyPhase(ctx context.Context, e env, jr *Journal, accepting func(
 		}
 		srcPath := src.Path(cur.P)
 		final := filepath.Join(dst, filepath.FromSlash(cur.P))
+		skip, ch := j.turnCheck(e, cur, srcPath, jr)
+		if skip {
+			pre = nil
+			cur = nextPending()
+			continue
+		}
 		var s1 sum
 		if pre != nil {
 			s1, err = pre.h, pre.err
@@ -287,6 +303,9 @@ func (j *Job) copyPhase(ctx context.Context, e env, jr *Journal, accepting func(
 		began := time.Now()
 		rec, err := j.oneFile(ctx, e, cur, srcPath, final, s1, startNext)
 		rec.Ms = time.Since(began).Milliseconds()
+		if err == nil {
+			ch.mark(&rec)
+		}
 		if err != nil && !isFileErr(err) {
 			cancelNext()
 			if nextRes != nil {
@@ -712,16 +731,6 @@ func (j *Job) run(ctx context.Context, e env, accepting func() bool) error {
 	if j.st.Spec.isVerify() {
 		return j.runVerify(ctx, e, accepting)
 	}
-	if relistDue(j.st, e.relist, time.Now()) {
-		// v0.2.72: the list was made when the copy was added and it has waited
-		// longer than the owner allows (Settings): list the folder again.
-		j.mu.Lock()
-		j.st.Phase, j.st.ListedAt = "scan", time.Time{}
-		j.mu.Unlock()
-		if err := j.save(); err != nil {
-			return err
-		}
-	}
 	if j.st.Phase == "scan" {
 		if err := j.scan(ctx, j.source()); err != nil {
 			return err
@@ -771,6 +780,12 @@ func (j *Job) run(ctx context.Context, e env, accepting func() bool) error {
 		}
 	}
 	jr.Flush()
+	if err := j.checkSource(ctx, e); err != nil {
+		return err
+	}
+	if e.wrapHash != nil {
+		e.wrapHash()
+	}
 	j.mu.Lock()
 	j.st.Phase, j.st.Finished, j.st.Checkpoints = "done", time.Now(), nil
 	j.st.CopyRate = copyAverage(j.copyClock(j.st.Finished)) // for history (v0.2.55)

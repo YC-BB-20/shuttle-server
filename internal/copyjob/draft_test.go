@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/YC-BB-20/shuttle-server/internal/location"
 )
@@ -62,45 +61,5 @@ func TestDraftForAnotherCopyIsIgnored(t *testing.T) {
 	}
 	if j.st.Phase != "scan" || !j.st.ListedAt.IsZero() {
 		t.Fatalf("a draft made under other rules was used: %q", j.st.Phase)
-	}
-}
-
-func TestRelistDue(t *testing.T) {
-	now := time.Now()
-	st := state{Phase: "copy", ListedAt: now.Add(-2 * time.Hour)}
-	hour := time.Hour
-	if !relistDue(st, hour, now) {
-		t.Fatal("waited 2 h, limit 1 h: list again")
-	}
-	if relistDue(st, 0, now) {
-		t.Fatal("never means never")
-	}
-	if relistDue(st, 3*hour, now) {
-		t.Fatal("waited less than the limit")
-	}
-	worked := st
-	worked.WorkNs = 1
-	if relistDue(worked, hour, now) {
-		t.Fatal("a copy that has worked is not listed again")
-	}
-	if relistDue(state{Phase: "copy"}, hour, now) {
-		t.Fatal("a copy that listed its own folder has nothing to expire")
-	}
-}
-
-func TestRelistSetting(t *testing.T) {
-	m := newManager(t, filepath.Join(t.TempDir(), "state"))
-	if m.Settings().RelistMinutes != 60 {
-		t.Fatal("default is one hour")
-	}
-	s := m.Settings()
-	s.RelistMinutes = 99999999
-	got, err := m.SetSettings(s)
-	if err != nil || got.RelistMinutes != 7*24*60 {
-		t.Fatalf("not clamped: %d %v", got.RelistMinutes, err)
-	}
-	s.RelistMinutes = 0
-	if got, _ := m.SetSettings(s); got.RelistMinutes != 0 {
-		t.Fatal("never must stay never")
 	}
 }

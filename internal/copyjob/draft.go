@@ -95,13 +95,6 @@ func linkOrCopy(from, to string) error {
 	return out.Close()
 }
 
-// relistDue says whether a copy added with a draft has waited longer than
-// the owner allows before it began (Settings; 0 never), so its folder is
-// listed again. A copy that has already worked is never listed again.
-func relistDue(st state, after time.Duration, now time.Time) bool {
-	return after > 0 && st.Phase == "copy" && !st.ListedAt.IsZero() && st.WorkNs == 0 && now.Sub(st.ListedAt) > after
-}
-
 // measureManifest is measure over a finished list: what a copy to dst still
 // has to write, counting a file already there with the same size as done.
 func measureManifest(ctx context.Context, manifest, dst string) (int64, error) {

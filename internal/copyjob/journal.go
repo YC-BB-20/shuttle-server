@@ -15,7 +15,7 @@ import (
 // Rec is one journal line: the outcome of one step for one file.
 type Rec struct {
 	I   int    `json:"i"`
-	St  string `json:"st"`          // verified, identical, strong, failed, s2ok, s2changed, s2unstable
+	St  string `json:"st"`          // verified, identical, strong, failed, gone, s2ok, s2changed, s2unstable
 	N   int64  `json:"n"`           // file size
 	C   string `json:"c,omitempty"` // hash of the bytes read for the copy
 	S1  string `json:"s1,omitempty"`
@@ -26,6 +26,7 @@ type Rec struct {
 	T   int64  `json:"t"`
 	A   int    `json:"a,omitempty"`   // copy attempts it took (1 or 2); added in 0.2.7
 	Ms  int64  `json:"ms,omitempty"`  // how long the file took, in milliseconds; added in 0.2.7
+	Chg bool   `json:"chg,omitempty"` // v0.2.82: the source differed from the list when its turn came; it was copied as found (Err says how)
 	X64 string `json:"x64,omitempty"` // XXH64 of the copy as read back, for other tools; added in 0.2.57
 }
 

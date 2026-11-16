@@ -22,14 +22,18 @@ type Settings struct {
 	// default), "xxh64" or "both" (added in 0.2.58; it replaced 0.2.57's
 	// XXH64 lists, which are a later function).
 	Hash string `json:"hash"`
-	// RelistMinutes (added in 0.2.72): a copy's files are listed once, when it
-	// is added. If it then waits in the queue longer than this before it
-	// begins, its folder is listed again. 0 means never; default 60.
-	RelistMinutes int `json:"relist_minutes"`
+	// Folder layout (v0.2.81), the defaults New copy starts from; each copy
+	// can change them. Wrap puts a copy in a wrapper folder (D/<name>/<source
+	// folder>); WrapNameFrom is where the wrapper's name comes from, "folder"
+	// (the source folder's name, the default) or "volume" (its disk's name);
+	// WrapHash writes the hash list beside the media folder when the copy ends.
+	Wrap         bool   `json:"wrap"`
+	WrapNameFrom string `json:"wrap_name_from"`
+	WrapHash     bool   `json:"wrap_hash"`
 }
 
 // DefaultSettings are used until the owner saves a choice.
-var DefaultSettings = Settings{FormatVersion: 1, SkipSystem: true, Hash: AlgoXXH128, RelistMinutes: 60}
+var DefaultSettings = Settings{FormatVersion: 1, SkipSystem: true, Hash: AlgoXXH128, WrapNameFrom: "folder"}
 
 func (m *Manager) settingsPath() string {
 	return filepath.Join(filepath.Dir(m.Dir), "copy-settings.json")
@@ -49,7 +53,7 @@ func (m *Manager) Settings() Settings {
 			}
 		}
 		s.Hash = normAlgo(s.Hash)
-		s.RelistMinutes = clampRelist(s.RelistMinutes)
+		s.WrapNameFrom = normWrapFrom(s.WrapNameFrom)
 		m.set = &s
 	}
 	return *m.set
@@ -59,7 +63,7 @@ func (m *Manager) Settings() Settings {
 func (m *Manager) SetSettings(s Settings) (Settings, error) {
 	s.FormatVersion = 1
 	s.Hash = normAlgo(s.Hash)
-	s.RelistMinutes = clampRelist(s.RelistMinutes)
+	s.WrapNameFrom = normWrapFrom(s.WrapNameFrom)
 	b, _ := json.MarshalIndent(s, "", "  ")
 	m.setMu.Lock()
 	defer m.setMu.Unlock()
@@ -70,5 +74,9 @@ func (m *Manager) SetSettings(s Settings) (Settings, error) {
 	return s, nil
 }
 
-// clampRelist keeps the re-list time between never (0) and a week.
-func clampRelist(m int) int { return min(max(m, 0), 7*24*60) }
+func normWrapFrom(f string) string {
+	if f == "volume" {
+		return f
+	}
+	return "folder"
+}

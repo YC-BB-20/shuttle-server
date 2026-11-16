@@ -307,3 +307,72 @@ func (s *Server) saveLogin(w http.ResponseWriter, r *http.Request) (any, error) 
 	}
 	return s.loginState(), nil
 }
+
+// added is one page of the files found added to a copy's source after the copy.
+func (s *Server) added(w http.ResponseWriter, r *http.Request) {
+	sc, ok := s.Jobs.(sourceChecker)
+	if s.Jobs == nil || !ok {
+		writeJSON(w, http.StatusOK, map[string]any{"rows": []copyjob.AddedFile{}, "next": -1})
+		return
+	}
+	q := r.URL.Query()
+	from, _ := strconv.Atoi(q.Get("from"))
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	rows, next, err := sc.AddedList(r.PathValue("id"), from, limit)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"rows": rows, "next": next})
+}
+
+func (s *Server) checkSource(w http.ResponseWriter, r *http.Request) (any, error) {
+	sc, ok := s.Jobs.(sourceChecker)
+	if !ok {
+		return nil, errors.New("not available")
+	}
+	err := sc.CheckSourceAgain(r.PathValue("id"))
+	return map[string]bool{"ok": err == nil}, err
+}
+
+func (s *Server) copyAdded(w http.ResponseWriter, r *http.Request) (any, error) {
+	sc, ok := s.Jobs.(sourceChecker)
+	if !ok {
+		return nil, errors.New("not available")
+	}
+	id, err := sc.CopyAdded(r.PathValue("id"))
+	return map[string]any{"ok": err == nil, "id": id}, err
+}
+
+// export sends a copy's hash list as a download (v0.2.80): built from the
+// copy's records, streamed, never held in memory, nothing read from a disk.
+func (s *Server) export(w http.ResponseWriter, r *http.Request) {
+	ex, ok := s.Jobs.(exporter)
+	if s.Jobs == nil || !ok {
+		http.Error(w, "not available", http.StatusNotFound)
+		return
+	}
+	q := r.URL.Query()
+	format, ext, ctype := copyjob.FormatXXHSum, "txt", "text/plain; charset=utf-8"
+	if q.Get("format") == copyjob.FormatCSV {
+		format, ext, ctype = copyjob.FormatCSV, "csv", "text/csv; charset=utf-8"
+	}
+	id := r.PathValue("id")
+	w.Header().Set("Content-Type", ctype)
+	w.Header().Set("Content-Disposition", `attachment; filename="shuttle-hashes-`+ext2name(id)+`.`+ext+`"`)
+	w.Header().Set("Cache-Control", "no-store")
+	if _, _, err := ex.Export(w, id, format, q.Get("algo"), q["path"]); err != nil {
+		// Nothing was written yet in the common failures (no such copy), so an error page can still be sent.
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+}
+
+// ext2name keeps only characters that are safe in a file name.
+func ext2name(id string) string {
+	return strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' || r == '-' {
+			return r
+		}
+		return -1
+	}, id)
+}

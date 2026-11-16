@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/YC-BB-20/shuttle-server/internal/speedtest"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -56,6 +57,19 @@ type drafter interface {
 	AddDraft(copyjob.Spec, *copyjob.Draft) (*copyjob.Job, error)
 }
 
+// sourceChecker is an Actions that can look at a finished copy's source again
+// and copy the files found added to it (v0.2.82).
+type sourceChecker interface {
+	CheckSourceAgain(id string) error
+	CopyAdded(id string) (string, error)
+	AddedList(id string, from, limit int) ([]copyjob.AddedFile, int, error)
+}
+
+// exporter is an Actions that can write a copy's hash list (v0.2.80).
+type exporter interface {
+	Export(w io.Writer, id, format, algo string, paths []string) (int, int, error)
+}
+
 // spaceChecker is an Actions that can say whether a copy of a given size fits
 // on a destination (v0.2.79).
 type spaceChecker interface {
@@ -95,6 +109,10 @@ func (s *Server) HTTP() *http.Server {
 	mux.HandleFunc("GET /api/speedtest", s.speedStatus)
 	mux.HandleFunc("POST /api/speedtest/{action}", s.always(s.speedAction))
 	mux.HandleFunc("GET /api/jobs/{id}/problems", s.problems)
+	mux.HandleFunc("GET /api/jobs/{id}/added", s.added)
+	mux.HandleFunc("GET /api/jobs/{id}/export", s.export)
+	mux.HandleFunc("POST /api/jobs/{id}/check-source", s.command(s.checkSource))
+	mux.HandleFunc("POST /api/jobs/{id}/copy-added", s.command(s.copyAdded))
 	mux.HandleFunc("GET /api/jobs/{id}/files", s.files)
 	mux.HandleFunc("GET /api/jobs/{id}/files/{i}", s.fileInfo)
 	mux.HandleFunc("POST /api/jobs/{id}/files/{i}/recheck", s.command(s.recheck))

@@ -88,7 +88,7 @@ type env struct {
 	afterCopy func(tmp string) // test hook
 	copyRead  func(b []byte)   // test hook
 	space     func() error     // free-space check before the copy pass (nil: none)
-	relist    time.Duration    // v0.2.72: list again when the copy waited longer than this before it began; 0 never
+	wrapHash  func()           // v0.2.81: writes the hash list beside the media folder when the copy asked for it (nil: none)
 }
 
 func statSM(p string) (int64, int64, error) {

@@ -32,6 +32,7 @@ const (
 	stS2Warn   byte = 4 // S2 differed: source changed or unstable
 	stCopied   byte = 5 // copied and hashed (C), still under its temporary name, check pass to come
 	stHashed   byte = 6 // copy only: copied, hashed (C) and given its real name, never read back
+	stGone     byte = 8 // v0.2.82: in the list when the copy was made, gone from the source before its turn; not copied
 	stSrcOK    byte = 7 // a source-only Verify (S2Only): the source read again matches C; the copy was not read
 )
 
@@ -73,6 +74,16 @@ type Spec struct {
 	Kind            string   `json:"kind,omitempty"`
 	File            string   `json:"file,omitempty"`
 	From            []string `json:"from,omitempty"`
+	// Wrap (v0.2.81): the copy goes inside a wrapper folder. Source A001 to
+	// destination D becomes D/WrapName/A001 (Dest of the job is that media
+	// folder, WrapDir the wrapper). WrapName is chosen in New copy (default:
+	// the source folder's name, or its volume's name). WrapHash writes the
+	// hash list into the wrapper beside the media folder when the copy ends.
+	// The media folder is an exact copy; nothing else is put inside it.
+	Wrap     bool   `json:"wrap,omitempty"`
+	WrapName string `json:"wrap_name,omitempty"`
+	WrapHash bool   `json:"wrap_hash,omitempty"`
+	WrapDir  string `json:"wrap_dir,omitempty"`
 	// IgnoreSpace (request only, never saved): the owner chose "continue
 	// anyway" after being told the copy may not fit.
 	IgnoreSpace bool `json:"ignore_space,omitempty"`
@@ -150,11 +161,20 @@ type state struct {
 	// Hidden (added in 0.2.30): the owner hid this finished entry from the
 	// history. Only the page's view changes; nothing on disk is touched.
 	Hidden bool `json:"hidden,omitempty"`
+	// Source check (v0.2.82): after the copy, the source is listed again and
+	// compared with the list the copy was made from. Added is how many files
+	// are in the source now that were not in that list, AddedBytes their size;
+	// CheckedAt is when it last looked, CheckNote why it could not.
+	Added      int       `json:"added,omitempty"`
+	AddedBytes int64     `json:"added_bytes,omitempty"`
+	CheckedAt  time.Time `json:"checked_at,omitzero"`
+	CheckNote  string    `json:"check_note,omitempty"`
 }
 
 // Job is one copy job.
 type Job struct {
-	dir string
+	checking atomic.Bool // v0.2.82: "Check source again" is running
+	dir      string
 
 	mu     sync.Mutex
 	saveMu sync.Mutex // orders writes of job.json
@@ -208,6 +228,7 @@ func (j *Job) copyClock(now time.Time) (int64, int64) {
 
 type counts struct {
 	Verified, Identical, Failed, Strong, S2Warn int
+	Gone, Changed                               int // v0.2.82: deleted before its turn; copied as it was found, changed since it was listed
 	BytesProven                                 int64
 	BytesFailed                                 int64 // Verify jobs: bytes of files that did not match, for the bar
 	Copied                                      int   // copy-then-check: copied, waiting for the check pass
@@ -284,6 +305,9 @@ func (j *Job) apply(r Rec) {
 	if j.status[r.I] == stCopied && r.St != "copied" {
 		j.c.Copied-- // its check is done, one way or the other
 	}
+	if r.Chg {
+		j.c.Changed++
+	}
 	switch r.St {
 	case "copied": // copy-then-check: copied and hashed, not yet proven
 		if j.status[r.I] == stPending || j.status[r.I] == stFailed {
@@ -321,6 +345,11 @@ func (j *Job) apply(r Rec) {
 		}
 		j.status[r.I] = stHashed
 		j.c.Hashed++
+	case "gone":
+		if j.status[r.I] == stPending {
+			j.status[r.I] = stGone
+			j.c.Gone++
+		}
 	case "failed":
 		j.status[r.I] = stFailed
 		j.c.Failed++

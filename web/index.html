@@ -276,6 +276,8 @@
   .gauge .k { color:var(--mute); font-size:13px; letter-spacing:.08em; text-transform:uppercase; }
   .spdline { margin:10px 0 0; font-size:14px; } .spdopts { flex-wrap:wrap; gap:8px; align-items:center; margin-top:10px; }
   #spdDlg { width:min(560px, 96vw); }
+button.mini{font-size:12px;padding:2px 8px;margin-left:8px;flex:none}
+#expScope{max-height:30vh;overflow:auto}
 </style>
 </head>
 <body>
@@ -350,12 +352,14 @@
     <p class="mute">The hash every read of a copy makes: the source as it is copied, the copy read back, and the source read again. With both, each read makes both and both must match. Applies to new copies; a copy keeps the hash it started with, and a Verify reads each file with the hash its copy made. Each file's info shows the hashes.</p>
     <p class="err" id="hashErr"></p>
   </section>
-  <section class="card" id="relistSet">
-    <h2>Listing a waiting copy's files again</h2>
-    <label class="opt"><span>List the folder again if a copy waited longer than</span>
-      <select id="relistMin"><option value="0">never</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">1 hour</option><option value="120">2 hours</option><option value="240">4 hours</option><option value="720">12 hours</option><option value="1440">24 hours</option></select></label>
-    <p class="mute">A copy's files are listed once, while you choose the folder, so the copy is sized the moment it is added. If it then waits in the queue longer than this before it begins, Shuttle lists the folder again first, so files added in the meantime are not missed. Never means it copies exactly the list made when it was added; a file that changed since is reported. Applies to copies that have not begun.</p>
-    <p class="err" id="relistErr"></p>
+  <section class="card" id="layoutSet">
+    <h2>Folder layout</h2>
+    <label class="opt"><input type="checkbox" id="wrapDef"><span>Put new copies inside a wrapper folder: destination / wrapper / source folder</span></label>
+    <label class="opt in"><input type="radio" name="wrapFrom" value="folder"><span>Wrapper named after the source folder</span></label>
+    <label class="opt in"><input type="radio" name="wrapFrom" value="volume"><span>Wrapper named after the source's disk</span></label>
+    <label class="opt"><input type="checkbox" id="wrapHashDef"><span>Write the hash list in the wrapper, beside the media folder</span></label>
+    <p class="mute">The media folder is an exact copy of the source and nothing is added inside it; the hash list sits one level above, as <code>destination/A001/A001-hashes.txt</code> beside <code>destination/A001/A001/</code>. These are the choices New copy starts from; each copy can change them, and the name can be typed there.</p>
+    <p class="err" id="layoutErr"></p>
   </section>
   <section class="card" id="histSet">
     <h2>History</h2>
@@ -406,6 +410,12 @@
       </div>
       <label class="opt"><input type="checkbox" id="ckSep"><span>Check in a separate queue item, after the copy</span></label>
       <label class="opt in"><input type="checkbox" id="ckPaused"><span>Add that item paused, to start when you choose</span></label>
+    </div>
+    <label>Folder layout</label>
+    <label class="opt"><input type="checkbox" id="ckWrap"><span>Put the copy inside a wrapper folder: destination / wrapper / source folder</span></label>
+    <div id="wrapMore">
+      <div class="row"><input type="text" id="wrapName" maxlength="200" autocomplete="off" aria-label="Wrapper folder name"></div>
+      <label class="opt"><input type="checkbox" id="ckWrapHash"><span>Write the hash list beside the media folder, never inside it</span></label>
     </div>
     <p class="mute" id="proofSum"></p>
     <p class="mute">The source is only read, never changed. Files already at the destination are compared, never replaced.</p>
@@ -467,6 +477,24 @@
 <dialog id="probDlg">
   <div class="head"><h2>Files that need attention</h2><button type="button" data-close>Close</button></div>
   <div class="body" id="probList"></div>
+</dialog>
+<dialog id="expDlg">
+  <div class="head"><h2>Hash list</h2><button type="button" data-close>Close</button></div>
+  <div class="body">
+    <p class="mute">Made from this copy's own records. Nothing is read from a disk again and nothing is written to the destination. Paths are relative to the copy's destination folder.</p>
+    <label>Which files</label>
+    <div id="expScope"></div>
+    <label>Format</label>
+    <label class="opt"><input type="checkbox" id="expTxt" checked><span>xxhsum list: one line per file, checked by hand with <code>xxhsum -c</code></span></label>
+    <label class="opt"><input type="checkbox" id="expCsv"><span>CSV report: path, size, modified time, hash, proof level, date</span></label>
+    <div id="expAlgoBox">
+      <label>Hash</label>
+      <label class="opt"><input type="radio" name="expAlgo" value="xxh128" checked><span>XXH128</span></label>
+      <label class="opt"><input type="radio" name="expAlgo" value="xxh64"><span>XXH64</span></label>
+    </div>
+    <p class="err" id="expErr"></p>
+  </div>
+  <div class="foot"><button type="button" data-close>Close</button><button type="button" class="primary" id="expGo">Download</button></div>
 </dialog>
 <dialog id="infoDlg">
   <div class="head"><h2 id="infoTitle">File</h2><button type="button" data-close>Close</button></div>
@@ -727,6 +755,7 @@ $("newBtn").onclick = () => {
   }
   proofForm();
   loadSys();
+  layoutDefaults();
   $("newDlg").showModal();
   $("srcSize").textContent = ""; srcSize();
 };
@@ -764,6 +793,7 @@ $("startBtn").onclick = async () => {
   const proof = !dest ? { check: "none" } : $("ckSep").checked ? { check: "none", verify: $("ckPaused").checked ? "paused" : "run", s2 } :
     { hash: $("whenEnd").checked ? "later" : "copy", s2 };
   const body = Object.assign({ source: $("src").value, dest: $("dst").value, only: srcOnly }, proof);
+  if ($("ckWrap").checked) Object.assign(body, { wrap: true, wrap_name: $("wrapName").value.trim(), wrap_hash: $("ckWrapHash").checked });
   const p0 = $("src").value.trim();
   if (lastCount && lastCount.key === p0 + "\n" + (p0 === srcOnlyAt ? srcOnly : []).join("\n")) { body.est_bytes = lastCount.bytes; body.est_files = lastCount.files; }
   const added = () => { $("newDlg").close(); $("src").value = ""; $("dst").value = ""; setOnly([]); };
@@ -1095,6 +1125,49 @@ async function stopJob(v) {
   if (!await confirmBox("Really stop?", "A stopped copy cannot be resumed; you can start a new one, which skips files already there after comparing them.", "Yes, stop")) return;
   post("/api/jobs/" + v.id + "/stop").catch(e => alert(e.message));
 }
+// The counts of a finished copy's problems, in plain words (v0.2.82).
+function problemCounts(v) {
+  return [v.failed && v.failed + " failed", v.gone && v.gone + " deleted before their turn", v.changed && v.changed + " changed, copied as found",
+    v.added && v.added + " added to the source, not copied", v.s2_warnings && v.s2_warnings + " source warnings"].filter(Boolean).join(", ");
+}
+function showAdded(id) {
+  $("probList").textContent = "Loading…"; $("probDlg").showModal();
+  fetch("/api/jobs/" + id + "/added?limit=200").then(r => r.json()).then(o => {
+    $("probList").replaceChildren(...o.rows.map(p => { const d = document.createElement("p"); d.textContent = p.path + " (" + size(p.size) + ")"; d.style.overflowWrap = "anywhere"; return d; }));
+    if (o.next >= 0) { const d = document.createElement("p"); d.className = "mute"; d.textContent = "The list shows the first 200. \"Copy these too\" copies all of them."; $("probList").append(d); }
+    if (!o.rows.length) $("probList").textContent = "Nothing to show.";
+  });
+}
+// Hash list (v0.2.80): the whole copy, or the folders and files chosen.
+let expFor = null;
+function openExport(v, preset) {
+  expFor = v; $("expErr").textContent = "";
+  const box = $("expScope"), f = fv[v.id], root = f && f.nodes && f.nodes[""];
+  const add = (path, text, on) => { const l = el("label", "opt"), c = document.createElement("input"); c.type = "checkbox"; c.checked = on; c.dataset.path = path;
+    l.append(c, el("span", "", text)); box.append(l); return c; };
+  box.replaceChildren();
+  if (preset) add(preset, preset + " (everything inside it)", true);
+  else {
+    const all = add("", "The whole copy", true);
+    if (root) [...(root.folders || []).map(x => [x.path, x.name + " (folder)"]), ...(root.rows || []).map(x => [x.path, x.path])].forEach(([p, t]) =>
+      add(p, t, false).onchange = () => { all.checked = !Array.from(box.querySelectorAll("input")).some(c => c.dataset.path && c.checked); });
+    all.onchange = () => { if (all.checked) box.querySelectorAll("input").forEach(c => { if (c.dataset.path) c.checked = false; }); };
+  }
+  const both = v.algo === "both"; $("expAlgoBox").hidden = !both;
+  document.querySelectorAll('input[name="expAlgo"]').forEach(r => { r.checked = r.value === (v.algo === "xxh64" ? "xxh64" : "xxh128"); });
+  $("expDlg").showModal();
+}
+$("expGo").onclick = () => {
+  const paths = Array.from($("expScope").querySelectorAll("input")).filter(c => c.checked && c.dataset.path).map(c => c.dataset.path);
+  const formats = [$("expTxt").checked && "xxhsum", $("expCsv").checked && "csv"].filter(Boolean);
+  if (!formats.length) { $("expErr").textContent = "Choose a format."; return; }
+  const algo = ($("expAlgoBox").hidden ? { value: expFor.algo === "xxh64" ? "xxh64" : "xxh128" } : document.querySelector('input[name="expAlgo"]:checked')).value;
+  formats.forEach((fmt, k) => setTimeout(() => {
+    const a = document.createElement("a");
+    a.href = "/api/jobs/" + expFor.id + "/export?format=" + fmt + "&algo=" + algo + paths.map(p => "&path=" + encodeURIComponent(p)).join("");
+    a.download = ""; document.body.append(a); a.click(); a.remove();
+  }, k * 600));
+};
 function showProblems(id) {
   $("probList").textContent = "Loading…"; $("probDlg").showModal();
   fetch("/api/jobs/" + id + "/problems").then(r => r.json()).then(list => {
@@ -1140,7 +1213,7 @@ function card(v) {
   c._v = v;
   const q = sel => c.querySelector(sel);
   const old = v.state === "finished" || v.state === "stopped";
-  const problems = v.failed || v.s2_warnings || v.error;
+  const problems = v.failed || v.s2_warnings || v.error || v.gone || v.changed || v.added;
   c.classList.toggle("old", old); c.classList.toggle("hid", old && !!v.hidden);
   const ver = v.kind === "verify", kind = ver ? "verify" : "copy";
   c.classList.toggle("verify", ver);
@@ -1190,7 +1263,7 @@ function card(v) {
       (jobSecs(v) >= 1 && v.bytes ? " · " + rate(v.bytes / jobSecs(v)) + " average" : "") +
       (!ver && v.copy_rate ? " · copying " + rate(v.copy_rate) : "") +
       (ver ? " · " + (srcOnly ? "source: " : "") + (v.failed ? (srcOnly ? v.strong : v.verified) + " match, " + v.failed + " do not" : (srcOnly ? v.strong : v.verified) + ((srcOnly ? v.strong : v.verified) === 1 ? " file matches" : " files match")) :
-      problems ? " · " + (v.failed ? v.failed + " failed" : "") + (v.failed && v.s2_warnings ? ", " : "") + (v.s2_warnings ? v.s2_warnings + " source warnings" : "") :
+      problems ? " · " + problemCounts(v) :
       v.checks ? " · " + proofLine(v.checks) : only ? " · " + ((v.hashed || 0) + v.identical) + " files copied, not verified" : " · " + proven + " files verified");
     if (problems) subCls += " warn"; }
   else sub = (v.finished ? when(v.finished) + " · " : "") + "Stopped by you" + (v.work_ms ? " after " + clock(v.work_ms) : "") + " · " + proven + (ver ? " files checked and matching" : " files verified and kept");
@@ -1213,6 +1286,12 @@ function card(v) {
   else if (!old && v.state !== "running") line = "Added " + when(v.created);
   if (srcOnly && !old) line += (line ? " · " : "") + "The source read in full and compared with the hashes stored when it was copied; the copies are not read. Nothing is changed.";
   else if (ver && !old) line += (line ? " · " : "") + "Read in full and compared with the hashes stored when it was copied" + (again ? (v.s2 === "after" ? ", then the source is read again once every copy is checked" : ", with the source read again beside it") : "") + ". Nothing is changed.";
+  if (v.state === "finished" && !ver) {
+    const more = [v.gone && v.gone + " files were in the list but are no longer in the source; not copied.", v.changed && v.changed + " files changed after they were listed; each was copied as it was found.",
+      v.added && v.added + " files (" + size(v.added_bytes) + ") were added to the source after this copy was created and were not copied.", v.check_note].filter(Boolean);
+    if (v.checked_at && !v.added && !v.check_note) more.push("The source was checked after the copy: nothing was added.");
+    if (more.length) line += (line ? " " : "") + more.join(" ");
+  }
   q(".line").textContent = line; q(".line").title = line; q(".sub").title = sub;
   const live = v.state === "running" && !scanning;
   c.classList.toggle("going", live);
@@ -1255,6 +1334,12 @@ function card(v) {
   }
   if (!old) btn(acts, "✕", () => stopJob(v), "", "Stop…");
   if (problems) btn(btns, "Show problems", () => showProblems(v.id));
+  if (!ver && !scanning && v.files > 0 && (v.state === "finished" || v.state === "running" || v.state === "paused")) btn(btns, "Hash list…", () => openExport(v));
+  if (v.state === "finished" && !ver && v.added) {
+    btn(btns, "Show added files", () => showAdded(v.id));
+    btn(btns, "Copy these too", () => post("/api/jobs/" + v.id + "/copy-added").catch(e => alert(e.message)));
+  }
+  if (v.state === "finished" && !ver) btn(btns, v.checking ? "Checking the source…" : "Check source again", () => { if (!v.checking) post("/api/jobs/" + v.id + "/check-source").catch(e => alert(e.message)); });
   // What the copy still lacks decides the option chosen first: the copy read back, then the source read again.
   const lack = !ver && v.checks && v.checks.of ? (v.checks.dest < v.checks.of ? (v.checks.source < v.checks.of ? "src" : "dest") : v.checks.source < v.checks.of ? "only" : "") : "";
   // Verify files only on a copy; a Verify's row just shows what it found (v0.2.46).
@@ -1387,16 +1472,32 @@ function showSys(c) {
 }
 // v0.2.57: every save sends all the choices, so one switch never resets another.
 let copySet = {};
-function showSet(c) { copySet = c; showSys(c); $("relistMin").value = String(c.relist_minutes === undefined ? 60 : c.relist_minutes); document.querySelectorAll('input[name="hashAlgo"]').forEach(r => { r.checked = r.value === (c.hash || "xxh128"); }); }
+function showSet(c) { copySet = c; showSys(c); showLayout(c); document.querySelectorAll('input[name="hashAlgo"]').forEach(r => { r.checked = r.value === (c.hash || "xxh128"); }); }
+function showLayout(c) {
+  $("wrapDef").checked = !!c.wrap; $("wrapHashDef").checked = !!c.wrap_hash;
+  document.querySelectorAll('input[name="wrapFrom"]').forEach(r => { r.checked = r.value === (c.wrap_name_from || "folder"); r.disabled = !c.wrap; });
+  $("wrapHashDef").disabled = !c.wrap;
+}
+// New copy starts from the Settings defaults each time it opens.
+function layoutDefaults() {
+  $("ckWrap").checked = !!copySet.wrap; $("ckWrapHash").checked = !!copySet.wrap_hash; $("wrapName").value = "";
+  wrapShow();
+}
+function wrapShow() {
+  $("wrapMore").hidden = !$("ckWrap").checked;
+  $("wrapName").placeholder = copySet.wrap_name_from === "volume" ? "Wrapper folder name (default: the source's disk name)" : "Wrapper folder name (default: the source folder's name)";
+}
+$("ckWrap").onchange = wrapShow;
 function loadSys() { fetch("/api/settings/copy").then(r => r.json()).then(showSet).catch(() => {}); }
 function saveSys(errBox) {
-  $("sysErr").textContent = ""; $("hashErr").textContent = "";
+  $("sysErr").textContent = ""; $("hashErr").textContent = ""; $("layoutErr").textContent = "";
   const algo = document.querySelector('input[name="hashAlgo"]:checked');
-  post("/api/settings/copy", Object.assign({}, copySet, { skip_system_files: $("skipSys").checked, skip_appledouble_files: $("skipSys").checked && $("skipDot").checked, hash: algo ? algo.value : "xxh128", relist_minutes: +$("relistMin").value }))
+  post("/api/settings/copy", Object.assign({}, copySet, { skip_system_files: $("skipSys").checked, skip_appledouble_files: $("skipSys").checked && $("skipDot").checked, hash: algo ? algo.value : "xxh128",
+    wrap: $("wrapDef").checked, wrap_hash: $("wrapDef").checked && $("wrapHashDef").checked, wrap_name_from: (document.querySelector('input[name="wrapFrom"]:checked') || { value: "folder" }).value }))
     .then(showSet).catch(e => { $(errBox).textContent = e.message; loadSys(); });
 }
-$("relistMin").onchange = () => { $("relistErr").textContent = ""; saveSys("relistErr"); };
 $("skipSys").onchange = $("skipDot").onchange = () => saveSys("sysErr"); document.querySelectorAll('input[name="hashAlgo"]').forEach(r => { r.onchange = () => saveSys("hashErr"); });
+$("wrapDef").onchange = $("wrapHashDef").onchange = () => saveSys("layoutErr"); document.querySelectorAll('input[name="wrapFrom"]').forEach(r => { r.onchange = () => saveSys("layoutErr"); });
 loadSys();
 // v0.2.63: start at login, the same switch as in the menu bar.
 function showLogin(c) { $("loginSet").hidden = !c.supported; $("loginOn").checked = !!c.on; }
@@ -1431,7 +1532,7 @@ const saveQf = () => { try { localStorage.setItem("shuttle.qf", JSON.stringify(q
 const qfOffKeys = ["done", "skipped", "stopped", "failed"];
 function jobCat(v) {
   if (v.state === "stopped") return "stopped";
-  if (v.state === "finished") return v.failed || v.s2_warnings || v.missing || v.error ? "failed" : v.files > 0 && v.identical === v.files ? "skipped" : "done";
+  if (v.state === "finished") return v.failed || v.s2_warnings || v.missing || v.error || v.gone || v.changed || v.added ? "failed" : v.files > 0 && v.identical === v.files ? "skipped" : "done";
   return v.state === "paused" ? "paused" : "active";
 }
 const shown = v => { const k = jobCat(v); return k === "active" || qf.show[k] !== false; };
@@ -1547,7 +1648,7 @@ $("moreHist").onclick = () => {
 // Files of one copy: filters, paged rows, the file being worked on with its
 // own bar. Refreshed every 2 s while the copy runs and the page is visible.
 const fv = {};
-const fileLabel = { already: "Already there · hash checked", already2: "Already there · read twice", waiting: "Waiting", checkwait: "Copied · check queued", proven: "Destination verified", strong: "Fully verified",  failed: "Error", warning: "Source warning", copied: "Copied · check to come", hashed: "Copied · not verified", source: "Source verified" };
+const fileLabel = { already: "Already there · hash checked", already2: "Already there · read twice", waiting: "Waiting", checkwait: "Copied · check queued", proven: "Destination verified", strong: "Fully verified",  failed: "Error", gone: "Deleted before its turn; not copied", warning: "Source warning", copied: "Copied · check to come", hashed: "Copied · not verified", source: "Source verified" };
 // A file being worked on: "Copying" (purple) while it is written, "Verifying"
 // (pink) while the destination or the source is read back, or a file already
 // at the destination is compared (v0.2.44).
@@ -1557,7 +1658,7 @@ function workChip(r) {
   const checking = isCheckStage(r.stage);
   return el("span", "chip " + (checking ? "verifying" : "copying"), (checking ? "Verifying" : /^Reading the source/.test(r.stage || "") ? "Reading" : "Copying") + (r.size ? " " + Math.floor(pct(r.done, r.size)) + "%" : ""));
 }
-const fileChip = { checkwait: "waiting", already: "ok", already2: "ok", proven: "ok", strong: "ok", failed: "bad", warning: "waiting", working: "copying", copied: "copying", hashed: "waiting", source: "ok" };
+const fileChip = { checkwait: "waiting", already: "ok", already2: "ok", proven: "ok", strong: "ok", failed: "bad", gone: "bad", warning: "waiting", working: "copying", copied: "copying", hashed: "waiting", source: "ok" };
 // The file list. With more than treeMin files it is shown as folders, closed
 // until clicked, each with how many files it holds and how they stand; a
 // folder holding nothing but one folder opens by itself (v0.2.46). Show more
@@ -1665,6 +1766,7 @@ function dirRows(f, dir, depth) {
     const name = el("span", "", (open ? "▾ " : "▸ ") + fr.name); name.title = fr.path;
     const cnt = f.filter === "all" || fr.match === fr.files ? fr.files : fr.match + " of " + fr.files;
     t.append(name, el("span", "sz", cnt + (fr.files === 1 ? " file" : " files")), folderChip(fr));
+    if (!f.v.kind || f.v.kind !== "verify") { const hb = el("button", "mini", "Hash list"); hb.type = "button"; hb.onclick = e => { e.stopPropagation(); openExport(f.v, fr.path); }; t.append(hb); }
     row.append(t); out.push(row);
     if (open) out.push(...dirRows(f, fr.path, depth + 1));
   });
@@ -1820,6 +1922,7 @@ function loadInfo() {
       ["Size", size(fi.size) + " (" + fi.size.toLocaleString() + " bytes)"], ["Modified", new Date(fi.mtime).toLocaleString()],
       ["State", state], ["Proof", fi.proof], ["Problem", fi.why || ""]]));
     const dest = fi.dest_exists ? (fi.dest_size === fi.size ? "there, same size" : "there, but " + size(fi.dest_size) + " — not the same size") : "not there yet";
+    if (fi.kind !== "verify") { const hb = el("button", "", "Hash list for this file…"); hb.type = "button"; hb.onclick = () => { $("infoDlg").close(); openExport(cards[at.id] ? cards[at.id]._v : { id: at.id }, fi.path); }; body.push(hb); }
     body.push(el("h3", "", "Where"), kv(fi.kind === "verify" ? [["File", el("span", "path", fi.dest)], ["At the destination", dest]] :
       [["From", el("span", "path", fi.source)], ["To", el("span", "path", fi.dest)], ["At the destination", dest]]));
     body.push(...proofSlots(fi));

@@ -116,6 +116,26 @@ func (m *Manager) add(s Spec, d *Draft) (*Job, error) {
 	if fi, err := os.Stat(src); err != nil || !fi.IsDir() {
 		return nil, fmt.Errorf("the source folder %q was not found", src)
 	}
+	if s.Wrap {
+		// v0.2.81: the copy lands in D/<wrapper>/<source folder name>; the job's
+		// destination is that media folder, the wrapper holds only Shuttle's own files.
+		name := strings.TrimSpace(s.WrapName)
+		if name == "" {
+			name = filepath.Base(src)
+			if m.Settings().WrapNameFrom == "volume" {
+				if v, err := diskio.VolumeOf(src); err == nil && v.Name != "" {
+					name = v.Name
+				}
+			}
+		}
+		if name == "." || name == ".." || name == "" || strings.ContainsAny(name, "/\\") {
+			return nil, fmt.Errorf("%q cannot be used as the wrapper folder's name", name)
+		}
+		s.WrapName, s.WrapDir = name, filepath.Join(dst, name)
+		dst = filepath.Join(s.WrapDir, filepath.Base(src))
+	} else {
+		s.WrapName, s.WrapHash, s.WrapDir = "", false, ""
+	}
 	if len(s.Only) > MaxOnly {
 		return nil, fmt.Errorf("pick at most %d files and folders one by one, or choose their folder", MaxOnly)
 	}
@@ -461,7 +481,7 @@ func (m *Manager) runOne(ctx context.Context, j *Job) {
 	}()
 	j.startWork(time.Now())
 	err := j.run(jctx, env{budget: m.Budget, src: sd, dst: dd, afterCopy: m.AfterCopy, copyRead: m.CopyRead,
-		space: func() error { return m.checkSpaceAtStart(j) }, relist: time.Duration(m.Settings().RelistMinutes) * time.Minute}, m.Accepting)
+		space: func() error { return m.checkSpaceAtStart(j) }, wrapHash: func() { m.writeWrapperHashFile(j) }}, m.Accepting)
 	cancel(nil)
 	m.mu.Lock()
 	m.running = nil

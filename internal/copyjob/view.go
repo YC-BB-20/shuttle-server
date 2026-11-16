@@ -49,6 +49,13 @@ type View struct {
 	Failed     int         `json:"failed"`
 	Strong     int         `json:"strong"`
 	S2Warn     int         `json:"s2_warnings"`
+	Gone       int         `json:"gone,omitempty"`    // v0.2.82: deleted from the source before its turn; not copied
+	Changed    int         `json:"changed,omitempty"` // v0.2.82: changed since listed; copied as found and flagged
+	Added      int         `json:"added,omitempty"`   // v0.2.82: in the source now, not in the copy's list; not copied
+	AddedBytes int64       `json:"added_bytes,omitempty"`
+	CheckedAt  time.Time   `json:"checked_at,omitzero"`  // when the source was last looked at after the copy
+	CheckNote  string      `json:"check_note,omitempty"` // why it could not be
+	Checking   bool        `json:"checking,omitempty"`   // "Check source again" is running
 	Proven     int64       `json:"bytes_proven"`
 	Copied     int         `json:"copied,omitempty"`      // copy-then-check: copied, waiting for the check pass
 	Hashed     int         `json:"hashed"`                // copy only: copied and hashed, not read back
@@ -286,7 +293,7 @@ func baseView(j *Job) (View, state, live) {
 	v := View{ID: st.ID, Source: st.Spec.Source, Dest: st.Spec.Dest, S2: st.Spec.S2, Hash: st.Spec.Hash, Only: len(st.Spec.Only),
 		Kind: st.Spec.Kind, VerifyFile: st.Spec.File,
 		Created: st.Created, Finished: st.Finished, CopyRate: st.CopyRate, Phase: st.Phase, Files: st.Files, Bytes: st.Bytes, EstBytes: st.Spec.EstBytes, Skipped: st.Skipped, System: st.SystemSkipped,
-		Verified: c.Verified, Identical: c.Identical, Failed: c.Failed, Strong: c.Strong, S2Warn: c.S2Warn, Copied: c.Copied, Hashed: c.Hashed,
+		Verified: c.Verified, Identical: c.Identical, Failed: c.Failed, Strong: c.Strong, S2Warn: c.S2Warn, Gone: c.Gone, Changed: c.Changed, Added: st.Added, AddedBytes: st.AddedBytes, CheckedAt: st.CheckedAt, CheckNote: st.CheckNote, Checking: j.checking.Load(), Copied: c.Copied, Hashed: c.Hashed,
 		Check: st.Spec.Check, VerifyNext: st.Spec.Verify, VerifyJob: st.VerifyJob, After: st.After,
 		Proven: c.BytesProven, SameVolume: st.SameVolume, Scanned: l.scanned, ScannedB: l.scannedBytes,
 		Progress: progress(st, c, l), Space: st.SpaceAsk, Error: st.Error, From: st.Spec.From, Hidden: st.Hidden}
@@ -423,8 +430,12 @@ func (m *Manager) Problems(id string, limit int) []Problem {
 	}
 	var out []Problem
 	ReadJournal(j.path("journal.log"), 0, func(r Rec) bool {
-		if r.St == "failed" || r.St == "s2changed" || r.St == "s2unstable" {
-			out = append(out, Problem{r.P, r.St, r.Err})
+		if r.St == "failed" || r.St == "s2changed" || r.St == "s2unstable" || r.St == "gone" || r.Chg {
+			kind := r.St
+			if r.Chg {
+				kind = "changed"
+			}
+			out = append(out, Problem{r.P, kind, r.Err})
 		}
 		return len(out) < limit
 	})
@@ -493,7 +504,7 @@ func (f *FolderRow) add(status string, match bool) {
 		f.Source++
 	case "hashed":
 		f.Hashed++
-	case "failed", "warning":
+	case "failed", "warning", "gone":
 		f.Problems++
 	default:
 		f.Todo++
@@ -523,6 +534,8 @@ func rowStatus(st byte) string {
 		return "hashed"
 	case stSrcOK:
 		return "source"
+	case stGone:
+		return "gone"
 	case stCheckWait:
 		return "checkwait"
 	}
@@ -551,7 +564,7 @@ func filterOK(filter, status string) bool {
 	case "unverified": // copied and hashed, never read back
 		return status == "hashed"
 	case "problems":
-		return status == "failed" || status == "warning"
+		return status == "failed" || status == "warning" || status == "gone"
 	}
 	return true
 }

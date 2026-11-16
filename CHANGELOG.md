@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.82 — 16 November 2026
+
+- **A copy copies exactly the list made when it was created.** The hourly re-list and its Settings entry are gone. A change never stops a copy; each one is reported in plain words, and a copy with any of them ends as "Finished with problems" with the counts (failed, deleted, changed, added).
+  - A file **deleted or moved** before its turn is not copied and is listed as such.
+  - A file **changed** since it was listed (size or modified time) is copied as it is now and flagged, with the old and new size and date.
+  - After the copy the **source is listed again** (names only, nothing read) and files added since are reported, never copied by themselves. If the source disk is not connected it says so. "Show added files", **"Copy these too"** (a separate new copy of just those files, same destination and settings) and **"Check source again"** are on every finished copy.
+  - Older settings files that still hold the re-list time are read without trouble; the entry is ignored.
+
+## 0.2.81 — 16 November 2026 (shipped inside 0.2.82)
+
+- **Folder layout.** A new Settings section holds the defaults and New copy can change them per copy: put the copy inside a wrapper folder (`destination/wrapper/source folder`), named after the source folder, after its disk, or typed. The media folder stays an exact copy and nothing is ever added inside it. Optionally the hash list is written one level above: `destination/A001/A001-hashes.txt` beside `destination/A001/A001/`. A second copy into the same wrapper never replaces an earlier list (`-hashes-2.txt`).
+
+## 0.2.80 — 16 November 2026 (shipped inside 0.2.82)
+
+- **Hash list export.** On any copy, "Hash list…" (and one on each folder row and in each file's info) builds a list from the copy's own records: nothing is read from a disk again and nothing is written to the destination. Choose the xxhsum list (`hash  path`, checkable by hand with `xxhsum -c`), the CSV report (path, size, modified time, hash, proof level, date), or both; for copies that made both hashes, XXH128 or XXH64. Streamed, so a list of hundreds of thousands of files is never held in memory.
+
 ## 0.2.79 — 16 November 2026
 
 - **Space warning before Start.** In New copy, once the size is counted and a destination is chosen, a line under the destination says if the copy may not fit there, counting the copies already queued to the same disk (and the free-space floor on the internal disk). It only warns; Start still asks as before. Files already at the destination are not counted when the copy starts, so the real need can be lower.
