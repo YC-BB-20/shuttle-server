@@ -301,6 +301,16 @@ func TestPageFoldersStartClosed(t *testing.T) {
 	}
 }
 
+// v0.2.74: adding a folder to the chosen ones never drops the count to zero.
+func TestPageCountKeepsAddingUp(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{`const keepsUp = (path, only)`, `Math.max(c.bytes, floor.bytes)`, `Math.max(c.files, floor.files)`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}
+
 // v0.2.50: Queue under New copy, speed beside the pause button, Now: without
 // the file name, no repeated counts, From and To on one line, Verify files
 // at the left of the line above the files.

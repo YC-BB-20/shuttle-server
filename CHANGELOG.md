@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.74 — 16 November 2026
+
+- **The size count never drops back to zero when you add a folder.** Choosing one more folder to copy now keeps the total you already had on screen and keeps adding to it as the new count catches up, instead of restarting from 0. If you take something away, or choose a different folder, the count starts fresh, since the old total would be too high.
+
 ## 0.2.73 — 16 November 2026
 
 - **Opening a copy shows its folders closed.** The first folders no longer open by themselves (v0.2.70), and a single top folder no longer opens either. Open the ones you want; a folder you open stays open.
