@@ -267,7 +267,7 @@ func TestPageStorageLive(t *testing.T) {
 func TestPageCopySize(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
-		`id="pickSize"`, `id="srcSize"`, `function askSize(path, only, out, lead)`, `"/api/size?path="`, `"Counting… "`,
+		`id="pickSize"`, `id="srcSize"`, `function askSize(path, only, out, lead)`, `"/api/size?path="`, `"Counting…"`,
 		`"Copy size: "`, `"This whole folder: "`, `useLabel(); pickSize();`,
 	} {
 		if !strings.Contains(s, want) {
