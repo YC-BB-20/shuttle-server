@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.83 — 16 November 2026
+
+- **The hash list beside the media folder is named by the time it is written:** `hashes-20261116-2145.txt` (year, month, day, hour, minute), in the wrapper next to the media folder. It never replaces an earlier list; two in the same minute get `-2`.
+
 ## 0.2.82 — 16 November 2026
 
 - **A copy copies exactly the list made when it was created.** The hourly re-list and its Settings entry are gone. A change never stops a copy; each one is reported in plain words, and a copy with any of them ends as "Finished with problems" with the counts (failed, deleted, changed, added).

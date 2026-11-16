@@ -89,7 +89,11 @@ func TestWrapperKeepsTheMediaFolderExactAndWritesTheHashListBesideIt(t *testing.
 	if len(inside) != 0 {
 		t.Fatalf("a hash file was put inside the media folder: %v", inside)
 	}
-	b, err := os.ReadFile(filepath.Join(dst, "A001", "src-hashes.txt"))
+	lists, _ := filepath.Glob(filepath.Join(dst, "A001", "hashes-????????-????*.txt"))
+	if len(lists) != 1 {
+		t.Fatalf("want one hash list named hashes-yearmonthday-hourminute beside the media folder, got %v", lists)
+	}
+	b, err := os.ReadFile(lists[0])
 	if err != nil || strings.Count(string(b), "\n") != len(files) {
 		t.Fatalf("hash list beside the media folder: %v %q", err, b)
 	}
@@ -99,8 +103,8 @@ func TestWrapperKeepsTheMediaFolderExactAndWritesTheHashListBesideIt(t *testing.
 		t.Fatal(err)
 	}
 	waitState(t, m, j2.st.ID, "finished")
-	if _, err := os.Stat(filepath.Join(dst, "A001", "src-hashes-2.txt")); err != nil {
-		t.Fatal("the second list should not overwrite the first")
+	if lists2, _ := filepath.Glob(filepath.Join(dst, "A001", "hashes-????????-????*.txt")); len(lists2) != 2 {
+		t.Fatalf("the second list should be a new file, not replace the first: %v", lists2)
 	}
 	if _, err := m.Add(Spec{Source: src, Dest: dst, Wrap: true, WrapName: "../x"}); err == nil {
 		t.Fatal("a wrapper name with a slash was accepted")

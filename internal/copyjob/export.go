@@ -227,8 +227,8 @@ func recordAt(f *os.File, off int64) (Rec, bool) {
 }
 
 // writeWrapperHashFile writes the copy's hash list one level above its media
-// folder (v0.2.81): wrapper/NAME-hashes.txt beside wrapper/NAME/. Never over
-// an existing file: a second copy into the same wrapper gets -2, -3 and so on.
+// folder (v0.2.81): wrapper/hashes-YYYYMMDD-HHMM.txt beside wrapper/NAME/
+// (named by the time it is written, v0.2.83). Never over an existing file.
 func (m *Manager) writeWrapperHashFile(j *Job) {
 	j.mu.Lock()
 	sp := j.st.Spec
@@ -236,7 +236,6 @@ func (m *Manager) writeWrapperHashFile(j *Job) {
 	if !sp.Wrap || !sp.WrapHash || sp.WrapDir == "" {
 		return
 	}
-	name := filepath.Base(sp.Dest)
 	var buf strings.Builder
 	n, _, err := m.Export(&buf, j.st.ID, FormatXXHSum, "", nil)
 	if err != nil || n == 0 {
@@ -245,10 +244,11 @@ func (m *Manager) writeWrapperHashFile(j *Job) {
 		}
 		return
 	}
+	stamp := "hashes-" + time.Now().Format("20060102-1504") // year month day - hour minute
 	for k := 1; k < 1000; k++ {
-		file := name + "-hashes.txt"
-		if k > 1 {
-			file = fmt.Sprintf("%s-hashes-%d.txt", name, k)
+		file := stamp + ".txt"
+		if k > 1 { // two lists in the same minute: the second is never allowed to replace the first
+			file = fmt.Sprintf("%s-%d.txt", stamp, k)
 		}
 		p := filepath.Join(sp.WrapDir, file)
 		if _, err := os.Lstat(p); err == nil {
