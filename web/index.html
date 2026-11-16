@@ -1520,7 +1520,7 @@ function toggleFiles(v, c) {
   // One file: no filters, the one row says it all.
   const one = v.files <= 1;
   const f = fv[v.id] = { v, box, card: c, filter: !one && (v.failed || v.s2_warnings) ? "problems" : "all", rows: [], next: -1, busy: false,
-    tree: true, nodes: {}, open: new Set(), auto: new Set() };
+    tree: true, nodes: {}, open: new Set() };
   const bar = el("div", "filters"); bar.hidden = one;
   [["all", "All"], ["todo", "In progress"], ["done", "Verified"], ["unverified", "Not verified"], ["problems", "Error"]].forEach(([k, t]) => {
     const b = el("button", "", t + " "); b.type = "button"; b.dataset.f = k; b.append(el("span", "n", ""));
@@ -1550,27 +1550,12 @@ function loadFiles(f, append, refresh, fewer) {
   getDir(f, "", append && !fewer, fewer ? filePage : limit).then(p => {
     f.counts = p.counts; f.note = p.note;
     const r = f.nodes[""];
-    // A top holding only one folder opens it at once.
-    if (f.tree && !r.rows.length && r.folders.length === 1 && !f.auto.has(r.folders[0].path)) { f.auto.add(r.folders[0].path); f.open.add(r.folders[0].path); open.push(r.folders[0].path); }
     return open.reduce((pr, d) => pr.then(() => getDir(f, d, false, Math.min(200, Math.max(filePage, (f.nodes[d] || { rows: [] }).rows.length)))), Promise.resolve());
-  }).then(() => autoOpen(f, "", 0)).then(() => drawFiles(f)).catch(() => {}).finally(() => { f.busy = false; });
+  }).then(() => drawFiles(f)).catch(() => {}).finally(() => { f.busy = false; });
 }
 // Every file sits under its folder's name, in a row that closes and opens
-// again (v0.2.49), even with one folder. Up to treeMin files every folder
-// starts open. v0.2.70: a bigger job opens too, so its files show at once,
-// but bounded: at most autoPer folders in each folder, autoMax folders in
-// the whole job, and it goes down only through folders that hold folders
-// only. A folder the owner closed stays closed.
-const autoPer = 10, autoMax = 40;
-function autoOpen(f, dir, depth) {
-  const n = f.nodes[dir], big = f.v.files > treeMin;
-  if (!n || depth > 6) return Promise.resolve();
-  const todo = n.folders.filter(fr => !f.auto.has(fr.path)).slice(0, big ? Math.min(autoPer, autoMax - f.auto.size) : n.folders.length);
-  if (big && n.rows.length) todo.length = 0; // a folder with files of its own: its subfolders stay closed
-  todo.forEach(fr => { f.auto.add(fr.path); f.open.add(fr.path); });
-  return n.folders.filter(fr => f.open.has(fr.path)).reduce((pr, fr) => pr.then(() => (f.nodes[fr.path] && !todo.includes(fr) ? null : getDir(f, fr.path, false, filePage)))
-    .then(() => autoOpen(f, fr.path, depth + 1)), Promise.resolve());
-}
+// again (v0.2.49). v0.2.73: every folder starts closed, whatever the size of
+// the job; the owner opens what they want to see, and it stays as left.
 function openDir(f, dir) {
   if (f.open.has(dir)) { f.open.delete(dir); drawFiles(f); return; }
   f.open.add(dir);

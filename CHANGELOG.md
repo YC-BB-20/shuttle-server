@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.73 — 16 November 2026
+
+- **Opening a copy shows its folders closed.** The first folders no longer open by themselves (v0.2.70), and a single top folder no longer opens either. Open the ones you want; a folder you open stays open.
+
 ## 0.2.72 — 16 November 2026
 
 - **A folder is listed once, and the list becomes the copy's file list.** The count made while you choose the folder (names and sizes only, no file data) is also written as the copy's list. When you press Start, the copy adopts it, so it is sized exactly the moment it enters the queue and does not list the folder again. The free-space check uses the same list, which also means a big folder is no longer skipped by the 8-second limit. The whole-queue time left now has a size for every item.

@@ -282,11 +282,21 @@ func TestPageCopySize(t *testing.T) {
 func TestPageFolderHeadsAndVerifyBars(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
-		`tree: true,`, `function autoOpen(f, dir, depth)`, `const autoPer = 10, autoMax = 40;`, `function awaitCount(seq)`, `id="relistMin"`, `relist_minutes: +$("relistMin").value`, `Preparing: listing the files`, `body.est_bytes = lastCount.bytes`, `v.est_bytes ? v.est_bytes`, `run.avg_rate || run.rate`, `.then(() => autoOpen(f, "", 0))`, `e.stopPropagation(); openDir(f, fr.path)`,
+		`tree: true,`, `function awaitCount(seq)`, `id="relistMin"`, `relist_minutes: +$("relistMin").value`, `Preparing: listing the files`, `body.est_bytes = lastCount.bytes`, `v.est_bytes ? v.est_bytes`, `run.avg_rate || run.rate`, `e.stopPropagation(); openDir(f, fr.path)`,
 		`.bar.vbar {`, `.bar.vbar > i { background:var(--verify) !important; }`, `(isCheckStage(r.stage) ? " vbar" : "")`, `classList.toggle("vbar", vnow && ver)`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
+		}
+	}
+}
+
+// v0.2.73: opening a copy shows its folders closed; nothing opens on its own.
+func TestPageFoldersStartClosed(t *testing.T) {
+	s := string(IndexHTML)
+	for _, bad := range []string{"autoOpen", "f.auto", "autoPer"} {
+		if strings.Contains(s, bad) {
+			t.Errorf("page still opens folders by itself: %q", bad)
 		}
 	}
 }
