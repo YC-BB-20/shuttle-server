@@ -145,7 +145,7 @@ func TestPageNewFolderInPicker(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
 		`id="newDirBtn"`, `id="newDirBox"`, `post("/api/mkdir", { parent: pickAt, name: $("newDirName").value })`,
-		`$("newDirBtn").hidden = pickFor !== "dst"`,
+		`$("newDirBtn").hidden = !isDst(pickFor)`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
@@ -524,7 +524,7 @@ func TestPageTableRowsAndDetailsPanel(t *testing.T) {
 	for _, want := range []string{
 		`<aside class="insp" id="insp" aria-label="Details">`, `function selectJob(id, keepOpen)`, `function stateShort(v, problems, pc, ver, scanning)`,
 		`<span class="hn">Name</span>`, `c._d = c.querySelector(".detail");`, `c._d.querySelector(sel.replace(`, `c._d.insertBefore(box, c._d.querySelector(".tail"))`,
-		`place($("jobs"), withVerifies(qShow), 1);`, `.jobs { --acts:170px; } .hist { --acts:34px; }`, `e.key === "Escape"`,
+		`place($("jobs"), withVerifies(qShow), 1);`, `.jobs { --acts:170px; } .hist { --acts:34px; }`, `e.key !== "Escape"`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
