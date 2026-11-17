@@ -15,6 +15,7 @@ import (
 
 	"github.com/YC-BB-20/shuttle-server/internal/copyjob"
 	"github.com/YC-BB-20/shuttle-server/internal/events"
+	"github.com/YC-BB-20/shuttle-server/internal/remote"
 	"github.com/YC-BB-20/shuttle-server/internal/update"
 )
 
@@ -33,6 +34,7 @@ type Server struct {
 	Login   Login             // nil where starting at login is not supported
 	Speed   *speedtest.Tester // nil in safe mode
 	LogsDir string            // logs/YYYY-MM/shuttle.log, read for a copy's Log tab (v0.2.87)
+	Servers *remote.Store     // file servers such as CTERA (v0.2.96); logins stay in secrets/servers
 	sizes   sizer             // the copy size being counted for the picker
 }
 
@@ -153,6 +155,9 @@ func (s *Server) HTTP() *http.Server {
 	mux.HandleFunc("GET /api/update/history", s.history)
 	mux.HandleFunc("POST /api/update/{action}", s.always(s.updateAction))
 	mux.HandleFunc("POST /api/jobs/bulk", s.command(s.bulkAction))
+	mux.HandleFunc("GET /api/servers", s.serverList)
+	mux.HandleFunc("POST /api/servers", s.always(s.serverSave))
+	mux.HandleFunc("POST /api/servers/{id}/{action}", s.always(s.serverAction))
 	mux.HandleFunc("POST /api/jobs/{id}/{action}", s.command(s.jobAction))
 	return &http.Server{
 		Handler:           localOnly(mux),

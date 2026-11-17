@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.96 — 17 November 2026
+
+- **Servers, the first step toward copies between LucidLink and CTERA.** Settings → Servers adds a cloud server such as CTERA, reached with S3 keys (a file cut off part-way continues where it stopped) or with WebDAV and your user name and password (a cut-off file starts again). Test looks at the top folder without changing anything and says, in plain words, whether it connected and what it found, or why not: wrong login, unknown bucket, an address that is not https, a certificate this Mac does not trust, no answer.
+- The login is kept only on this Mac, in a file only you can read. The page never gets the password or secret key back; it shows only the user name, or the last four characters of an S3 key. Changing a server's name keeps the saved login.
+- Underneath, the parts the copies will use are built and tested: uploads in pieces with each piece checked by the server, continuing after a cut-off from the pieces the server confirms it has, reading back from any point, never replacing a file already on the server, a time limit on every request, and a transfer cut off when no data moves for two minutes. Copies to and from servers come next.
+
 ## 0.2.95 — 17 November 2026
 
 - **A download says where it comes from.** The Kind column shows Frame.io, Vimeo, SoundCloud or the site's name instead of just "Link", and so does the small text after the name (it wrongly said "this Mac"). The panel's From line names it too. The part after the arrow is, as for copies, the folder the file is saved into and its disk: a folder called "Vimeo" shows as "→ Vimeo" whatever the download is.

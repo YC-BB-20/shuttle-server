@@ -620,6 +620,16 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
 .lt { display:flex; gap:10px; align-items:baseline; padding:3px 12px; min-width:0; } .lt .n { flex:1; min-width:0; overflow-wrap:anywhere; } .lt.dir .n { font-weight:600; color:var(--mute); }
 .lt small { color:var(--mute); font-size:12px; white-space:nowrap; font-variant-numeric:tabular-nums; } .ltreeh { margin:8px 0 6px; }
 .lf svg { flex:none; margin-top:2px; } .lft { display:flex; flex-direction:column; min-width:0; } .lft b { overflow-wrap:anywhere; } .lft small { color:#d9d9df; font-size:12px; overflow-wrap:anywhere; }
+.srvlist .srv { border-top:1px solid var(--line); padding:10px 0; min-width:0; }
+.srvlist .srv:first-child { border-top:none; }
+.srvlist .srv b, .srvlist .srv p { overflow-wrap:anywhere; }
+.srvlist .srv p { margin:2px 0; }
+.srvlist .srv .tok { color:var(--ok); } .srvlist .srv .tbad { color:var(--bad); }
+.srvform { display:grid; gap:4px; margin-top:10px; min-width:0; max-width:560px; }
+.srvform > label, .srvform .lbl, .srvform details label { font-weight:600; margin:8px 0 0; display:block; }
+.srvform input[type=text], .srvform input[type=password], .srvform select { width:100%; box-sizing:border-box; min-width:0; }
+.srvform .opt { font-weight:400; }
+.srvform details { margin-top:8px; } .srvform summary { cursor:pointer; color:var(--sel); }
 .lpos { display:flex; flex-wrap:wrap; gap:4px 20px; } .lpos .opt { margin:4px 0; }
 </style>
 </head>
@@ -748,6 +758,30 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
     <label class="opt"><input type="checkbox" id="showHidden"><span>Show hidden entries in the history</span></label>
     <p class="mute">Hide an entry from its details in the history. Hiding only tidies the list: the copy, its files and its records stay as they are. The Hidden button among the filters does the same as this switch. Remembered in this browser.</p>
   </section>
+  <section class="card" id="srvSet">
+    <h2>Servers</h2>
+    <p class="mute">Cloud servers Shuttle will copy to and from, such as CTERA. A login is kept only on this Mac, in a file only you can read, and is never shown again. For now a server can be added and tested; copies to and from it come in the next versions.</p>
+    <div id="srvList" class="srvlist"></div>
+    <div class="btns" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button type="button" id="srvAdd">Add a server</button></div>
+    <div id="srvForm" class="srvform" hidden>
+      <label for="srvName">Name</label><input type="text" id="srvName" autocomplete="off" placeholder="CTERA">
+      <p class="lbl">Connect with</p>
+      <div class="lpos"><label class="opt"><input type="radio" name="srvKind" value="s3" checked><span>S3 keys: a file cut off part-way continues where it stopped</span></label><label class="opt"><input type="radio" name="srvKind" value="webdav"><span>WebDAV: your user name and password; a cut-off file starts again</span></label></div>
+      <label for="srvUrl">Address</label><input type="text" id="srvUrl" autocomplete="off" spellcheck="false" inputmode="url">
+      <p class="mute" id="srvUrlHelp"></p>
+      <div class="s3only"><label for="srvBucket">Bucket</label><input type="text" id="srvBucket" autocomplete="off" spellcheck="false"></div>
+      <label for="srvFolder">Folder on the server to work in (optional)</label><input type="text" id="srvFolder" autocomplete="off" spellcheck="false" placeholder="for example Projects/Feature">
+      <label for="srvUser" id="srvUserL">Access key</label><input type="text" id="srvUser" autocomplete="off" spellcheck="false">
+      <label for="srvSecret" id="srvSecretL">Secret key</label><input type="password" id="srvSecret" autocomplete="new-password">
+      <p class="mute" id="srvKeep" hidden>Leave the key or password empty to keep the saved login.</p>
+      <details class="s3only"><summary>More S3 settings</summary>
+        <label for="srvRegion">Region</label><input type="text" id="srvRegion" autocomplete="off" spellcheck="false" placeholder="us-east-1">
+        <label for="srvStyle">Address style</label><select id="srvStyle"><option value="path">address/bucket (most servers)</option><option value="host">bucket.address</option></select>
+      </details>
+      <div class="btns" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button type="button" class="primary" id="srvSave">Save and test</button><button type="button" id="srvCancel">Cancel</button></div>
+      <p class="err" id="srvErr"></p>
+    </div>
+  </section>
   <section class="card" id="updates">
     <h2>Updates</h2>
     <p id="updLine">…</p>
@@ -846,7 +880,7 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
 <dialog id="confirmDlg">
   <div class="head"><h2 id="confirmTitle"></h2></div>
   <div class="body"><p id="confirmText"></p></div>
-  <div class="foot"><button type="button" data-close>Keep copying</button><button type="button" class="primary" id="confirmYes"></button></div>
+  <div class="foot"><button type="button" data-close id="confirmNo">Keep copying</button><button type="button" class="primary" id="confirmYes"></button></div>
 </dialog>
 <dialog id="spaceDlg">
   <div class="head"><h2 id="spaceTitle">Not enough space</h2></div>
@@ -1613,11 +1647,11 @@ $("pickUse").onclick = () => {
 // Confirmations
 // Answers only once the box has really closed: the close event comes a moment
 // after close(), and must not land on the next box (that broke Stop's second prompt).
-function confirmBox(title, text, yes) {
+function confirmBox(title, text, yes, no) {
   const dlg = $("confirmDlg");
   return new Promise(res => {
     let answer = false;
-    $("confirmTitle").textContent = title; $("confirmText").textContent = text; $("confirmYes").textContent = yes;
+    $("confirmTitle").textContent = title; $("confirmText").textContent = text; $("confirmYes").textContent = yes; $("confirmNo").textContent = no || "Keep copying";
     $("confirmYes").onclick = () => { answer = true; dlg.close(); };
     dlg.onclose = () => { dlg.onclose = null; res(answer); };
     dlg.showModal();
@@ -2202,6 +2236,73 @@ $("skipSys").onchange = $("skipDot").onchange = () => saveSys("sysErr"); documen
 $("wrapDef").onchange = $("wrapHashDef").onchange = () => saveSys("layoutErr"); document.querySelectorAll('input[name="wrapFrom"]').forEach(r => { r.onchange = () => saveSys("layoutErr"); });
 document.querySelectorAll('input[name="safeN"]').forEach(r => { r.onchange = () => saveSys("safeErr"); });
 loadSys();
+
+// Servers (v0.2.96): cloud servers such as CTERA, reached by S3 or WebDAV.
+// The page sends a password or secret key once, when saving, and never gets it back.
+let srvEdit = null; // the server being changed, or null when adding
+const srvKind = () => document.querySelector("input[name=srvKind]:checked").value;
+function srvFormKind() {
+  const s3 = srvKind() === "s3";
+  document.querySelectorAll("#srvForm .s3only").forEach(e => e.hidden = !s3);
+  $("srvUserL").textContent = s3 ? "Access key" : "User name";
+  $("srvSecretL").textContent = s3 ? "Secret key" : "Password";
+  $("srvUrl").placeholder = s3 ? "https://s3.portal.example.com" : "https://portal.example.com/webdav";
+  $("srvUrlHelp").textContent = s3 ? "The S3 address the CTERA administrator gives with the keys." : "For CTERA: the portal's address followed by /webdav.";
+}
+document.querySelectorAll("input[name=srvKind]").forEach(r => r.onchange = srvFormKind);
+function srvOpen(p) {
+  srvEdit = p || null;
+  $("srvName").value = p ? p.name : ""; $("srvUrl").value = p ? p.url : ""; $("srvBucket").value = p ? p.bucket || "" : "";
+  $("srvFolder").value = p ? p.folder || "" : ""; $("srvRegion").value = p ? p.region || "" : ""; $("srvStyle").value = p && p.style || "path";
+  $("srvUser").value = p && p.kind === "webdav" ? p.user : ""; $("srvSecret").value = "";
+  $("srvKeep").hidden = !p;
+  document.querySelector("input[name=srvKind][value=" + (p ? p.kind : "s3") + "]").checked = true;
+  $("srvErr").textContent = "";
+  srvFormKind();
+  $("srvForm").hidden = false; $("srvAdd").hidden = true;
+  $("srvName").focus();
+}
+function srvClose() { $("srvForm").hidden = true; $("srvAdd").hidden = false; srvEdit = null; $("srvSecret").value = ""; }
+$("srvAdd").onclick = () => srvOpen(null);
+$("srvCancel").onclick = srvClose;
+$("srvSave").onclick = () => {
+  const body = { id: srvEdit ? srvEdit.id : "", name: $("srvName").value, kind: srvKind(), url: $("srvUrl").value, bucket: $("srvBucket").value,
+    folder: $("srvFolder").value, region: $("srvRegion").value, style: $("srvStyle").value, user: $("srvUser").value, secret: $("srvSecret").value };
+  $("srvErr").textContent = ""; $("srvSave").disabled = true;
+  post("/api/servers", body).then(p => { srvClose(); return srvTest(p.id); })
+    .catch(e => { $("srvErr").textContent = e.message; }).finally(() => { $("srvSave").disabled = false; $("srvSecret").value = ""; });
+};
+const srvTesting = new Set();
+function srvTest(id) {
+  srvTesting.add(id); loadServers();
+  return post("/api/servers/" + id + "/test").catch(() => {}).finally(() => { srvTesting.delete(id); loadServers(); });
+}
+function srvRow(p) {
+  const d = el("div", "srv");
+  d.append(el("b", "", p.name));
+  d.append(el("p", "mute", (p.kind === "s3" ? "S3" : "WebDAV") + " · " + p.host + (p.bucket ? " · bucket " + p.bucket : "") + (p.folder ? " · folder " + p.folder : "") + " · " + p.user));
+  const t = el("p");
+  if (srvTesting.has(p.id)) t.textContent = "Testing the connection… (a read-only look at the top folder)";
+  else if (!p.test) t.textContent = "Not tested since Shuttle started.";
+  else { t.className = p.test.ok ? "tok" : "tbad"; t.textContent = (p.test.ok ? "" : "Could not connect: ") + p.test.msg + " (" + new Date(p.test.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + ")"; }
+  d.append(t);
+  const b = el("div", "btns"); b.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-top:6px";
+  const test = el("button", "", "Test"); test.type = "button"; test.disabled = srvTesting.has(p.id); test.onclick = () => srvTest(p.id);
+  const ch = el("button", "", "Change"); ch.type = "button"; ch.onclick = () => srvOpen(p);
+  const rm = el("button", "", "Remove"); rm.type = "button";
+  rm.onclick = async () => {
+    if (!await confirmBox("Remove " + p.name + "?", "Shuttle forgets this server and its saved login. Nothing on the server is touched.", "Remove", "Keep it")) return;
+    post("/api/servers/" + p.id + "/remove").then(loadServers).catch(e => alert(e.message));
+  };
+  b.append(test, ch, rm); d.append(b);
+  return d;
+}
+function loadServers() {
+  fetch("/api/servers").then(r => r.json()).then(list => {
+    $("srvList").replaceChildren(...(list.length ? list.map(srvRow) : [el("p", "mute", "No servers yet.")]));
+  }).catch(() => {});
+}
+loadServers();
 // v0.2.63: start at login, the same switch as in the menu bar.
 function showLogin(c) { $("loginSet").hidden = !c.supported; $("loginOn").checked = !!c.on; }
 function loadLogin() { fetch("/api/settings/login").then(r => r.json()).then(showLogin).catch(() => {}); }

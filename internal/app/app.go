@@ -26,6 +26,7 @@ import (
 	"github.com/YC-BB-20/shuttle-server/internal/limits"
 	"github.com/YC-BB-20/shuttle-server/internal/logx"
 	"github.com/YC-BB-20/shuttle-server/internal/menubar"
+	"github.com/YC-BB-20/shuttle-server/internal/remote"
 	"github.com/YC-BB-20/shuttle-server/internal/safemode"
 	"github.com/YC-BB-20/shuttle-server/internal/server"
 	"github.com/YC-BB-20/shuttle-server/internal/sysinfo"
@@ -369,6 +370,7 @@ func Run(opts Options) (code int) {
 	}
 	srv := (&server.Server{Page: shuttle.IndexHTML, Speed: speed, PageDir: cfg.PageDir, Hub: hub, Status: status, Jobs: actions, Listen: cfg.Listen,
 		Updates: updater, Restart: restart, Quit: quit, Login: login, LogsDir: filepath.Join(data, "logs"),
+		Servers: &remote.Store{Dir: filepath.Join(data, "secrets", "servers"), Opts: remote.Options{Budget: budget}},
 		About: func() any {
 			return map[string]string{"version": version.Version, "commit": version.Commit, "changelog": shuttle.Changelog}
 		}}).HTTP()

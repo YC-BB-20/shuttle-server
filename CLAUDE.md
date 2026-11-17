@@ -34,6 +34,7 @@ The design lives in the claude.ai project (`GOALS.md`, `DESIGN.md`, `COMPATIBILI
 | `internal/soak` | Long-run resource test |
 | `internal/fsx` | Atomic writes, free space |
 | `internal/sysinfo` | Total RAM, open-file limit |
+| `internal/remote` | File servers (DESIGN.md section 19): `Remote` with S3 (SigV4, multipart pieces from the budget, resume via ListParts) and WebDAV (PUT, MOVE without overwrite); `Store` keeps logins in `secrets/servers/<id>.json` (0600), the page sees `Public` only |
 | `internal/menubar` | macOS menu bar icon: `menubar.js` run by `osascript`, fed by a status file in `temp.noindex`, own process group |
 | `internal/logx` | `logs/YYYY-MM/shuttle.log`, appended, never trimmed |
 | `internal/version` | `Version` constant; CI sets `Commit` |
