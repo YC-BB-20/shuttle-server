@@ -12,14 +12,16 @@ import (
 )
 
 // linksInfo looks up pasted links for the Add link pop-up (POST
-// /api/links/info {"urls": "…"}). The answer never holds a link.
+// /api/links/info {"urls": "…", "password": "…"}). The answer never holds a
+// link. The password (a Vimeo video's) is used and never sent back or logged.
 func (s *Server) linksInfo(w http.ResponseWriter, r *http.Request) (any, error) {
 	l, ok := s.Jobs.(linker)
 	if !ok {
 		return nil, errors.New("link downloads are not available right now")
 	}
 	var b struct {
-		URLs string `json:"urls"`
+		URLs     string `json:"urls"`
+		Password string `json:"password"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 512<<10)).Decode(&b); err != nil {
 		return nil, errors.New("could not read the request")
@@ -30,7 +32,7 @@ func (s *Server) linksInfo(w http.ResponseWriter, r *http.Request) (any, error) 
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
 	defer cancel()
-	return map[string]any{"links": l.LookUpLinks(ctx, raws)}, nil
+	return map[string]any{"links": l.LookUpLinks(ctx, raws, b.Password)}, nil
 }
 
 // linksAdd queues a download for each link (POST /api/links/add {"urls":
@@ -47,6 +49,9 @@ func (s *Server) linksAdd(w http.ResponseWriter, r *http.Request) (any, error) {
 		Next bool     `json:"next"`
 		// Before: when Next, the job the downloads go in front of.
 		Before string `json:"before"`
+		// A Vimeo video's password, and the chosen quality (one link only).
+		Password string `json:"password"`
+		Quality  string `json:"quality"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 512<<10)).Decode(&b); err != nil {
 		return nil, errors.New("could not read the request")
@@ -57,11 +62,14 @@ func (s *Server) linksAdd(w http.ResponseWriter, r *http.Request) (any, error) {
 	if len(b.URLs) > 50 {
 		b.URLs = b.URLs[:50]
 	}
+	if len(b.URLs) > 1 {
+		b.Quality = "" // each link gets its best
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
 	defer cancel()
 	ids, errs := []string{}, []string{}
 	for _, u := range b.URLs {
-		j, err := l.AddLink(ctx, u, b.Dest)
+		j, err := l.AddLink(ctx, u, b.Dest, copyjob.LinkOpts{Password: b.Password, Quality: b.Quality})
 		if err != nil {
 			errs = append(errs, err.Error())
 			continue

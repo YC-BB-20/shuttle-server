@@ -74,8 +74,8 @@ type copiesFinder interface {
 
 // linker is an Actions that can download links (v0.2.90).
 type linker interface {
-	LookUpLinks(ctx context.Context, raws []string) []copyjob.LinkInfo
-	AddLink(ctx context.Context, raw, dest string) (*copyjob.Job, error)
+	LookUpLinks(ctx context.Context, raws []string, password string) []copyjob.LinkInfo
+	AddLink(ctx context.Context, raw, dest string, o copyjob.LinkOpts) (*copyjob.Job, error)
 	Move(id, before string) error
 }
 

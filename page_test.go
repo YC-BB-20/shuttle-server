@@ -76,7 +76,7 @@ func TestPageHideHistory(t *testing.T) {
 	for _, want := range []string{
 		`.qf { margin:14px 0 4px; }`, `id="qfHidden"`, `id="showHidden"`,
 		`"Hide from history"`, `"Show in history"`, `(hide ? "hide" : "unhide")`,
-		`const listed = v => !v.hidden || qf.showHidden;`, `done.filter(v => listed(v) && shown(v) && inRange(v))`,
+		`const listed = v => !v.hidden || qf.showHidden;`, `done.filter(v => listed(v) && shown(v) && inRange(v) && inView(v))`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
@@ -504,7 +504,7 @@ func TestPageNewLookQueueOrderOnSet(t *testing.T) {
 	for _, want := range []string{
 		`color-scheme: dark;`, `<header class="topbar">`, `<div class="side"><nav class="tabs" role="tablist"`, `<footer class="strip" id="strip">`, `id="sysBtn">System</button>`,
 		`id="styleSw"`, `data-style="onset"`, `id="onset"`, `id="onLayout"`, `data-l="table"`,
-		`const SAFE_COPIES = 2;`, `"SAFE TO UNPLUG"`, `"VERIFIED"`, `"KEEP CONNECTED"`, `function driveState(v)`, `k.source >= of`, `k.dest >= of`,
+		`function SAFE_COPIES()`, `"SAFE TO UNPLUG"`, `"VERIFIED"`, `"KEEP CONNECTED"`, `function driveState(v)`, `k.source >= of`, `k.dest >= of`,
 		`"/api/jobs/" + id + "/move"`, `"Run next"`, `function markMovable(list)`, `e.altKey`, `(a.order ?? 0) - (b.order ?? 0)`,
 		`$("stripHead").textContent = s.headline;`,
 	} {
@@ -582,11 +582,28 @@ func TestPageFiles(t *testing.T) {
 func TestPageAddLink(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
-		`id="linkBtn"`, `id="linkDlg"`, `post("/api/links/info", { urls: text })`, `post("/api/links/add", { urls: linkOK, dest, next: $("linkNext").checked, before: queueNext })`,
+		`id="linkBtn"`, `id="linkDlg"`, `post("/api/links/info", { urls: text, password: $("linkPw").value })`, `post("/api/links/add", { urls: linkOK, dest, next: $("linkNext").checked, before: queueNext, password: $("linkPw").value, quality:`,
 		`document.addEventListener("paste", e =>`, `if (v.kind === "link") return v.link_name || "Download";`, `id === "linkDst"`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
 		}
+	}
+}
+
+// v0.2.91: Vimeo and SoundCloud in Add link, the quick views, the safe count.
+func TestPageSitesViewsSafeCount(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`id="linkPw"`, `type="password" id="linkPw" autocomplete="off"`, `id="linkQ"`, `x.site === "vimeo" ? "Vimeo video" : "SoundCloud track"`, `function linkDur(s)`,
+		`id="qView"`, `data-v="active"`, `>Done today <span`, `>Only problems <span`, `function jobProblem(v)`, `function inView(v, view)`,
+		`name="safeN"`, `function SAFE_COPIES() { return (copySet && copySet.safe_copies) || 2; }`, `const need = SAFE_COPIES(), short`, `id="onRuleN"`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	if strings.Contains(s, "const SAFE_COPIES = 2") {
+		t.Error("the safe count is still fixed")
 	}
 }

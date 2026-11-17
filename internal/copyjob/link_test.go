@@ -48,7 +48,7 @@ func TestLinkDownload(t *testing.T) {
 	os.MkdirAll(filepath.Join(dest, "Day 1", "Cam A"), 0o755)
 	os.WriteFile(filepath.Join(dest, "Day 1", "Cam A", "A001 clip.mov"), []byte("mine"), 0o644)
 	// Half the file is already there from an earlier try: it continues.
-	j, err := m.AddLink(context.Background(), link, dest)
+	j, err := m.AddLink(context.Background(), link, dest, LinkOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestLinkDownload(t *testing.T) {
 
 	// An expired link fails with the reason and leaves nothing behind.
 	expired.Store(true)
-	j2, err := m.AddLink(context.Background(), srv.URL+"/other.mov", dest)
+	j2, err := m.AddLink(context.Background(), srv.URL+"/other.mov", dest, LinkOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestLinkDownload(t *testing.T) {
 
 	// Links that are not plain files are refused with a reason.
 	for _, bad := range []string{"https://vimeo.com/123", "ftp://x/y", "https://app.frame.io/reviews/abc"} {
-		if _, err := m.AddLink(context.Background(), bad, dest); err == nil {
+		if _, err := m.AddLink(context.Background(), bad, dest, LinkOpts{}); err == nil {
 			t.Fatalf("%s was accepted", bad)
 		}
 	}

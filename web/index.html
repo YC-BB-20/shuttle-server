@@ -115,7 +115,7 @@
   label { display:block; margin:10px 0 4px; font-weight:600; }
   .row { display:flex; gap:8px; }
   .row > input { flex:1; min-width:0; }
-  input[type=text] { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--fg); }
+  input[type=text], input[type=password] { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--fg); }
   .opt { display:flex; gap:8px; align-items:flex-start; font-weight:400; margin:6px 0; }
   .vopt { margin:12px 0; } .vopt > span { min-width:0; } .vopt b { display:block; font-size:17px; font-weight:600; }
   .vopt small { display:block; font-size:13px; color:var(--mute); margin-top:2px; overflow-wrap:anywhere; }
@@ -291,7 +291,7 @@ button:hover { border-color:#55555f; }
 button:focus-visible, select:focus-visible, input:focus-visible, .job:focus-visible { outline:2px solid var(--sel); outline-offset:1px; }
 .primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
 .primary:hover { background:#8a5ee8; border-color:#8a5ee8; }
-select, input[type=text] { background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:8px; font:inherit; }
+select, input[type=text], input[type=password] { background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:8px; font:inherit; }
 select { padding:5px 8px; }
 .topbar { position:sticky; top:0; z-index:5; max-width:none; margin:0; display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px;
   padding:max(9px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 9px max(16px, env(safe-area-inset-left));
@@ -340,6 +340,16 @@ select { padding:5px 8px; }
 .qhead { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; margin:4px 0 8px; }
 .qhead h2 { font-size:18px; font-weight:600; }
 .qhead .qf { flex:1 1 420px; margin:0; justify-content:flex-end; }
+/* v0.2.91: the three quick views, as designed: one segmented control. */
+.qview { display:inline-flex; border:1px solid var(--line2); border-radius:9px; padding:2px; gap:2px; min-width:0; flex-wrap:wrap; }
+.qview button { border:0; background:transparent; color:var(--mute); padding:4px 11px; border-radius:7px; font-size:13px; font-weight:500; white-space:nowrap; }
+.qview button:hover { color:var(--fg); background:#202026; }
+.qview button[aria-pressed=true] { background:#2a2a31; color:var(--fg); }
+.qview button[data-v=problems][aria-pressed=true] { color:var(--bad); }
+/* The finer filters stay one click away, behind Filters. */
+.qf:not(.open) button[data-k], .qf:not(.open) #qfActive { display:none; }
+.qfmore { position:relative; } .qfmore .dot { position:absolute; top:3px; right:3px; width:6px; height:6px; border-radius:3px; background:var(--accent); }
+.qview .n { opacity:.7; font-variant-numeric:tabular-nums; margin-left:2px; }
 .filters button { font-size:13px; padding:4px 11px; border-radius:999px; background:transparent; color:var(--mute); }
 .filters button[aria-pressed=true] { background:var(--line); color:var(--fg); border-color:var(--line2); }
 .jobs-head h2 { font-size:15px; font-weight:600; color:var(--mute); }
@@ -599,6 +609,7 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
 #linkDlg textarea { width:100%; box-sizing:border-box; font:13px/1.45 ui-monospace, Menlo, monospace; padding:8px 10px; border:1px solid var(--line2); border-radius:8px; background:var(--bg); color:var(--fg); resize:vertical; }
 .lfound { display:flex; flex-direction:column; gap:6px; margin:6px 0 4px; max-height:30vh; overflow:auto; }
 .lf { display:flex; gap:10px; align-items:flex-start; padding:9px 12px; border-radius:9px; } .lf.ok { background:#173a27; } .lf.bad { background:#3a1717; }
+.lsite { display:flex; flex-direction:column; gap:4px; margin:4px 0; } .lsite select, .lsite input { width:100%; min-width:0; }
 .lf svg { flex:none; margin-top:2px; } .lft { display:flex; flex-direction:column; min-width:0; } .lft b { overflow-wrap:anywhere; } .lft small { color:#d9d9df; font-size:12px; overflow-wrap:anywhere; }
 .lpos { display:flex; flex-wrap:wrap; gap:4px 20px; } .lpos .opt { margin:4px 0; }
 </style>
@@ -630,14 +641,16 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
   <section class="onset" id="onset" hidden aria-label="Cards">
     <div class="onhead"><label for="onDay" class="vh">Shoot day</label><select id="onDay"></select><span class="mute" id="onSum"></span>
       <button type="button" id="wallBtn">Wall view</button><div class="seg" id="onLayout" role="group" aria-label="Card layout"><button type="button" data-l="tiles" aria-pressed="true">Tiles</button><button type="button" data-l="table" aria-pressed="false">Table</button></div></div>
-    <p class="onrule"><b>Safe</b> = 2 copies read back and matching · <b>Verified</b> = the source read a second time and matching too</p>
+    <p class="onrule"><b>Safe</b> = <span id="onRuleN">2 copies</span> read back and matching · <b>Verified</b> = the source read a second time and matching too</p>
     <div class="cards" id="onCards"></div>
     <p class="mute" id="onNone">No copies started on this day.</p>
   </section>
   <div class="qhead"><h2>Queue<span class="qcount" id="qCount"></span></h2>
+  <div class="qview" id="qView" role="group" aria-label="Show"><button type="button" data-v="all">All <span class="n"></span></button><button type="button" data-v="active" title="What is copying, verifying, downloading, waiting or paused">Active <span class="n"></span></button><button type="button" data-v="today" title="Finished or stopped since midnight">Done today <span class="n"></span></button><button type="button" data-v="problems" title="Finished with problems, failed downloads, and anything waiting for a disk, for space or after a problem">Only problems <span class="n"></span></button></div>
   <div class="filters qf" id="qf" title="Click to show or hide each kind of entry (running and waiting items are always shown)">
     <button type="button" data-k="done">Completed <span class="n"></span></button><button type="button" data-k="skipped" title="Copies where every file was already at the destination">Skipped <span class="n"></span></button><button type="button" data-k="stopped">Stopped <span class="n"></span></button><button type="button" data-k="failed" title="Finished with files that failed or need attention">Failed <span class="n"></span></button><button type="button" data-k="paused" title="Copies and verifies you paused">Paused <span class="n"></span></button><button type="button" id="qfHidden" title="Show or hide the entries you hid from the history" hidden>Hidden <span class="n"></span></button>
     <button type="button" id="qfActive">Active only</button>
+    <button type="button" id="qfMore" class="qfmore" aria-expanded="false" title="Show or hide each kind of entry">Filters<span class="dot" hidden></span></button>
     <select id="qfRange" title="Time range of the history"><option value="all">All time</option><option value="hour">Last hour</option><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="week">Last 7 days</option></select>
     <select id="qfSort" title="Sort the queue and the history"><option value="queue:1">Queue order</option><option value="time:-1">Newest first</option><option value="time:1">Oldest first</option><option value="name:1">Name A–Z</option><option value="name:-1">Name Z–A</option><option value="size:-1">Largest first</option><option value="size:1">Smallest first</option><option value="status:1">Status</option><option value="left:1">Time left</option><option value="dest:1">Destination</option></select>
   </div></div>
@@ -701,6 +714,12 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
     <label class="opt"><input type="radio" name="hashAlgo" value="both"><span>Both XXH128 and XXH64</span></label>
     <p class="mute">The hash every read of a copy makes: the source as it is copied, the copy read back, and the source read again. With both, each read makes both and both must match. Applies to new copies; a copy keeps the hash it started with, and a Verify reads each file with the hash its copy made. Each file's info shows the hashes.</p>
     <p class="err" id="hashErr"></p>
+  </section>
+  <section class="card" id="safeSet">
+    <h2>On set: copies needed</h2>
+    <div class="lpos"><label class="opt"><input type="radio" name="safeN" value="1"><span>1 copy</span></label><label class="opt"><input type="radio" name="safeN" value="2"><span>2 copies (recommended)</span></label><label class="opt"><input type="radio" name="safeN" value="3"><span>3 copies</span></label><label class="opt"><input type="radio" name="safeN" value="4"><span>4 copies</span></label></div>
+    <p class="mute">A camera card shows SAFE TO UNPLUG once this many of its copies are read back and match, and VERIFIED once the card has also been read a second time and matched for that many copies. Changes only what the On set view shows; the copies themselves are not touched.</p>
+    <p class="err" id="safeErr"></p>
   </section>
   <section class="card" id="layoutSet">
     <h2>Folder layout</h2>
@@ -839,8 +858,10 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
   <div class="body">
     <label for="linkIn">Links</label>
     <textarea id="linkIn" rows="3" spellcheck="false" autocomplete="off" placeholder="https://… one link per line (up to 50)"></textarea>
-    <p class="mute">Direct download links to a file, such as Frame.io's "Download in Browser" links. Each link stays on this computer only, is never shown again, and is removed once its file has arrived.</p>
+    <p class="mute">Direct download links to a file, such as Frame.io's "Download in Browser" links, or a Vimeo video or SoundCloud track. Each link stays on this computer only, is never shown again, and is removed once its file has arrived.</p>
     <div class="lfound" id="linkFound"></div>
+    <div class="lsite" id="linkPwRow" hidden><label for="linkPw">Vimeo password</label><input type="password" id="linkPw" autocomplete="off" placeholder="Only for a video with a password"><p class="mute">Used to open the video, kept with the link and removed with it. Never shown or logged.</p></div>
+    <div class="lsite" id="linkQRow" hidden><label for="linkQ">Quality</label><select id="linkQ"></select></div>
     <label for="linkDst">Save to</label>
     <div class="row"><input type="text" id="linkDst" placeholder="/Volumes/BACKUP_1/Downloads"><button type="button" data-pick="linkDst">Choose…</button></div>
     <p class="mute" id="linkSpace"></p>
@@ -2088,7 +2109,12 @@ function showSys(c) {
 }
 // v0.2.57: every save sends all the choices, so one switch never resets another.
 let copySet = {};
-function showSet(c) { copySet = c; showSys(c); showLayout(c); document.querySelectorAll('input[name="hashAlgo"]').forEach(r => { r.checked = r.value === (c.hash || "xxh128"); }); }
+function showSet(c) {
+  const was = SAFE_COPIES(); copySet = c; showSys(c); showLayout(c); document.querySelectorAll('input[name="hashAlgo"]').forEach(r => { r.checked = r.value === (c.hash || "xxh128"); });
+  document.querySelectorAll('input[name="safeN"]').forEach(r => { r.checked = +r.value === SAFE_COPIES(); });
+  $("onRuleN").textContent = SAFE_COPIES() === 1 ? "1 copy" : SAFE_COPIES() + " copies";
+  if (was !== SAFE_COPIES() && latest) renderOnset(latest.jobs || []);
+}
 function showLayout(c) {
   $("wrapDef").checked = !!c.wrap; $("wrapHashDef").checked = !!c.wrap_hash;
   document.querySelectorAll('input[name="wrapFrom"]').forEach(r => { r.checked = r.value === (c.wrap_name_from || "folder"); r.disabled = !c.wrap; });
@@ -2106,14 +2132,16 @@ function wrapShow() {
 $("ckWrap").onchange = wrapShow;
 function loadSys() { fetch("/api/settings/copy").then(r => r.json()).then(showSet).catch(() => {}); }
 function saveSys(errBox) {
-  $("sysErr").textContent = ""; $("hashErr").textContent = ""; $("layoutErr").textContent = "";
+  $("sysErr").textContent = ""; $("hashErr").textContent = ""; $("layoutErr").textContent = ""; $("safeErr").textContent = "";
   const algo = document.querySelector('input[name="hashAlgo"]:checked');
   post("/api/settings/copy", Object.assign({}, copySet, { skip_system_files: $("skipSys").checked, skip_appledouble_files: $("skipSys").checked && $("skipDot").checked, hash: algo ? algo.value : "xxh128",
-    wrap: $("wrapDef").checked, wrap_hash: $("wrapDef").checked && $("wrapHashDef").checked, wrap_name_from: (document.querySelector('input[name="wrapFrom"]:checked') || { value: "folder" }).value }))
+    wrap: $("wrapDef").checked, wrap_hash: $("wrapDef").checked && $("wrapHashDef").checked, wrap_name_from: (document.querySelector('input[name="wrapFrom"]:checked') || { value: "folder" }).value,
+    safe_copies: +(document.querySelector('input[name="safeN"]:checked') || { value: SAFE_COPIES() }).value }))
     .then(showSet).catch(e => { $(errBox).textContent = e.message; loadSys(); });
 }
 $("skipSys").onchange = $("skipDot").onchange = () => saveSys("sysErr"); document.querySelectorAll('input[name="hashAlgo"]').forEach(r => { r.onchange = () => saveSys("hashErr"); });
 $("wrapDef").onchange = $("wrapHashDef").onchange = () => saveSys("layoutErr"); document.querySelectorAll('input[name="wrapFrom"]').forEach(r => { r.onchange = () => saveSys("layoutErr"); });
+document.querySelectorAll('input[name="safeN"]').forEach(r => { r.onchange = () => saveSys("safeErr"); });
 loadSys();
 // v0.2.63: start at login, the same switch as in the menu bar.
 function showLogin(c) { $("loginSet").hidden = !c.supported; $("loginOn").checked = !!c.on; }
@@ -2142,7 +2170,7 @@ let olderViews = [];
 // Queue and History filters, as in Shuttle Router: kinds to show, Active only,
 // a time range for the history and a sort order. Remembered in this browser.
 // Running, waiting and queued items are always shown.
-const qfDefault = () => ({ show: {}, range: "all", sort: "queue:1", showHidden: false });
+const qfDefault = () => ({ show: {}, range: "all", sort: "queue:1", showHidden: false, view: "all" });
 const qf = (() => { try { return Object.assign(qfDefault(), JSON.parse(localStorage.getItem("shuttle.qf") || "{}")); } catch (e) { return qfDefault(); } })();
 const saveQf = () => { try { localStorage.setItem("shuttle.qf", JSON.stringify(qf)); } catch (e) {} };
 const qfOffKeys = ["done", "skipped", "stopped", "failed"];
@@ -2152,6 +2180,19 @@ function jobCat(v) {
   return v.state === "paused" ? "paused" : "active";
 }
 const shown = v => { const k = jobCat(v); return k === "active" || qf.show[k] !== false; };
+// The quick views (v0.2.91): Active, Done today, Only problems.
+const isDone = v => v.state === "finished" || v.state === "stopped";
+function jobProblem(v) {
+  if (jobCat(v) === "failed" || v.error) return true;
+  return v.state === "waiting" && (!!v.missing || /problem|not responding|space|room|stopped sending|could not/i.test(v.reason || ""));
+}
+function inView(v, view) {
+  view = view || qf.view;
+  if (view === "active") return !isDone(v);
+  if (view === "today") { const mid = new Date(); mid.setHours(0, 0, 0, 0); return isDone(v) && new Date(v.finished || v.created).getTime() >= mid.getTime(); }
+  if (view === "problems") return jobProblem(v);
+  return true;
+}
 function inRange(v) {
   if (qf.range === "all") return true;
   const t = new Date(v.finished || v.created).getTime(), now = Date.now(), mid = new Date(); mid.setHours(0, 0, 0, 0);
@@ -2191,6 +2232,8 @@ function syncQf(counts) {
     if (counts) b.querySelector(".n").textContent = counts[b.dataset.k] || "";
   });
   const allOff = qfOffKeys.every(k => qf.show[k] === false);
+  $("qfMore").querySelector(".dot").hidden = !Object.values(qf.show).some(x => x === false);
+  $("qf").classList.toggle("open", !!qf.more); $("qfMore").setAttribute("aria-expanded", !!qf.more);
   $("qfActive").textContent = allOff ? "Show all" : "Active only";
   $("qfActive").setAttribute("aria-pressed", allOff);
   $("qfActive").title = allOff ? "Switch the filters back on (completed, skipped, stopped, failed)" : "Switch every filter off: show only what is copying, verifying, waiting or paused";
@@ -2202,6 +2245,8 @@ function syncQf(counts) {
 }
 const qfChanged = () => { saveQf(); if (latest) renderJobs(latest.jobs || []); else syncQf(); };
 $("qf").querySelectorAll("button[data-k]").forEach(b => b.onclick = () => { qf.show[b.dataset.k] = qf.show[b.dataset.k] === false; qfChanged(); });
+$("qfMore").onclick = () => { qf.more = !qf.more; qfChanged(); };
+$("qView").querySelectorAll("button").forEach(b => b.onclick = () => { qf.view = b.dataset.v; qfChanged(); });
 $("qfActive").onclick = () => {
   const allOff = qfOffKeys.every(k => qf.show[k] === false);
   qfOffKeys.forEach(k => qf.show[k] = allOff); qf.show.paused = true; qfChanged();
@@ -2245,8 +2290,12 @@ function renderJobs(list) {
   const listed = v => !v.hidden || qf.showHidden;
   active.concat(done).forEach(v => { if (v.hidden) counts.hidden = (counts.hidden || 0) + 1; if (listed(v)) { const k = jobCat(v); counts[k] = (counts[k] || 0) + 1; } });
   syncQf(counts);
+  $("qView").querySelectorAll("button").forEach(b => {
+    b.setAttribute("aria-pressed", (qf.view || "all") === b.dataset.v);
+    b.querySelector(".n").textContent = b.dataset.v === "all" ? "" : active.concat(done).filter(v => listed(v) && inView(v, b.dataset.v)).length || "";
+  });
   queueNext = (sortJobs(active, false).find(v => v.state !== "running" && !(v.kind === "verify" && v.after)) || {}).id || "";
-  const qShow = sortJobs(active.filter(shown), false), hShow = sortJobs(done.filter(v => listed(v) && shown(v) && inRange(v)), true);
+  const qShow = sortJobs(active.filter(v => shown(v) && inView(v)), false), hShow = sortJobs(done.filter(v => listed(v) && shown(v) && inRange(v) && inView(v)), true);
   const total = active.length + done.length, vis = qShow.length + hShow.length;
   $("qfInfo").textContent = vis === total ? "" : "Showing " + vis + " of " + total;
   $("noJobs").hidden = active.length > 0; $("noDone").hidden = done.length > 0;
@@ -2310,8 +2359,9 @@ function dragRow(c) {
 // source folder, with one chip per destination drive. A card is Safe once
 // SAFE_COPIES of its copies are read back and match, and Verified once the
 // source has also been read a second time and matched for that many copies.
-// General is the queue as before. Remembered in this browser.
-const SAFE_COPIES = 2;
+// General is the queue as before. Remembered in this browser. The number of
+// copies is a setting (v0.2.91, Settings → On set: copies needed).
+function SAFE_COPIES() { return (copySet && copySet.safe_copies) || 2; }
 let viewStyle = pref("shuttle.style", "general"), onLay = pref("shuttle.onlayout", "tiles"), onDaySel = "";
 function setStyle(st) {
   viewStyle = st === "onset" ? "onset" : "general"; keep("shuttle.style", viewStyle);
@@ -2444,7 +2494,7 @@ function renderOnset(list) {
     const copies = [...g.dest.values()].sort((a, b) => a.created < b.created ? -1 : 1), st = copies.map(driveState);
     bytes += Math.max(...copies.map(v => v.bytes || v.est_bytes || 0));
     const ver = st.filter(x => x.lvl === 2).length, safe = st.filter(x => x.lvl >= 1).length, bad = st.some(x => x.k === "bad"), busy = st.some(x => x.k === "run");
-    const need = SAFE_COPIES, short = copies.length < need ? " · " + copies.length + (copies.length === 1 ? " destination; " : " destinations; ") + need + " are needed" : "";
+    const need = SAFE_COPIES(), short = copies.length < need ? " · " + copies.length + (copies.length === 1 ? " destination; " : " destinations; ") + need + " are needed" : "";
     let cls, word, why, ic;
     if (ver >= need) { cls = "verified"; word = "VERIFIED"; ic = "ok"; why = ver + " copies verified · safe to unplug" + (bad ? " · one copy has a problem" : ""); }
     else if (safe >= need) { cls = "safe"; word = "SAFE TO UNPLUG"; ic = "safe"; why = safe + " copies read back · verified once the source is read a second time" + (bad ? " · one copy has a problem" : ""); }
@@ -2778,6 +2828,7 @@ function fbCloseFile() {
 let linkSeq = 0, linkTimer = 0, linkOK = [];
 function openLink(text) {
   $("linkErr").textContent = ""; $("linkFound").replaceChildren(); linkOK = []; $("linkGo").disabled = true;
+  $("linkPw").value = ""; $("linkPwRow").hidden = $("linkQRow").hidden = true; $("linkQ").replaceChildren();
   $("linkIn").value = text || "";
   if (!$("linkDst").value) $("linkDst").value = pref("shuttle.linkdst", "");
   $("linkDlg").showModal(); $("linkIn").focus();
@@ -2788,21 +2839,37 @@ function lookUpLinks() {
   const text = $("linkIn").value.trim(), seq = ++linkSeq;
   if (!text) { $("linkFound").replaceChildren(); linkOK = []; $("linkGo").disabled = true; return; }
   $("linkFound").replaceChildren(el("p", "mute", "Looking the links up…"));
-  post("/api/links/info", { urls: text }).then(r => {
+  post("/api/links/info", { urls: text, password: $("linkPw").value }).then(r => {
     if (seq !== linkSeq) return;
     const raws = text.split(/\s+/).filter(Boolean);
     linkOK = [];
     $("linkFound").replaceChildren(...r.links.map(x => {
       const d = el("div", "lf " + (x.error ? "bad" : "ok")), ic = icon(x.error ? "bad" : "ok", 18), t = el("div", "lft");
       if (x.error) t.append(el("b", "", x.host ? x.host : "Link " + x.n), el("small", "", x.error));
+      else if (x.site) { linkOK.push(raws[x.n - 1]); t.append(el("b", "", (x.sub ? x.sub + "/" : "") + x.name), el("small", "", [x.site === "vimeo" ? "Vimeo video" : "SoundCloud track", x.duration > 0 ? linkDur(x.duration) : "", x.qualities && x.qualities.length ? "about " + size(x.qualities[0].bytes || 0) + " at the best quality" : "", "continues after a break"].filter(Boolean).join(" · "))); }
       else { linkOK.push(raws[x.n - 1]); t.append(el("b", "", (x.sub ? x.sub + "/" : "") + x.name), el("small", "", [x.host, x.size >= 0 ? size(x.size) : "size not given", x.resumable ? "can continue after a break" : "starts again after a break", x.share ? "from " + x.share : ""].filter(Boolean).join(" · "))); }
       d.append(ic, t); return d;
     }));
-    const bytes = r.links.filter(x => !x.error && x.size > 0).reduce((a, x) => a + x.size, 0);
-    $("linkSpace").textContent = linkOK.length ? linkOK.length + (linkOK.length === 1 ? " file" : " files") + (bytes ? " · " + size(bytes) : "") : "";
+    // A Vimeo link gets a password field; a single site link gets its qualities.
+    $("linkPwRow").hidden = !r.links.some(x => x.site === "vimeo") && !$("linkPw").value;
+    const sites = r.links.filter(x => !x.error && x.site && x.qualities && x.qualities.length), q = $("linkQ"), had = q.value;
+    $("linkQRow").hidden = !(sites.length === 1 && r.links.length === 1);
+    q.replaceChildren(...(sites.length === 1 ? sites[0].qualities : []).map((o, i) => { const e = el("option", "", o.label + (o.bytes > 0 ? " · about " + size(o.bytes) : "") + (i === 0 ? " (best)" : "")); e.value = o.id; e.dataset.b = o.bytes || 0; return e; }));
+    if ([...q.options].some(o => o.value === had)) q.value = had;
+    linkSpaceText(r.links);
     $("linkGo").disabled = !linkOK.length; $("linkGo").textContent = linkOK.length > 1 ? "Add " + linkOK.length + " downloads" : "Add to queue";
   }).catch(e => { if (seq === linkSeq) $("linkFound").replaceChildren(el("p", "err", e.message)); });
 }
+let linkLast = [];
+function linkSpaceText(links) {
+  if (links) linkLast = links;
+  const one = !$("linkQRow").hidden && $("linkQ").selectedOptions[0];
+  const bytes = one ? +one.dataset.b : linkLast.filter(x => !x.error).reduce((a, x) => a + (x.site ? (x.qualities && x.qualities[0] ? x.qualities[0].bytes || 0 : 0) : Math.max(0, x.size)), 0);
+  $("linkSpace").textContent = linkOK.length ? linkOK.length + (linkOK.length === 1 ? " file" : " files") + (bytes ? " · " + (linkLast.some(x => x.site) ? "about " : "") + size(bytes) : "") : "";
+}
+function linkDur(s) { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = String(s % 60).padStart(2, "0"); return h ? h + ":" + String(m).padStart(2, "0") + ":" + x : m + ":" + x; }
+$("linkQ").onchange = () => linkSpaceText();
+$("linkPw").oninput = () => { clearTimeout(linkTimer); linkTimer = setTimeout(lookUpLinks, 800); };
 $("linkIn").oninput = () => { clearTimeout(linkTimer); linkTimer = setTimeout(lookUpLinks, 600); };
 $("linkBtn").onclick = () => openLink("");
 $("linkGo").onclick = () => {
@@ -2810,10 +2877,10 @@ $("linkGo").onclick = () => {
   if (!dest) { $("linkErr").textContent = "Choose a folder to save to."; return; }
   keep("shuttle.linkdst", dest);
   $("linkGo").disabled = true; $("linkErr").textContent = "Adding…";
-  post("/api/links/add", { urls: linkOK, dest, next: $("linkNext").checked, before: queueNext }).then(r => {
+  post("/api/links/add", { urls: linkOK, dest, next: $("linkNext").checked, before: queueNext, password: $("linkPw").value, quality: $("linkQRow").hidden ? "" : $("linkQ").value }).then(r => {
     $("linkGo").disabled = false;
     if (r.errors && r.errors.length) { $("linkErr").textContent = (r.ids.length ? r.ids.length + " added. " : "") + "Not added: " + r.errors.join(" · "); return; }
-    $("linkDlg").close(); setStyle("general"); showTab("status");
+    $("linkPw").value = ""; $("linkDlg").close(); setStyle("general"); showTab("status");
   }).catch(e => { $("linkGo").disabled = false; $("linkErr").textContent = e.message; });
 };
 // Paste a link anywhere on the page (not into a field) to open Add link with it.

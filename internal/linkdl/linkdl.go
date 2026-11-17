@@ -97,9 +97,9 @@ func Why(reason string) string {
 	case "local":
 		return "Links to this computer or the home network are not downloaded."
 	case "vimeo":
-		return "Vimeo links are not supported here yet (Shuttle Router downloads them today). Paste a direct download link instead."
+		return "This Vimeo link is not a video. Paste the link of one video, such as https://vimeo.com/123456789."
 	case "soundcloud":
-		return "SoundCloud links are not supported here yet (Shuttle Router downloads them today)."
+		return "This SoundCloud link is not a track. Paste the link of one track, such as https://soundcloud.com/artist/track."
 	}
 	return "Paste a download link that starts with https://"
 }

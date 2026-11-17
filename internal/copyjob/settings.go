@@ -30,10 +30,21 @@ type Settings struct {
 	Wrap         bool   `json:"wrap"`
 	WrapNameFrom string `json:"wrap_name_from"`
 	WrapHash     bool   `json:"wrap_hash"`
+	// SafeCopies (v0.2.91) is how many read-back copies make a card Safe to
+	// unplug in the On set view, and Verified once the source is read again:
+	// 1 to 4, 2 by default.
+	SafeCopies int `json:"safe_copies"`
 }
 
 // DefaultSettings are used until the owner saves a choice.
-var DefaultSettings = Settings{FormatVersion: 1, SkipSystem: true, Hash: AlgoXXH128, WrapNameFrom: "folder"}
+var DefaultSettings = Settings{FormatVersion: 1, SkipSystem: true, Hash: AlgoXXH128, WrapNameFrom: "folder", SafeCopies: 2}
+
+func normSafe(n int) int {
+	if n < 1 || n > 4 {
+		return DefaultSettings.SafeCopies
+	}
+	return n
+}
 
 func (m *Manager) settingsPath() string {
 	return filepath.Join(filepath.Dir(m.Dir), "copy-settings.json")
@@ -54,6 +65,7 @@ func (m *Manager) Settings() Settings {
 		}
 		s.Hash = normAlgo(s.Hash)
 		s.WrapNameFrom = normWrapFrom(s.WrapNameFrom)
+		s.SafeCopies = normSafe(s.SafeCopies)
 		m.set = &s
 	}
 	return *m.set
@@ -64,6 +76,7 @@ func (m *Manager) SetSettings(s Settings) (Settings, error) {
 	s.FormatVersion = 1
 	s.Hash = normAlgo(s.Hash)
 	s.WrapNameFrom = normWrapFrom(s.WrapNameFrom)
+	s.SafeCopies = normSafe(s.SafeCopies)
 	b, _ := json.MarshalIndent(s, "", "  ")
 	m.setMu.Lock()
 	defer m.setMu.Unlock()

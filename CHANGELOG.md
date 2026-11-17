@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.91 — 17 November 2026
+
+- **Vimeo videos in Add link.** Paste a Vimeo link (public, unlisted or with a password) and choose the quality: each picture size is listed with its frame rate and about how big it is, best first. Shuttle downloads the picture and the sound in small pieces and joins them as they arrive into one ordinary MP4 with its table of contents at the front, so it opens at once in any player or editor. No extra program is needed. A piece that does not arrive is tried again, with the video's addresses asked for afresh, and a paused or interrupted download continues from the last pieces kept, not from the start.
+- **SoundCloud tracks in Add link.** The artist's original file when they allow downloads, otherwise the best stream (AAC as .m4a, or MP3), with the title, artist, date, genre, link and cover picture written into the file. Playlists and 30-second previews are refused with the reason.
+- A Vimeo password is kept like the link: only in the private file on this computer, used to open the video, never shown, logged or put in the queue's records, and removed with the link. Every download is still read back from the disk and hashed before it gets its name.
+- **Quick views over the queue:** All, Active, Done today and Only problems, each with its count. The finer filters (completed, skipped, stopped, failed, paused) are one click away under Filters.
+- **On set: copies needed** is now a setting (1 to 4, 2 by default): how many read-back copies make a card SAFE TO UNPLUG, and VERIFIED once the card is read again.
+
 ## 0.2.90 — 17 November 2026
 
 - **Add link:** download files from links into a folder, in the same queue as copies (same order, Run next, pause, stop, waiting, details). Paste one link or up to 50 (one per line), or paste a link anywhere on the page. Each link is looked up first: name, size, site, and whether it can continue after a break. Choose the folder and whether the downloads go at the end of the queue or next.

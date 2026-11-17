@@ -58,8 +58,18 @@ func TestSystemFilesLeftOutBySetting(t *testing.T) {
 		t.Fatal(err)
 	}
 	m2 := &Manager{Dir: m.Dir}
-	if s := m2.Settings(); !s.SkipSystem || !s.SkipAppleDouble {
+	if s := m2.Settings(); !s.SkipSystem || !s.SkipAppleDouble || s.SafeCopies != 2 {
 		t.Fatalf("not kept: %+v", s)
+	}
+	// v0.2.91: the On set copy count: 2 by default, 1 to 4, kept.
+	if s, _ := m.SetSettings(Settings{SkipSystem: true, SafeCopies: 3}); s.SafeCopies != 3 {
+		t.Fatalf("safe count %d", s.SafeCopies)
+	}
+	if s := (&Manager{Dir: m.Dir}).Settings(); s.SafeCopies != 3 {
+		t.Fatalf("safe count not kept: %d", s.SafeCopies)
+	}
+	if s, _ := m.SetSettings(Settings{SkipSystem: true, SkipAppleDouble: true, SafeCopies: 9}); s.SafeCopies != 2 {
+		t.Fatalf("safe count 9 kept as %d", s.SafeCopies)
 	}
 	d2 := filepath.Join(root, "d2")
 	j, _ = m.Add(Spec{Source: src, Dest: d2, S2: "now"})

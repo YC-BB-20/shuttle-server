@@ -13,6 +13,7 @@ import (
 
 	"github.com/YC-BB-20/shuttle-server/internal/diskio"
 	"github.com/YC-BB-20/shuttle-server/internal/fsx"
+	"github.com/YC-BB-20/shuttle-server/internal/limits"
 	"github.com/YC-BB-20/shuttle-server/internal/linkdl"
 	"github.com/YC-BB-20/shuttle-server/internal/xxh3"
 )
@@ -38,6 +39,12 @@ type LinkSpec struct {
 	Resumable bool   `json:"resumable"`       // the site answers a request for part of the file
 	Share     string `json:"share,omitempty"` // the share it came from (#rq-share)
 	Host      string `json:"host"`
+	// v0.2.91: Vimeo and SoundCloud.
+	Site    string `json:"site,omitempty"`    // "" (a file link), "vimeo", "soundcloud"
+	Quality string `json:"quality,omitempty"` // the chosen stream
+	Height  int    `json:"height,omitempty"`  // a Vimeo stream's height, to find it again
+	Est     int64  `json:"est,omitempty"`     // expected size, for the bar
+	Title   string `json:"title,omitempty"`
 }
 
 var linkClient = linkdl.Client()
@@ -47,7 +54,11 @@ var linkClient = linkdl.Client()
 type LinkInfo struct {
 	N int `json:"n"`
 	linkdl.Info
-	Error string `json:"error,omitempty"`
+	Error     string           `json:"error,omitempty"`
+	Site      string           `json:"site,omitempty"` // "vimeo", "soundcloud"
+	Title     string           `json:"title,omitempty"`
+	Duration  float64          `json:"duration,omitempty"`
+	Qualities []linkdl.Quality `json:"qualities,omitempty"` // best first
 }
 
 // SplitLinks splits pasted text into links, at most linkdl.MaxLinks.
@@ -60,10 +71,20 @@ func SplitLinks(text string) []string {
 }
 
 // LookUpLinks probes each link, one after another.
-func (m *Manager) LookUpLinks(ctx context.Context, raws []string) []LinkInfo {
+func (m *Manager) LookUpLinks(ctx context.Context, raws []string, password string) []LinkInfo {
 	out := make([]LinkInfo, 0, len(raws))
 	for i, raw := range raws {
 		r := LinkInfo{N: i + 1}
+		if site := siteOf(raw); site != "" {
+			r.Site = site
+			if in, err := m.lookUpSite(ctx, site, raw, password); err != nil {
+				r.Error, r.Host = err.Error(), site+".com"
+			} else {
+				r.Info, r.Title, r.Duration, r.Qualities = in.Info, in.Title, in.Duration, in.Qualities
+			}
+			out = append(out, r)
+			continue
+		}
 		link, why := linkdl.Parse(raw)
 		if link == "" {
 			r.Error = linkdl.Why(why)
@@ -78,8 +99,12 @@ func (m *Manager) LookUpLinks(ctx context.Context, raws []string) []LinkInfo {
 }
 
 // AddLink checks a link again and queues its download into folder dest.
-func (m *Manager) AddLink(ctx context.Context, raw, dest string) (*Job, error) {
-	link, why := linkdl.Parse(raw)
+func (m *Manager) AddLink(ctx context.Context, raw, dest string, o LinkOpts) (*Job, error) {
+	site := siteOf(raw)
+	link, why := strings.TrimSpace(raw), ""
+	if site == "" {
+		link, why = linkdl.Parse(raw)
+	}
 	if link == "" {
 		return nil, errors.New(linkdl.Why(why))
 	}
@@ -93,9 +118,17 @@ func (m *Manager) AddLink(ctx context.Context, raw, dest string) (*Job, error) {
 	if !diskio.VolumeMounted(dest) {
 		return nil, errors.New("the disk of that folder is not connected")
 	}
-	in, err := linkdl.Probe(ctx, linkClient, raw, link)
-	if err != nil {
-		return nil, err
+	var ls *LinkSpec
+	if site != "" {
+		if ls, err = m.siteSpec(ctx, site, raw, o); err != nil {
+			return nil, err
+		}
+	} else {
+		in, err := linkdl.Probe(ctx, linkClient, raw, link)
+		if err != nil {
+			return nil, err
+		}
+		ls = &LinkSpec{Name: in.Name, Sub: in.Sub, Size: in.Size, Resumable: in.Resumable, Share: in.Share, Host: in.Host}
 	}
 	dv, err := diskio.VolumeOf(dest)
 	if err != nil {
@@ -106,11 +139,10 @@ func (m *Manager) AddLink(ctx context.Context, raw, dest string) (*Job, error) {
 	if err != nil {
 		return nil, err
 	}
-	ls := &LinkSpec{Name: in.Name, Sub: in.Sub, Size: in.Size, Resumable: in.Resumable, Share: in.Share, Host: in.Host}
 	j := &Job{dir: filepath.Join(m.Dir, id), st: state{FormatVersion: FormatVersion, ID: id, Created: now, Choice: "run", Phase: "copy",
-		Spec:  Spec{Kind: KindLink, Source: "https://" + in.Host, Dest: dest, Link: ls, Algo: "xxh128"},
-		Files: 1, Bytes: max(0, in.Size), DestVol: dv.ID}}
-	if err := m.saveLink(id, link); err != nil {
+		Spec:  Spec{Kind: KindLink, Source: "https://" + ls.Host, Dest: dest, Link: ls, Algo: "xxh128"},
+		Files: 1, Bytes: max(0, ls.Size, ls.Est), DestVol: dv.ID}}
+	if err := m.saveLink(id, link, o.Password); err != nil {
 		os.RemoveAll(j.dir) // our own empty job folder
 		return nil, errors.New("the link could not be kept on this computer")
 	}
@@ -121,32 +153,36 @@ func (m *Manager) AddLink(ctx context.Context, raw, dest string) (*Job, error) {
 	m.mu.Lock()
 	m.jobs = append(m.jobs, j)
 	m.mu.Unlock()
-	m.Log.Info("link download added", "job", id, "site", in.Host, "name", in.Name, "size", in.Size, "destination", dest)
+	m.Log.Info("link download added", "job", id, "site", ls.Host, "name", ls.Name, "size", max(ls.Size, ls.Est), "destination", dest)
 	m.poke()
 	return j, nil
 }
 
 func (m *Manager) linkPath(id string) string { return filepath.Join(m.Secrets, id+".json") }
 
-func (m *Manager) saveLink(id, link string) error {
+func (m *Manager) saveLink(id, link, password string) error {
 	if m.Secrets == "" {
 		return errors.New("no secrets folder")
 	}
 	if err := os.MkdirAll(m.Secrets, 0o700); err != nil {
 		return err
 	}
-	b, _ := json.Marshal(map[string]string{"url": link})
+	sec := map[string]string{"url": link}
+	if password != "" {
+		sec["password"] = password // a Vimeo video's password, kept like the link
+	}
+	b, _ := json.Marshal(sec)
 	return fsx.WriteFileAtomic(m.linkPath(id), b, 0o600)
 }
 
-func (m *Manager) readLink(id string) string {
+func (m *Manager) readLink(id string) (link, password string) {
 	b, err := os.ReadFile(m.linkPath(id))
 	if err != nil {
-		return ""
+		return "", ""
 	}
-	var x struct{ URL string }
+	var x struct{ URL, Password string }
 	json.Unmarshal(b, &x)
-	return x.URL
+	return x.URL, x.Password
 }
 
 func (m *Manager) dropLink(id string) {
@@ -202,18 +238,18 @@ func (m *Manager) runLink(ctx context.Context, j *Job) {
 		m.wait(ctx, j, "A disk is not responding; waiting for it")
 		return
 	}
-	link := m.readLink(st.ID)
+	link, password := m.readLink(st.ID)
 	if link == "" {
 		m.linkFailed(j, "The link is no longer kept on this computer; add the download again")
 		return
 	}
 	final, part := linkTarget(st)
-	if st.Spec.Link.Size > 0 && !st.SpaceOK {
+	if need := max(st.Spec.Link.Size, st.Spec.Link.Est); need > 0 && !st.SpaceOK {
 		have := int64(0)
 		if fi, err := os.Stat(part); err == nil {
 			have = fi.Size()
 		}
-		if short, err := m.spaceFor(filepath.Dir(final), max(0, st.Spec.Link.Size-have), j); err == nil && short != nil {
+		if short, err := m.spaceFor(filepath.Dir(final), max(0, need-have), j); err == nil && short != nil {
 			m.holdForSpace(j, *short)
 			return
 		}
@@ -231,10 +267,23 @@ func (m *Manager) runLink(ctx context.Context, j *Job) {
 	}
 	j.mu.Unlock()
 	j.setLive(func(l *live) {
-		*l = live{file: st.Spec.Link.Name, stage: "Downloading", size: max(0, st.Spec.Link.Size)}
+		*l = live{file: st.Spec.Link.Name, stage: "Downloading", size: max(0, st.Spec.Link.Size, st.Spec.Link.Est)}
 	})
 	j.startWork(time.Now())
-	got, hash, err := m.download(jctx, j, dd, link, part, st.Spec.Link)
+	var got int64
+	var hash string
+	switch st.Spec.Link.Site {
+	case "vimeo":
+		if got, err = m.fetchVimeo(jctx, j, dd, link, password, part); err == nil {
+			hash, err = m.readBack(jctx, j, dd, part, got, "")
+		}
+	case "soundcloud":
+		if got, hash, err = m.fetchSC(jctx, j, dd, link, part); err == nil && hash == "" {
+			hash, err = m.readBack(jctx, j, dd, part, got, "")
+		}
+	default:
+		got, hash, err = m.download(jctx, j, dd, link, part, st.Spec.Link)
+	}
 	cause := context.Cause(jctx)
 	cancel(nil)
 	m.mu.Lock()
@@ -249,6 +298,7 @@ func (m *Manager) runLink(ctx context.Context, j *Job) {
 	case stopped:
 		os.Remove(part) // our own partial file
 		m.dropLink(st.ID)
+		m.dropSiteState(j)
 		m.finishStopped(j)
 		m.Log.Info("link download stopped by the owner", "job", st.ID)
 	case err == nil:
@@ -273,11 +323,13 @@ func (m *Manager) runLink(ctx context.Context, j *Job) {
 		j.mu.Unlock()
 		j.save()
 		m.dropLink(st.ID)
+		m.dropSiteState(j)
 		m.Log.Info("link download finished", "job", st.ID, "site", st.Spec.Link.Host, "name", filepath.Base(dst), "bytes", got, "hash", hash, "took", took.String())
 	case errors.Is(cause, errOwnerPause), ctx.Err() != nil:
 		j.setLive(func(l *live) { l.reason, l.missing, l.stage = "", "", "" })
 	case errors.As(err, &gone):
 		os.Remove(part)
+		m.dropSiteState(j)
 		m.linkFailed(j, gone.Msg)
 	case errors.Is(err, diskio.ErrGone), errors.Is(cause, diskio.ErrGone):
 		m.waitMissing(ctx, j, "destination")
@@ -342,7 +394,7 @@ func (m *Manager) download(ctx context.Context, j *Job, d *diskio.Disk, link, pa
 	if err != nil {
 		return 0, "", err
 	}
-	defer m.Budget.Release(lease)
+	defer func() { m.Budget.Release(lease) }()
 	buf := lease.B
 	// A connection that sends nothing for a minute is closed; the queue then
 	// waits and continues from the last byte written.
@@ -392,14 +444,32 @@ func (m *Manager) download(ctx context.Context, j *Job, d *diskio.Disk, link, pa
 		return got, "", err
 	}
 	f.Close()
-	// Read the file back from the disk and hash it: what is on the disk is
-	// what arrived.
+	var want string
+	if from == 0 {
+		want = stream.Sum128().String()
+	}
+	m.Budget.Release(lease) // the read-back takes its own buffer
+	lease = limits.Lease{}
+	sum, err := m.readBack(ctx, j, d, part, got, want)
+	return got, sum, err
+}
+
+// readBack reads a finished download back from the disk and hashes it: what
+// is on the disk is what arrived. want, when known, is the hash of the bytes
+// as they arrived.
+func (m *Manager) readBack(ctx context.Context, j *Job, d *diskio.Disk, part string, got int64, want string) (string, error) {
 	j.setLive(func(l *live) { l.stage, l.done, l.size = "Reading back", 0, got })
 	rf, err := diskio.OpenRead(part)
 	if err != nil {
-		return got, "", err
+		return "", err
 	}
 	defer rf.Close()
+	lease, err := m.Budget.Acquire(ctx, linkChunk)
+	if err != nil {
+		return "", err
+	}
+	defer m.Budget.Release(lease)
+	buf := lease.B
 	h := xxh3.New()
 	for off := int64(0); off < got; {
 		n, err := diskio.ReadChunk(ctx, d, rf, buf, off)
@@ -412,15 +482,15 @@ func (m *Manager) download(ctx context.Context, j *Job, d *diskio.Disk, link, pa
 			break
 		}
 		if err != nil {
-			return got, "", err
+			return "", err
 		}
 	}
 	sum := h.Sum128().String()
-	if from == 0 && stream.Sum128().String() != sum {
+	if want != "" && want != sum {
 		os.Remove(part)
-		return got, "", linkdl.Retry{Msg: "The file read back differently from what arrived; downloading it again"}
+		return "", linkdl.Retry{Msg: "The file read back differently from what arrived; downloading it again"}
 	}
-	return got, sum, nil
+	return sum, nil
 }
 
 func humanBytes(n int64) string {
@@ -447,12 +517,21 @@ func linkView(v *View, st state, l live) {
 		}
 		return
 	}
-	size := float64(max(1, ls.Size))
-	if ls.Size <= 0 {
+	n := ls.Size
+	if n <= 0 {
+		n = ls.Est // a Vimeo or SoundCloud download: the size is an estimate
+	}
+	if l.stage == "Reading back" && l.size > 0 {
+		n = l.size
+	}
+	if n <= 0 {
 		v.Progress, v.CopiedPart, v.ProvenPart = 0, 0, 0
 		return
 	}
+	size := float64(n)
 	switch l.stage {
+	case "Joining":
+		v.CopiedPart, v.ProvenPart = 1, 0
 	case "Reading back":
 		v.CopiedPart, v.ProvenPart = 1, min(1, float64(l.done)/size)
 	default:
