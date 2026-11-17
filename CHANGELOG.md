@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.90 — 17 November 2026
+
+- **Add link:** download files from links into a folder, in the same queue as copies (same order, Run next, pause, stop, waiting, details). Paste one link or up to 50 (one per line), or paste a link anywhere on the page. Each link is looked up first: name, size, site, and whether it can continue after a break. Choose the folder and whether the downloads go at the end of the queue or next.
+- Plain https links to a file are supported, such as Frame.io's "Download in Browser" links (the folder and share name added by the Frame.io links bookmark are kept). Frame.io share pages, links to this computer or the home network, Vimeo and SoundCloud links are refused with the reason; Vimeo and SoundCloud come later.
+- **Each link is kept like a password:** only in a private file on this computer, never in the queue's records, the log, the page or a command line, and removed once its file has arrived or the download ends.
+- **Each download is proven:** it grows as a temporary file next to its place and continues from where it stopped after a pause, a lost connection or a restart; a connection silent for a minute is closed and tried again. The size is checked against what the site said, the file is flushed, read back from the disk in full and hashed with XXH128 (compared with the bytes as they arrived when it ran in one go), and only then gets its name, never over a file already there ("name (2).mov"). An expired link fails at once with the reason.
+
 ## 0.2.89 — 17 November 2026
 
 - **Files:** a new section to browse any disk. Every file and folder shows its **proven copies**, one small mark per drive (filled: read back and matching; half: on its way; dashed: no copy; red: a problem) and "all 3", "2 of 3" or "none yet". It works from the card and from any of the backup drives: either way you see all the copies of that original. A folder holding cards shows each card's copies per drive.

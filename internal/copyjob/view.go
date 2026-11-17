@@ -82,6 +82,9 @@ type View struct {
 	Checks     *Checks     `json:"checks,omitempty"`      // a finished copy: what has been read back since
 	From       []string    `json:"from,omitempty"`        // a Verify job: the copies it compares with
 	Hidden     bool        `json:"hidden,omitempty"`      // hidden from the history by the owner
+	LinkName   string      `json:"link_name,omitempty"`   // a link download: the file's name (v0.2.90)
+	LinkHash   string      `json:"link_hash,omitempty"`   // its XXH128, read back
+	LinkFile   string      `json:"link_file,omitempty"`   // where it went
 	Order      int         `json:"order"`                 // place in the queue, 0 runs first (v0.2.85)
 }
 
@@ -320,6 +323,9 @@ func baseView(j *Job) (View, state, live) {
 	case st.Phase == "done":
 		v.State = "finished"
 	}
+	if st.Spec.isLink() && st.Choice != "stopped" {
+		linkView(&v, st, l)
+	}
 	return v, st, l
 }
 
@@ -385,7 +391,7 @@ func checksOf(jobs []*Job, running *Job, st state, c counts) *Checks {
 
 // withChecks adds Checks to the view of a finished or stopped copy.
 func withChecks(jobs []*Job, running *Job, j *Job, v *View) {
-	if v.Kind == KindVerify || (v.State != "finished" && v.State != "stopped") {
+	if v.Kind == KindVerify || v.Kind == KindLink || (v.State != "finished" && v.State != "stopped") {
 		return
 	}
 	j.mu.Lock()

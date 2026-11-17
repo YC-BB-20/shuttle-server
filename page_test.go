@@ -243,7 +243,7 @@ func TestPageVerifyNestedOnlyUnderItsCopy(t *testing.T) {
 func TestPageFoldersPagingAndVerifyInfo(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{"function dirRows", "function folderChip", `"&tree=1&dir="`, `"Show more files"`, `"Show fewer files"`, `<div class="fpage">`,
-		`if (old && !ver) btn(btns, "Verify files"`, `ver ? fi.from : [infoAt.id]`, `body.push(...proofSlots(fi));`} {
+		`if (old && !ver && !lnk) btn(btns, "Verify files"`, `ver ? fi.from : [infoAt.id]`, `body.push(...proofSlots(fi));`} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
 		}
@@ -555,7 +555,7 @@ func TestPagePanelTabsStripSystemPalette(t *testing.T) {
 func TestPageOffloadSeveralDrivesCardPanelWall(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
-		`id="addDst"`, `function addDstRow(value)`, `const isDst = id => /^dst\d*$/.test(id);`, `for (const dest of dests)`, `"Start " + n + " copies"`,
+		`id="addDst"`, `function addDstRow(value)`, `const isDst = id => /^dst\d*$/.test(id) || id === "linkDst";`, `for (const dest of dests)`, `"Start " + n + " copies"`,
 		`"Offload a card"`, `function selectCard(src)`, `function cardPanel(g, copies, st, word, why, cls)`, `"Source read a second time"`,
 		`id="wallBtn"`, `function setWall(on)`, `body.wall .ocard .nm`,
 	} {
@@ -571,6 +571,19 @@ func TestPageFiles(t *testing.T) {
 	for _, want := range []string{
 		`id="tabFilesBtn"`, `id="tabFiles"`, `fetch("/api/copies?path="`, `function fbDraw(p)`, `function fbTray()`, `async function fbCopy(onlyMissing)`,
 		`"Copy only what is missing · "`, `data-s="missing"`, `id="fbTwo"`, `function fbOpenFile(p, f)`, `"Read this file again"`, `Copy to another place…</button>`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}
+
+// v0.2.90: Add link.
+func TestPageAddLink(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`id="linkBtn"`, `id="linkDlg"`, `post("/api/links/info", { urls: text })`, `post("/api/links/add", { urls: linkOK, dest, next: $("linkNext").checked, before: queueNext })`,
+		`document.addEventListener("paste", e =>`, `if (v.kind === "link") return v.link_name || "Download";`, `id === "linkDst"`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)

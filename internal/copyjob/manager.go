@@ -36,6 +36,8 @@ type Manager struct {
 	Floor    uint64
 	FloorVol string
 	FreeHook func(dst string) uint64 // test hook: free space on dst's disk
+	// Secrets is the folder for link downloads' links (secrets/links, 0700).
+	Secrets string
 
 	mu      sync.Mutex
 	jobs    []*Job
@@ -454,6 +456,10 @@ func (m *Manager) Run(ctx context.Context) {
 }
 
 func (m *Manager) runOne(ctx context.Context, j *Job) {
+	if j.st.Spec.isLink() {
+		m.runLink(ctx, j)
+		return
+	}
 	sd, err1 := m.Disks.For(j.st.Spec.Source)
 	dd, err2 := m.Disks.For(j.st.Spec.Dest)
 	if which := m.missing(j); which != "" {
@@ -633,7 +639,7 @@ func (m *Manager) missing(j *Job) string {
 		d, err := m.Disks.For(path)
 		return err == nil && d.ID == id && diskio.Present(d)
 	}
-	s, d := ok(j.st.Spec.Source, j.st.SourceVol), ok(j.st.Spec.Dest, j.st.DestVol)
+	s, d := j.st.Spec.isLink() || ok(j.st.Spec.Source, j.st.SourceVol), ok(j.st.Spec.Dest, j.st.DestVol) // a link has no source disk
 	switch {
 	case !s && !d:
 		return "both"

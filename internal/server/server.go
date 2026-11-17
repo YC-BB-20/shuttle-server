@@ -72,6 +72,13 @@ type copiesFinder interface {
 	CopiesOf(dir string) copyjob.Copies
 }
 
+// linker is an Actions that can download links (v0.2.90).
+type linker interface {
+	LookUpLinks(ctx context.Context, raws []string) []copyjob.LinkInfo
+	AddLink(ctx context.Context, raw, dest string) (*copyjob.Job, error)
+	Move(id, before string) error
+}
+
 // exporter is an Actions that can write a copy's hash list (v0.2.80).
 type exporter interface {
 	Export(w io.Writer, id, format, algo string, paths []string) (int, int, error)
@@ -111,6 +118,8 @@ func (s *Server) HTTP() *http.Server {
 	mux.HandleFunc("GET /api/events", s.events)
 	mux.HandleFunc("GET /api/browse", s.browse)
 	mux.HandleFunc("GET /api/copies", s.copies)
+	mux.HandleFunc("POST /api/links/info", s.command(s.linksInfo))
+	mux.HandleFunc("POST /api/links/add", s.command(s.linksAdd))
 	mux.HandleFunc("POST /api/mkdir", s.always(s.mkdir))
 	mux.HandleFunc("GET /api/storage", s.storageList)
 	mux.HandleFunc("GET /api/size", s.copySize)

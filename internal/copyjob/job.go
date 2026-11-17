@@ -45,9 +45,11 @@ type Spec struct {
 	// unless skipped); "none" copies and hashes only, the file gets its real
 	// name after the copy. Verify, only with "none": "run" or "paused" queues
 	// a Verify job for the copied files when this job finishes.
-	Check  string `json:"check,omitempty"`
-	Verify string `json:"verify,omitempty"`
-	Hash   string `json:"hash,omitempty"` // "copy" (hash while copying), "later" (hash while copying, check everything in a second pass) or "first" (own read before); empty in jobs from before 0.2.3 means "first"
+	// Link (v0.2.90): a link download; Source then holds only "https://<site>".
+	Link   *LinkSpec `json:"link,omitempty"`
+	Check  string    `json:"check,omitempty"`
+	Verify string    `json:"verify,omitempty"`
+	Hash   string    `json:"hash,omitempty"` // "copy" (hash while copying), "later" (hash while copying, check everything in a second pass) or "first" (own read before); empty in jobs from before 0.2.3 means "first"
 	// Only lists the chosen files and folders inside Source, by name; empty
 	// means the whole folder.
 	Only []string `json:"only,omitempty"`
@@ -172,6 +174,9 @@ type state struct {
 	// Order (v0.2.85): the place in the queue the owner chose by moving the
 	// job. 0 means never moved: the job sits where its creation time puts it.
 	Order int64 `json:"order,omitempty"`
+	// A link download (v0.2.90): the file's XXH128 as read back, and where it went.
+	LinkHash string `json:"link_hash,omitempty"`
+	LinkFile string `json:"link_file,omitempty"`
 }
 
 // Job is one copy job.
