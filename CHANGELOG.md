@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.84 — 17 November 2026
+
+- **Updates no longer ask for drive permission again.** Every release of the Mac programs is now signed with the same certificate (kept as a secret in GitHub), so macOS recognises the new version as the same app. Until the certificate is added, builds are signed the old way and macOS still asks after an update. The first update to a signed version asks one last time.
+
 ## 0.2.83 — 16 November 2026
 
 - **The hash list beside the media folder is named by the time it is written:** `hashes-20261116-2145.txt` (year, month, day, hour, minute), in the wrapper next to the media folder. It never replaces an earlier list; two in the same minute get `-2`.

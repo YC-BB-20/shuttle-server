@@ -65,8 +65,40 @@ jobs:
         run: |
           mkdir -p dist
           go build -trimpath -ldflags "-s -w -X github.com/YC-BB-20/shuttle-server/internal/version.Commit=${GITHUB_SHA::7}" -o dist/shuttle-server ./cmd/shuttle-server
-          # tar keeps the executable bit, which an artifact zip would lose
-          tar -czf shuttle-server-${GOOS}-${GOARCH}.tar.gz -C dist shuttle-server
+      # Same certificate on every release, so macOS sees one app across updates
+      # and keeps the drive permissions the owner already allowed. Without the
+      # secrets (pull requests, forks) the build keeps Go's own ad-hoc signature.
+      # The key and password reach rcodesign as files, never on a command line.
+      - name: sign (macOS binaries)
+        if: matrix.goos == 'darwin'
+        env:
+          P12_BASE64: ${{ secrets.MAC_SIGN_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.MAC_SIGN_P12_PASSWORD }}
+          RCODESIGN_VERSION: "0.29.0"
+        run: |
+          if [ -z "$P12_BASE64" ] || [ -z "$P12_PASSWORD" ]; then
+            echo "::notice::No signing certificate in this run: binary keeps its ad-hoc signature (macOS will ask for drive permission again after an update)."
+            exit 0
+          fi
+          umask 077
+          mkdir -p "$RUNNER_TEMP/sign"
+          printf %s "$P12_BASE64" | base64 -d > "$RUNNER_TEMP/sign/cert.p12"
+          printf %s "$P12_PASSWORD" > "$RUNNER_TEMP/sign/pass.txt"
+          curl -fsSL "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${RCODESIGN_VERSION}/apple-codesign-${RCODESIGN_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar -xz -C "$RUNNER_TEMP/sign" --strip-components=1
+          "$RUNNER_TEMP/sign/rcodesign" sign \
+            --p12-file "$RUNNER_TEMP/sign/cert.p12" \
+            --p12-password-file "$RUNNER_TEMP/sign/pass.txt" \
+            --binary-identifier com.yc-bb-20.shuttle-server \
+            dist/shuttle-server
+          # The line below must be identical on every release: it is what macOS remembers.
+          "$RUNNER_TEMP/sign/rcodesign" print-signature-info dist/shuttle-server | grep -E "Identifier|SHA-256|Subject CN|designated" || true
+          rm -rf "$RUNNER_TEMP/sign"
+      - name: archive
+        # tar keeps the executable bit, which an artifact zip would lose
+        run: tar -czf shuttle-server-${GOOS}-${GOARCH}.tar.gz -C dist shuttle-server
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
       - uses: actions/upload-artifact@v4
         with:
           name: shuttle-server-${{ matrix.goos }}-${{ matrix.goarch }}
