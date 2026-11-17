@@ -10,7 +10,7 @@ import (
 func TestPageColoursCopyAndVerify(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
-		"--copy:#8e44d6", "--verify:#d63384",
+		"--copy:#a07ef2;", "--verify:#dcd0fd;",
 		`.chip.copying { color:var(--copy)`, `.chip.verifying { color:var(--verify)`,
 		`.job .ico.copy { background:var(--copy); }`, `.job .ico.verify { background:var(--verify); }`,
 		`v.state === "running" ? "var(--" + kind + ")"`,
@@ -62,7 +62,7 @@ func TestPagePurpleAccentNoVerifyButton(t *testing.T) {
 	if strings.Contains(s, `id="verBtn"`) {
 		t.Error("page still has the top Verify… button")
 	}
-	for _, want := range []string{`--accent:#7a3cc8;`, `--accent:#8a4fe0;`, `.qfinfo { font-size:13px; margin:12px 0 8px; }`, `"Verify files"`, `"Verify files again"`, `Add job as paused`, `<b>Destinations, then the source read again</b>`} {
+	for _, want := range []string{`--accent:#7c4de0;`, `.qfinfo { font-size:13px; margin:12px 0 8px; }`, `"Verify files"`, `"Verify files again"`, `Add job as paused`, `<b>Destinations, then the source read again</b>`} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
 		}
@@ -172,8 +172,9 @@ func TestPageWideFileInfoAndAverageSpeed(t *testing.T) {
 
 func TestPageNewCopyBeforeQueueTitle(t *testing.T) {
 	s := string(IndexHTML)
-	if !strings.Contains(s, `<div class="qhead"><button class="primary big" type="button" id="newBtn">New copy</button><h2>Queue<span class="qcount" id="qCount"></span></h2>`) || strings.Contains(s, `margin-left:auto; padding:9px 18px`) {
-		t.Error("New copy should come first, before the Queue title and the filters, on one line")
+	// v0.2.85: New copy sits in the top bar, on every screen; the queue title leads its own line.
+	if !strings.Contains(s, `<button class="primary" type="button" id="newBtn">New copy</button>`) || !strings.Contains(s, `<div class="qhead"><h2>Queue<span class="qcount" id="qCount"></span></h2>`) {
+		t.Error("New copy should be in the top bar and the Queue title first in the queue's head")
 	}
 	if !strings.Contains(s, `<p class="mute" id="noJobs">Nothing in the queue.</p>`) || strings.Contains(s, "Press New copy") {
 		t.Error("empty-queue message should be just \"Nothing in the queue.\"")
@@ -493,5 +494,25 @@ func TestPageWarnsBeforeStartWhenCopyMayNotFit(t *testing.T) {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
 		}
+	}
+}
+
+// v0.2.85: the new frame (top bar, sections on the left, status strip), the
+// queue order the owner can change, and the On set view of camera cards.
+func TestPageNewLookQueueOrderOnSet(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`color-scheme: dark;`, `<header class="topbar">`, `<nav class="side tabs" role="tablist"`, `<footer class="strip" id="strip">`, `id="sysBtn">System</button>`,
+		`id="styleSw"`, `data-style="onset"`, `id="onset"`, `id="onLayout"`, `data-l="table"`,
+		`const SAFE_COPIES = 2;`, `"SAFE TO UNPLUG"`, `"VERIFIED"`, `"KEEP CONNECTED"`, `function driveState(v)`, `k.source >= of`, `k.dest >= of`,
+		`"/api/jobs/" + id + "/move"`, `"Run next"`, `function markMovable(list)`, `e.altKey`, `(a.order ?? 0) - (b.order ?? 0)`,
+		`$("stripHead").textContent = s.headline;`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	if strings.Contains(s, "prefers-color-scheme: light") {
+		t.Error("the page has one dark look")
 	}
 }

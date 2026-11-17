@@ -169,6 +169,9 @@ type state struct {
 	AddedBytes int64     `json:"added_bytes,omitempty"`
 	CheckedAt  time.Time `json:"checked_at,omitzero"`
 	CheckNote  string    `json:"check_note,omitempty"`
+	// Order (v0.2.85): the place in the queue the owner chose by moving the
+	// job. 0 means never moved: the job sits where its creation time puts it.
+	Order int64 `json:"order,omitempty"`
 }
 
 // Job is one copy job.

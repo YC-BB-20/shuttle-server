@@ -84,6 +84,7 @@ type Actions interface {
 	Stop(id string) error
 	ContinueAnyway(id string) error
 	SetHidden(id string, hidden bool) error
+	Move(id, before string) error
 	Problems(id string, limit int) []copyjob.Problem
 	Files(id, filter string, from, limit int) (copyjob.FilePage, error)
 	FilesIn(id, filter string, tree bool, dir string, from, limit int) (copyjob.FilePage, error)

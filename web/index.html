@@ -6,9 +6,10 @@
 <title>Shuttle Server</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%237a3cc8'/%3E%3Cpath d='M22 46V18m0 0l-8 8m8-8l8 8M42 18v28m0 0l-8-8m8 8l8-8' stroke='%23fff' stroke-width='5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
-  :root { color-scheme: light dark; --bg:#f5f5f7; --card:#fff; --fg:#1d1d1f; --mute:#6e6e73; --line:#d2d2d7;
-          --ok:#1f8a3b; --warn:#b25e00; --bad:#c62828; --accent:#7a3cc8; --copy:#8e44d6; --verify:#d63384; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#111; --card:#1c1c1e; --fg:#f5f5f7; --mute:#a1a1a6; --line:#38383a; --copy:#b07ae8; --verify:#f06aa8; --accent:#8a4fe0; } }
+  /* v0.2.85: one dark look on every screen. Purple is the brand and the written layer; light purple is
+     what is proven; green, amber and red only for done, waiting on you and problems, always with a word. */
+  :root { color-scheme: dark; --bg:#131316; --card:#1b1b1f; --side:#18181b; --raise:#232329; --fg:#ededf0; --mute:#a6a7b1; --line:#303038; --line2:#3c3c46;
+          --ok:#6bd193; --warn:#f2be5c; --bad:#ff8080; --accent:#7c4de0; --sel:#a98bf5; --copy:#a07ef2; --verify:#dcd0fd; }
   * { box-sizing: border-box; }
   html, body { max-width:100%; overflow-x:hidden; overflow-x:clip; overscroll-behavior-x:none; margin:0; }
   body { font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--fg);
@@ -278,16 +279,146 @@
   #spdDlg { width:min(560px, 96vw); }
 button.mini{font-size:12px;padding:2px 8px;margin-left:8px;flex:none}
 #expScope{max-height:30vh;overflow:auto}
+
+/* ===== v0.2.85: the new look. One frame on every screen: top bar, sections on the left, the page,
+   and a status strip along the bottom. Dark, quiet surfaces; colour only where it means something. ===== */
+body { font:14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, sans-serif; padding:0; min-height:100vh; min-height:100dvh;
+  display:flex; flex-direction:column; font-variant-numeric:tabular-nums; -webkit-font-smoothing:antialiased; }
+input[type=checkbox], input[type=radio] { accent-color:#8e63ea; }
+.vh { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+button { border-color:var(--line2); background:var(--raise); color:var(--fg); border-radius:8px; font-weight:500; cursor:pointer; }
+button:hover { border-color:#55555f; }
+button:focus-visible, select:focus-visible, input:focus-visible, .job:focus-visible { outline:2px solid var(--sel); outline-offset:1px; }
+.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+.primary:hover { background:#8a5ee8; border-color:#8a5ee8; }
+select, input[type=text] { background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:8px; font:inherit; }
+select { padding:5px 8px; }
+.topbar { position:sticky; top:0; z-index:5; max-width:none; margin:0; display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px;
+  padding:max(9px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 9px max(16px, env(safe-area-inset-left));
+  background:var(--card); border-bottom:1px solid var(--line); }
+.topbar > * { min-width:0; }
+.brand { display:flex; align-items:center; gap:10px; font-size:15px; font-weight:600; margin:0; white-space:nowrap; }
+.brand .ver { font-size:12px; }
+.topbar .live { margin-left:auto; }
+.topbar #newBtn { height:34px; padding:0 16px; }
+.seg { display:inline-grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:2px; padding:3px; background:#0e0e10; border-radius:8px; }
+.seg button { border:0; background:transparent; color:var(--mute); padding:4px 14px; font-size:13px; border-radius:6px; }
+.seg button[aria-pressed=true] { background:var(--line); color:var(--fg); font-weight:600; }
+.shell { flex:1 1 auto; display:flex; min-width:0; }
+.side { flex:none; width:200px; box-sizing:border-box; display:flex; flex-direction:column; gap:2px; padding:14px 10px; background:var(--side);
+  border-right:1px solid var(--line); border-radius:0; }
+.side button { display:block; width:100%; text-align:left; border:0; background:transparent; color:#d9d9df; padding:8px 12px; border-radius:7px; font-size:14px; }
+.side button:hover { background:#202026; }
+.side button[aria-selected=true] { background:#2c2540; color:#e2d8fd; font-weight:600; }
+.side #aboutBtn { margin-top:auto; color:var(--mute); }
+.shell > main { flex:1 1 auto; min-width:0; max-width:1240px; margin:0; padding:18px 24px 32px; box-sizing:border-box; }
+.strip { position:sticky; bottom:0; z-index:5; display:flex; flex-wrap:wrap; align-items:center; gap:6px 14px; font-size:13px;
+  padding:8px max(16px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background:var(--card); border-top:1px solid var(--line); }
+.strip > * { min-width:0; overflow-wrap:anywhere; }
+.strip .lvl { width:10px; height:10px; border-radius:50%; background:var(--ok); flex:none; }
+.strip .lvl.warn { background:var(--warn); } .strip .lvl.bad { background:var(--bad); }
+.strip #sysBtn { margin-left:auto; font-size:13px; padding:3px 10px; }
+@media (max-width:760px) {
+  .shell { flex-direction:column; }
+  .side { width:auto; flex-direction:row; overflow-x:auto; border-right:0; border-bottom:1px solid var(--line); padding:6px 8px; }
+  .side button { width:auto; white-space:nowrap; } .side #aboutBtn { margin:0 0 0 auto; }
+  .shell > main { padding:14px 12px 24px; }
+  .topbar .live { margin-left:0; }
+  .shell .side.tabs { order:-1; width:auto; }
+  #stripSub { display:none; }
+}
+/* The panel on top of the queue: only while something runs; the words moved to the strip. */
+#headline > span:first-child, #headline > small { display:none; }
+#headline:has(#mon[hidden]) { display:none; }
+.status { background:var(--card); border-color:var(--line); border-radius:12px; padding:16px 18px; }
+.status.monitor .pcrow b { font-size:28px; letter-spacing:-.02em; }
+.card, .disks > .card { background:var(--card); border-color:var(--line); border-radius:12px; }
+.card h2, #updates h2 { font-size:12px; letter-spacing:.06em; }
+.banner { background:#3a1717; border-color:var(--bad); }
+.slow { color:#f7cf7e; background:#3a2d10; border-left-color:var(--warn); }
+.qhead { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; margin:4px 0 8px; }
+.qhead h2 { font-size:18px; font-weight:600; }
+.qhead .qf { flex:1 1 420px; margin:0; justify-content:flex-end; }
+.filters button { font-size:13px; padding:4px 11px; border-radius:999px; background:transparent; color:var(--mute); }
+.filters button[aria-pressed=true] { background:var(--line); color:var(--fg); border-color:var(--line2); }
+.jobs-head h2 { font-size:15px; font-weight:600; color:var(--mute); }
+.jobs, .hist { background:var(--card); border-color:var(--line); border-radius:12px; }
+.job { border-bottom-color:#26262c; padding:10px 14px; }
+.job:hover { background:#202026; }
+.job.open { background:#1f1d27; box-shadow:inset 3px 0 0 var(--sel); }
+/* State icons: a tinted circle with the sign in the state's own colour. */
+.job .ico, .job:not(.verify) .ico { width:28px; height:28px; border-radius:50%; font-size:14px; background:#26262c; color:var(--fg); }
+.job .ico.copy { background:#2c2540; color:var(--copy); } .job .ico.verify { background:#2c2540; color:var(--verify); }
+.job .ico.ok { background:#173a27; color:var(--ok); } .job .ico.warn { background:#3a2d10; color:var(--warn); }
+.job .ico.bad { background:#3a1717; color:var(--bad); } .job .ico.idle { background:#26262c; color:var(--mute); }
+.job.verify .ico { width:22px; height:22px; font-size:11px; }
+.job.verify.nested { border-left-color:var(--sel); }
+.job .bar, .bar { background:var(--line); }
+.job .bar { height:6px; border-radius:3px; }
+.bar.main, .status.monitor .bar.main { height:10px; }
+.bar.vbar { background:var(--copy); }
+.job .acts button { background:transparent; }
+.chip { border-color:var(--line2); color:var(--mute); }
+.route .dk { color:var(--mute); }
+.frows, .list, .vers { border-color:var(--line); }
+.frow { border-bottom-color:#26262c; } .frow:hover { background:#202026; }
+dialog { background:var(--card); border-color:var(--line2); box-shadow:0 24px 60px rgba(0,0,0,.6); }
+dialog::backdrop { background:rgba(0,0,0,.6); }
+dialog .head, .foot { border-color:var(--line); }
+.tabs { background:transparent; }
+/* Queue order (v0.2.85): a handle and Run next on rows that have not started; ⌥↑ and ⌥↓ move the focused row. */
+.job .grip { flex:none; width:14px; height:20px; cursor:grab; color:#8f909b; display:grid; place-items:center; border:0; background:transparent; padding:0; }
+.job .grip svg { display:block; }
+.job.dragging { opacity:.45; }
+.job.drop-before { box-shadow:inset 0 3px 0 var(--sel); }
+.job.drop-end { box-shadow:inset 0 -3px 0 var(--sel); }
+.job .acts .next { width:auto; border-radius:7px; padding:0 10px; font-size:12px; font-weight:600; border:1px solid var(--line2); background:var(--raise); }
+.qhint { font-size:12px; color:var(--mute); margin:6px 2px 0; }
+/* On set (v0.2.85): one tile per card, its verdict first and large; one chip per drive. */
+.onset { display:flex; flex-direction:column; gap:12px; margin-bottom:22px; }
+.onhead { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; }
+.onhead select { font-size:18px; font-weight:600; padding:4px 8px; }
+.onhead .seg { margin-left:auto; }
+.onrule { margin:0; color:var(--mute); font-size:13px; } .onrule b { color:var(--fg); font-weight:600; }
+.cards { display:flex; flex-direction:column; gap:10px; }
+.ocard { display:flex; flex-wrap:wrap; background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; min-width:0; }
+.ocard .vd { flex:1 1 320px; min-width:0; display:flex; align-items:center; gap:16px; padding:16px 18px; background:#232329; }
+.ocard.safe .vd, .ocard.verified .vd { background:#173a27; } .ocard.keep .vd { background:#3a2d10; } .ocard.problem .vd { background:#3a1717; }
+.ocard .vi { flex:none; width:44px; height:44px; }
+.ocard .vt { display:flex; flex-direction:column; min-width:0; }
+.ocard .nm { font-size:32px; font-weight:700; line-height:1.05; letter-spacing:-.02em; overflow-wrap:anywhere; }
+.ocard .vw { font-size:19px; font-weight:700; letter-spacing:.03em; }
+.ocard.safe .vw, .ocard.verified .vw { color:#8fe3b0; } .ocard.keep .vw { color:#f7cf7e; } .ocard.problem .vw { color:#ffb0b0; }
+.ocard .why { font-size:13px; color:#d9d9df; }
+.ocard .drv { flex:999 1 420px; min-width:0; display:grid; grid-template-columns:repeat(auto-fit, minmax(min(150px, 100%), 1fr)); gap:10px 14px; padding:14px 16px; align-content:center; }
+.dchip { display:flex; flex-direction:column; gap:5px; min-width:0; text-align:left; border:0; background:transparent; padding:4px; border-radius:8px; color:var(--fg); font-weight:400; }
+.dchip:hover { background:#202026; }
+.dchip .dn { font-size:12px; color:var(--mute); overflow-wrap:anywhere; }
+.dchip .ds { display:flex; align-items:center; gap:7px; font-weight:600; } .dchip .ds svg { flex:none; }
+.dchip.st-ok .ds { color:var(--ok); } .dchip.st-wait .ds { color:var(--mute); font-weight:500; } .dchip.st-bad .ds { color:var(--bad); }
+.dchip .bar { height:6px; margin:0; }
+.cards.table { gap:0; border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--card); }
+.cards.table .ocard { border:0; border-radius:0; border-bottom:1px solid #26262c; flex-wrap:nowrap; }
+.cards.table .ocard .vd { flex:0 0 360px; background:transparent; padding:10px 14px; gap:12px; }
+.cards.table .ocard .vi { width:22px; height:22px; }
+.cards.table .ocard .nm { font-size:17px; } .cards.table .ocard .vw { font-size:12px; }
+.cards.table .ocard .why { font-size:12px; color:var(--mute); }
+.cards.table .ocard .drv { padding:8px 14px; }
+.style-onset #tabStatus > :not(#onset) { display:none !important; }
+@media (max-width:760px) { .cards.table .ocard { flex-wrap:wrap; } .cards.table .ocard .vd { flex:1 1 100%; } }
 </style>
 </head>
 <body>
-<header>
-  <h1>Shuttle Server <span class="ver" id="ver"></span></h1>
-  <button type="button" class="upd" id="updTop" hidden></button>
+<header class="topbar">
+  <h1 class="brand"><svg width="24" height="24" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#7c4de0"/><path d="M22 46V18m0 0l-8 8m8-8l8 8M42 18v28m0 0l-8-8m8 8l8-8" stroke="#fff" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>Shuttle Server <span class="ver" id="ver"></span></h1>
+  <div class="seg" id="styleSw" role="group" aria-label="Display style"><button type="button" data-style="general" aria-pressed="true">General</button><button type="button" data-style="onset" aria-pressed="false">On set</button></div>
   <span class="live" id="live">Connecting</span>
-  <nav class="tabs" role="tablist"><button type="button" role="tab" id="tabStatusBtn" aria-selected="true">Status</button><button type="button" role="tab" id="tabStorageBtn" aria-selected="false">Storage</button><button type="button" role="tab" id="tabSettingsBtn" aria-selected="false">Settings</button></nav>
-  <button id="aboutBtn" type="button">About</button>
+  <button type="button" class="upd" id="updTop" hidden></button>
+  <button class="primary" type="button" id="newBtn">New copy</button>
 </header>
+<div class="shell">
+<nav class="side tabs" role="tablist" aria-label="Sections"><button type="button" role="tab" id="tabStatusBtn" aria-selected="true">Queue</button><button type="button" role="tab" id="tabStorageBtn" aria-selected="false">Disks</button><button type="button" role="tab" id="tabSettingsBtn" aria-selected="false">Settings</button><button id="aboutBtn" type="button">About</button></nav>
 <main>
   <div class="banner" id="safe" hidden><b>Safe mode.</b> <span id="safeReason"></span>
     <p class="mute">Nothing runs. Fix the problem, then quit Shuttle Server and start it again with <span class="path">-clear-safe-mode</span>.</p></div>
@@ -299,7 +430,14 @@ button.mini{font-size:12px;padding:2px 8px;margin-left:8px;flex:none}
       <div class="bar main"><i id="monBar"></i></div>
     </div>
   </div>
-  <div class="qhead"><button class="primary big" type="button" id="newBtn">New copy</button><h2>Queue<span class="qcount" id="qCount"></span></h2>
+  <section class="onset" id="onset" hidden aria-label="Cards">
+    <div class="onhead"><label for="onDay" class="vh">Shoot day</label><select id="onDay"></select><span class="mute" id="onSum"></span>
+      <div class="seg" id="onLayout" role="group" aria-label="Card layout"><button type="button" data-l="tiles" aria-pressed="true">Tiles</button><button type="button" data-l="table" aria-pressed="false">Table</button></div></div>
+    <p class="onrule"><b>Safe</b> = 2 copies read back and matching · <b>Verified</b> = the source read a second time and matching too</p>
+    <div class="cards" id="onCards"></div>
+    <p class="mute" id="onNone">No copies started on this day.</p>
+  </section>
+  <div class="qhead"><h2>Queue<span class="qcount" id="qCount"></span></h2>
   <div class="filters qf" id="qf" title="Click to show or hide each kind of entry (running and waiting items are always shown)">
     <button type="button" data-k="done">Completed <span class="n"></span></button><button type="button" data-k="skipped" title="Copies where every file was already at the destination">Skipped <span class="n"></span></button><button type="button" data-k="stopped">Stopped <span class="n"></span></button><button type="button" data-k="failed" title="Finished with files that failed or need attention">Failed <span class="n"></span></button><button type="button" data-k="paused" title="Copies and verifies you paused">Paused <span class="n"></span></button><button type="button" id="qfHidden" title="Show or hide the entries you hid from the history" hidden>Hidden <span class="n"></span></button>
     <button type="button" id="qfActive">Active only</button>
@@ -310,6 +448,7 @@ button.mini{font-size:12px;padding:2px 8px;margin-left:8px;flex:none}
   <p class="mute" id="noJobs">Nothing in the queue.</p>
   <p class="mute" id="noJobsF" hidden>Nothing in the queue matches the filters.</p>
   <div class="jobs" id="jobs"></div>
+  <p class="qhint" id="qHint" hidden>Drag a waiting row by its handle, press Run next, or press ⌥↑ / ⌥↓ on a row to change the order.</p>
   <div class="jobs-head"><h2>History</h2></div>
   <p class="mute" id="noDone">Finished and stopped copies appear here.</p>
   <p class="mute" id="noDoneF" hidden>No finished or stopped copies match the filters.</p>
@@ -388,6 +527,8 @@ button.mini{font-size:12px;padding:2px 8px;margin-left:8px;flex:none}
   </section>
   </div>
 </main>
+</div>
+<footer class="strip" id="strip"><span class="lvl" id="stripLvl" aria-hidden="true"></span><b id="stripHead">Loading…</b><span class="mute" id="stripSub"></span><button type="button" id="sysBtn">System</button></footer>
 <dialog id="newDlg">
   <div class="head"><h2>New copy</h2><button type="button" data-close>Cancel</button></div>
   <div class="body">
@@ -538,6 +679,11 @@ function render() {
   $("data").textContent = s.data_dir; $("temp").textContent = s.temp_dir;
   renderJobs(s.jobs || []);
   renderMonitor(s.jobs || []);
+  renderOnset(s.jobs || []);
+  // v0.2.85: the strip along the bottom says what Shuttle is doing, on every screen.
+  $("stripHead").textContent = s.headline;
+  $("stripLvl").className = "lvl " + (s.level === "bad" ? "bad" : s.level === "warn" ? "warn" : "");
+  $("stripSub").textContent = [$("mon").hidden ? "" : $("monOf").textContent, "running for " + ago(s.started_at)].concat(s.notes || []).filter(Boolean).join(" · ");
   if (s.update) renderUpdate(s.update, s);
 }
 function showTab(name) {
@@ -674,6 +820,7 @@ function diskCard(d) {
   return c;
 }
 showTab(location.hash === "#settings" ? "settings" : location.hash === "#storage" ? "storage" : "status");
+setTimeout(() => { setLayout(onLay); setStyle(viewStyle); });
 
 function loadHistory() {
   $("histNote").textContent = "Loading…"; $("histNote").className = "mute";
@@ -1197,11 +1344,12 @@ function card(v) {
   let c = cards[v.id];
   if (!c) {
     c = document.createElement("section"); c.className = "job";
-    c.innerHTML = '<div class="r"><span class="ico"></span><div class="m"><div class="route"><span class="s"></span><span class="arr">→</span><span class="d"></span></div><div class="of" hidden></div>' +
+    c.innerHTML = '<div class="r"><button type="button" class="grip" hidden aria-label="Drag to change the order (or ⌥↑ / ⌥↓)" title="Drag to change the order, or press ⌥↑ / ⌥↓"><svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor" aria-hidden="true"><circle cx="2.5" cy="3" r="1.5"/><circle cx="7.5" cy="3" r="1.5"/><circle cx="2.5" cy="8" r="1.5"/><circle cx="7.5" cy="8" r="1.5"/><circle cx="2.5" cy="13" r="1.5"/><circle cx="7.5" cy="13" r="1.5"/></svg></button><span class="ico"></span><div class="m"><div class="route"><span class="s"></span><span class="arr">→</span><span class="d"></span></div><div class="of" hidden></div>' +
       '<div class="bar"><i></i></div><div class="sub"></div><p class="speed mute"></p></div><div class="rspeed" hidden></div><div class="acts"></div></div>' +
       '<div class="detail"><div class="paths"><p class="path from"></p><p class="path to"></p></div><p class="fcounts" hidden></p>' +
       '<p class="counts mute"></p><p class="warn same" hidden>Source and destination are on the same disk: this copy does not protect against that disk failing.</p><div class="checks" hidden></div><div class="brow"><div class="btns"></div><div class="fpage"></div></div><div class="tail"><p class="line"></p></div></div>';
     cards[v.id] = c;
+    dragRow(c);
     // Tapping a copy opens its details and files; tapping it again closes them.
     c.onclick = e => {
       if (e.target.closest("button, input, a, .detail") || getSelection().toString()) return;
@@ -1332,6 +1480,8 @@ function card(v) {
     btn(btns, "Cancel job", () => post("/api/jobs/" + v.id + "/stop").catch(e => alert(e.message)));
     if (!spaceAsked.has(v.id) && !document.querySelector("dialog[open]")) { spaceAsked.add(v.id); spaceAnswer(v); }
   }
+  if (!old && v.state !== "running" && queueNext && queueNext !== v.id && qf.sort === "queue:1" && !(ver && v.after))
+    btn(acts, "Run next", () => moveJob(v.id, queueNext), "next", "Run next: start this one as soon as the running one finishes");
   if (!old) btn(acts, "✕", () => stopJob(v), "", "Stop…");
   if (problems) btn(btns, "Show problems", () => showProblems(v.id));
   if (!ver && !scanning && v.files > 0 && (v.state === "finished" || v.state === "running" || v.state === "paused")) btn(btns, "Hash list…", () => openExport(v));
@@ -1549,7 +1699,9 @@ const statusRank = v => ({ running: 0, waiting: 1, paused: 2, queued: 3 })[v.sta
 function sortJobs(list, hist) {
   const [key, d] = qf.sort.split(":"), dir = Number(d) || 1;
   // Queue order: the queue as it runs (oldest first), the history newest first.
-  if (key === "queue") return hist ? list : list.slice().sort((a, b) => a.created < b.created ? -1 : 1);
+  // v0.2.85: the queue's own order, which the owner can change; the running job first.
+  if (key === "queue") return hist ? list : list.slice().sort((a, b) => (a.state === "running" ? 0 : 1) - (b.state === "running" ? 0 : 1) ||
+    (a.order ?? 0) - (b.order ?? 0) || (a.created < b.created ? -1 : 1));
   const val = v => {
     switch (key) {
       case "name": return (v.kind === "verify" ? base(v.dest) : base(v.source)).toLowerCase();
@@ -1627,15 +1779,187 @@ function renderJobs(list) {
   const listed = v => !v.hidden || qf.showHidden;
   active.concat(done).forEach(v => { if (v.hidden) counts.hidden = (counts.hidden || 0) + 1; if (listed(v)) { const k = jobCat(v); counts[k] = (counts[k] || 0) + 1; } });
   syncQf(counts);
+  queueNext = (sortJobs(active, false).find(v => v.state !== "running" && !(v.kind === "verify" && v.after)) || {}).id || "";
   const qShow = sortJobs(active.filter(shown), false), hShow = sortJobs(done.filter(v => listed(v) && shown(v) && inRange(v)), true);
   const total = active.length + done.length, vis = qShow.length + hShow.length;
   $("qfInfo").textContent = vis === total ? "" : "Showing " + vis + " of " + total;
   $("noJobs").hidden = active.length > 0; $("noDone").hidden = done.length > 0;
   $("noJobsF").hidden = !active.length || qShow.length > 0; $("noDoneF").hidden = !done.length || hShow.length > 0;
   place($("jobs"), withVerifies(qShow), 0);
+  markMovable(qShow);
   place($("done"), withVerifies(hShow), 0);
   $("moreHist").hidden = done.length < 20 || $("moreHist").dataset.end === "1";
 }
+// Queue order (v0.2.85). A job that has not started can be moved: drag its
+// handle, press Run next, or focus the row and press ⌥↑ / ⌥↓. The running job
+// is never interrupted; the new order counts from the next job.
+let queueNext = "";
+const moveJob = (id, before) => post("/api/jobs/" + id + "/move", { before }).catch(e => alert(e.message));
+const movableRows = () => [...$("jobs").children].filter(c => c.dataset.mv === "1");
+function markMovable(list) {
+  const on = qf.sort === "queue:1";
+  list.forEach(v => {
+    const c = cards[v.id]; if (!c) return;
+    const mv = on && v.state !== "running" && !c.classList.contains("nested");
+    c.dataset.mv = mv ? "1" : ""; c.querySelector(".grip").hidden = !mv;
+    if (mv) c.tabIndex = 0; else c.removeAttribute("tabindex");
+  });
+  $("qHint").hidden = !on || list.filter(v => v.state !== "running").length < 2;
+}
+// Where a dragged row lands: before the row under the pointer, or after it
+// when the pointer is in its lower half (before the next row, or at the end).
+function dropTarget(c, y) {
+  const rows = movableRows(), r = c.getBoundingClientRect(), after = y > r.top + r.height / 2;
+  if (!after) return { el: c, before: c._v.id };
+  const i = rows.indexOf(c), nx = rows.slice(i + 1).find(x => !x.classList.contains("dragging"));
+  return nx ? { el: nx, before: nx._v.id } : { el: c, before: "", end: true };
+}
+let dragging = null;
+function dragRow(c) {
+  const g = c.querySelector(".grip");
+  g.onpointerdown = () => { c.draggable = true; };
+  g.onclick = e => e.stopPropagation();
+  c.ondragstart = e => { if (!c.draggable) return e.preventDefault(); dragging = c; c.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", c._v.id); };
+  const clear = () => document.querySelectorAll(".drop-before, .drop-end").forEach(x => x.classList.remove("drop-before", "drop-end"));
+  c.ondragend = () => { c.draggable = false; c.classList.remove("dragging"); dragging = null; clear(); };
+  c.ondragover = e => {
+    if (!dragging || dragging === c || c.dataset.mv !== "1") return;
+    e.preventDefault(); clear();
+    const t = dropTarget(c, e.clientY); t.el.classList.add(t.end ? "drop-end" : "drop-before");
+  };
+  c.ondrop = e => {
+    if (!dragging || dragging === c || c.dataset.mv !== "1") return;
+    e.preventDefault(); const t = dropTarget(c, e.clientY), id = dragging._v.id; clear();
+    if (t.before !== id) moveJob(id, t.before);
+  };
+  c.onkeydown = e => {
+    if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown") || c.dataset.mv !== "1" || e.target !== c) return;
+    e.preventDefault();
+    const rows = movableRows(), i = rows.indexOf(c);
+    if (e.key === "ArrowUp" && i > 0) moveJob(c._v.id, rows[i - 1]._v.id);
+    if (e.key === "ArrowDown" && i >= 0 && i < rows.length - 1) moveJob(c._v.id, rows[i + 2] ? rows[i + 2]._v.id : "");
+  };
+}
+// On set (v0.2.85): the same copies seen as camera cards. One tile per
+// source folder, with one chip per destination drive. A card is Safe once
+// SAFE_COPIES of its copies are read back and match, and Verified once the
+// source has also been read a second time and matched for that many copies.
+// General is the queue as before. Remembered in this browser.
+const SAFE_COPIES = 2;
+const pref = (k, d) => { try { return localStorage.getItem(k) || d; } catch (e) { return d; } };
+const keep = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+let viewStyle = pref("shuttle.style", "general"), onLay = pref("shuttle.onlayout", "tiles"), onDaySel = "";
+function setStyle(st) {
+  viewStyle = st === "onset" ? "onset" : "general"; keep("shuttle.style", viewStyle);
+  document.body.classList.toggle("style-onset", viewStyle === "onset");
+  $("onset").hidden = viewStyle !== "onset";
+  $("styleSw").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.style === viewStyle));
+  $("tabStatusBtn").textContent = viewStyle === "onset" ? "Cards" : "Queue";
+  if (latest) renderOnset(latest.jobs || []);
+}
+function setLayout(l) {
+  onLay = l === "table" ? "table" : "tiles"; keep("shuttle.onlayout", onLay);
+  $("onLayout").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.l === onLay));
+  $("onCards").classList.toggle("table", onLay === "table");
+}
+$("styleSw").querySelectorAll("button").forEach(b => b.onclick = () => { setStyle(b.dataset.style); showTab("status"); });
+$("onLayout").querySelectorAll("button").forEach(b => b.onclick = () => setLayout(b.dataset.l));
+$("onDay").onchange = () => { onDaySel = $("onDay").value; if (latest) renderOnset(latest.jobs || []); };
+const svgNS = "http://www.w3.org/2000/svg";
+function icon(kind, px) {
+  const shapes = {
+    ok: '<circle cx="9" cy="9" r="8.5" fill="#6bd193"/><path d="M5 9.3l2.7 2.7L13 6.5" fill="none" stroke="#10301e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+    safe: '<circle cx="9" cy="9" r="7.8" fill="none" stroke="#6bd193" stroke-width="1.6"/><path d="M5 9.3l2.7 2.7L13 6.5" fill="none" stroke="#6bd193" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+    run: '<circle cx="9" cy="9" r="7.8" fill="none" stroke="#a07ef2" stroke-width="1.6"/><path d="M7 5.5l5 3.5-5 3.5z" fill="#a07ef2"/>',
+    wait: '<circle cx="9" cy="9" r="7.8" fill="none" stroke="#a6a7b1" stroke-width="1.6"/><path d="M9 5v4.5l3 1.8" fill="none" stroke="#a6a7b1" stroke-width="1.6" stroke-linecap="round"/>',
+    keep: '<rect x="3" y="8" width="12" height="8.5" rx="2" fill="#f2be5c"/><path d="M6 8V6a3 3 0 016 0v2" fill="none" stroke="#f2be5c" stroke-width="2"/>',
+    bad: '<path d="M9 1.5l8 14.5H1z" fill="#ff8080"/><path d="M9 7v4M9 13.2v.3" fill="none" stroke="#3a1717" stroke-width="2" stroke-linecap="round"/>'
+  };
+  const sv = document.createElementNS(svgNS, "svg");
+  sv.setAttribute("viewBox", "0 0 18 18"); sv.setAttribute("width", px); sv.setAttribute("height", px); sv.setAttribute("aria-hidden", "true");
+  sv.innerHTML = shapes[kind] || shapes.wait; // fixed shapes only, never names or paths
+  return sv;
+}
+// One destination of a card: where its copy stands.
+function driveState(v) {
+  const p = Math.floor((v.progress || 0) * 100), k = v.checks, problems = v.failed || v.s2_warnings || v.error || v.gone || v.changed || v.added;
+  const bars = [v.copied_part || 0, v.check === "none" ? 0 : v.proven_part || 0];
+  if (v.missing) return { k: "bad", ic: "bad", t: "Disk not connected", bars };
+  if (v.state === "running") return { k: "run", ic: "run", t: v.phase === "scan" ? "Listing files" : (isCheckStage(v.stage) ? "Checking " : "Copying ") + p + "%", bars };
+  if (v.state === "paused") return { k: "wait", ic: "wait", t: "Paused", bars };
+  if (v.state === "waiting") return { k: "wait", ic: "wait", t: "Waiting", bars };
+  if (v.state === "queued") return { k: "wait", ic: "wait", t: "Waiting its turn", bars };
+  if (v.state === "stopped") return { k: "wait", ic: "wait", t: "Stopped", bars };
+  if (problems) return { k: "bad", ic: "bad", t: "Problem", bars: [1, 0] };
+  const of = k ? k.of : v.files;
+  if (k && of > 0 && k.source >= of) return { k: "ok", ic: "ok", t: "Verified", lvl: 2, bars: [1, 1] };
+  if (k && of > 0 && k.dest >= of) return { k: "ok", ic: "safe", lvl: 1, bars: [1, 1],
+    t: k.checking && k.check_src && k.check_of ? "Safe · source " + Math.floor(pct(k.check_done, k.check_of)) + "%" : "Safe" };
+  if (k && k.checking && k.check_of) return { k: "run", ic: "run", t: "Checking " + Math.floor(pct(k.check_done, k.check_of)) + "%", bars: [1, pct(k.check_done, k.check_of) / 100] };
+  return { k: "wait", ic: "wait", t: "Copied, not read back", bars: [1, 0] };
+}
+const dayKey = t => { const d = new Date(t); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+function dayName(key) {
+  const today = dayKey(Date.now()), yest = dayKey(Date.now() - 86400e3);
+  if (key === today) return "Today"; if (key === yest) return "Yesterday";
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
+}
+// Open a copy in the queue or history, as if its row was clicked.
+function openJob(id) {
+  setStyle("general"); showTab("status");
+  const c = cards[id]; if (!c) return;
+  if (!c.classList.contains("open")) c.click();
+  c.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+function renderOnset(list) {
+  if (viewStyle !== "onset") return;
+  const groups = new Map();
+  list.concat(olderViews).filter(v => v.kind !== "verify" && v.source).forEach(v => {
+    let g = groups.get(v.source);
+    if (!g) groups.set(v.source, g = { source: v.source, disk: v.from_disk || diskOf(v.source), first: v.created, last: v.created, dest: new Map() });
+    if (v.created < g.first) g.first = v.created; if (v.created > g.last) g.last = v.created;
+    const was = g.dest.get(v.dest); if (!was || was.created < v.created) g.dest.set(v.dest, v); // the newest copy to each place
+  });
+  const all = [...groups.values()], days = [...new Set(all.map(g => dayKey(g.first)))].sort().reverse();
+  if (!days.includes(onDaySel)) onDaySel = days[0] || "";
+  const want = days.join("|");
+  if ($("onDay").dataset.k !== want) { $("onDay").dataset.k = want; $("onDay").replaceChildren(...days.map(d => { const o = el("option", "", dayName(d)); o.value = d; return o; })); }
+  $("onDay").value = onDaySel; $("onDay").hidden = !days.length;
+  const shownG = all.filter(g => dayKey(g.first) === onDaySel).sort((a, b) => a.first < b.first ? -1 : 1);
+  $("onNone").hidden = shownG.length > 0;
+  let bytes = 0, nSafe = 0;
+  const tiles = shownG.map(g => {
+    const copies = [...g.dest.values()].sort((a, b) => a.created < b.created ? -1 : 1), st = copies.map(driveState);
+    bytes += Math.max(...copies.map(v => v.bytes || v.est_bytes || 0));
+    const ver = st.filter(x => x.lvl === 2).length, safe = st.filter(x => x.lvl >= 1).length, bad = st.some(x => x.k === "bad"), busy = st.some(x => x.k === "run");
+    const need = SAFE_COPIES, short = copies.length < need ? " · " + copies.length + (copies.length === 1 ? " destination; " : " destinations; ") + need + " are needed" : "";
+    let cls, word, why, ic;
+    if (ver >= need) { cls = "verified"; word = "VERIFIED"; ic = "ok"; why = ver + " copies verified · safe to unplug" + (bad ? " · one copy has a problem" : ""); }
+    else if (safe >= need) { cls = "safe"; word = "SAFE TO UNPLUG"; ic = "safe"; why = safe + " copies read back · verified once the source is read a second time" + (bad ? " · one copy has a problem" : ""); }
+    else if (bad) { cls = "problem"; word = "CHECK PROBLEMS"; ic = "bad"; why = "A copy has a problem · open it to see the files"; }
+    else { cls = "keep"; word = "KEEP CONNECTED"; ic = "keep"; why = (safe ? safe + " of " + need + " copies read back" : busy ? "No copy read back yet" : "Waiting to start") + short; }
+    if (safe >= need) nSafe++;
+    const t = el("article", "ocard " + cls), vd = el("div", "vd"), vt = el("div", "vt");
+    const vi = icon(ic, 44); vi.classList.add("vi");
+    vt.append(el("span", "nm", base(g.source)), el("span", "vw", word), el("span", "why", g.disk + " · " + why));
+    vd.append(vi, vt); vd.title = g.source;
+    const drv = el("div", "drv");
+    copies.forEach((v, i) => {
+      const x = st[i], b = el("button", "dchip st-" + x.k), ds = el("span", "ds"), bar = el("div", "bar");
+      b.type = "button"; b.title = "Open this copy: " + v.dest; b.onclick = () => openJob(v.id);
+      ds.append(icon(x.ic, 18), el("span", "", x.t));
+      const w = el("i"); w.style.width = x.bars[0] * 100 + "%"; w.style.background = "var(--copy)"; bar.append(w); provenLayer(bar, x.bars[1]);
+      b.append(el("span", "dn", (v.to_disk || diskOf(v.dest)) + " · " + base(v.dest)), ds, bar);
+      drv.append(b);
+    });
+    t.append(vd, drv);
+    return t;
+  });
+  $("onSum").textContent = shownG.length ? shownG.length + (shownG.length === 1 ? " card · " : " cards · ") + size(bytes) + " · " + nSafe + " safe to unplug" : "";
+  $("onCards").replaceChildren(...tiles);
+}
+$("sysBtn").onclick = () => { showTab("settings"); const r = document.querySelector(".resources"); if (r) r.scrollIntoView({ block: "start", behavior: "smooth" }); };
 $("moreHist").onclick = () => {
   const skip = ((latest && latest.jobs) || []).filter(v => v.state === "finished" || v.state === "stopped").length + olderViews.length;
   fetch("/api/history?skip=" + skip).then(r => r.json()).then(list => {

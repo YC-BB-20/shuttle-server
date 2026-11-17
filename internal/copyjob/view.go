@@ -82,6 +82,7 @@ type View struct {
 	Checks     *Checks     `json:"checks,omitempty"`      // a finished copy: what has been read back since
 	From       []string    `json:"from,omitempty"`        // a Verify job: the copies it compares with
 	Hidden     bool        `json:"hidden,omitempty"`      // hidden from the history by the owner
+	Order      int         `json:"order"`                 // place in the queue, 0 runs first (v0.2.85)
 }
 
 type rateMemo struct {
@@ -229,6 +230,7 @@ func (m *Manager) Views() []View {
 	for i := len(jobs) - 1; i >= 0; i-- {
 		j := jobs[i]
 		v, st, l := baseView(j)
+		v.Order = i
 		if v.After != "" {
 			m.mu.Lock()
 			if !m.unfinishedLocked(v.After) {

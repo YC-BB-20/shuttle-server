@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -79,7 +78,7 @@ func (m *Manager) Load() error {
 		}
 		m.jobs = append(m.jobs, j)
 	}
-	sort.Slice(m.jobs, func(a, b int) bool { return m.jobs[a].st.Created.Before(m.jobs[b].st.Created) })
+	sortQueue(m.jobs)
 	for _, j := range append([]*Job(nil), m.jobs...) {
 		m.queueVerify(j) // a copy that finished just before a crash still gets its Verify job
 	}
@@ -241,12 +240,16 @@ func (m *Manager) add(s Spec, d *Draft) (*Job, error) {
 	}
 	s.Source, s.Dest = src, dst
 	now := time.Now()
-	id := now.Format("20060102-150405.000")
-	j := &Job{dir: filepath.Join(m.Dir, id), st: state{FormatVersion: FormatVersion, ID: id, Spec: s, Created: now,
-		Choice: "run", Phase: "scan", SourceVol: sv.ID, DestVol: dv.ID, SameVolume: sv.ID == dv.ID, SizeAtAdd: sizeAtAdd, SpaceOK: ignoreSpace}}
-	if err := os.MkdirAll(j.dir, 0o700); err != nil {
+	// Each job gets its own folder. Two jobs added in the same millisecond
+	// (several drives for one card) once shared an id and one job.json; the
+	// folder is now made with Mkdir, which fails if it exists, and the id
+	// gets -2, -3… (v0.2.85).
+	id, err := m.newJobDir(now.Format("20060102-150405.000"))
+	if err != nil {
 		return nil, err
 	}
+	j := &Job{dir: filepath.Join(m.Dir, id), st: state{FormatVersion: FormatVersion, ID: id, Spec: s, Created: now,
+		Choice: "run", Phase: "scan", SourceVol: sv.ID, DestVol: dv.ID, SameVolume: sv.ID == dv.ID, SizeAtAdd: sizeAtAdd, SpaceOK: ignoreSpace}}
 	if d != nil && !j.adopt(d) {
 		m.Log.Info("the list made while choosing could not be used; the copy lists its folder itself", "source", src)
 	}
@@ -267,6 +270,28 @@ func (m *Manager) Busy() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.running != nil
+}
+
+// newJobDir makes a job's own folder under m.Dir and returns its id: base,
+// or base-2, base-3… when that name is taken.
+func (m *Manager) newJobDir(base string) (string, error) {
+	if err := os.MkdirAll(m.Dir, 0o700); err != nil {
+		return "", err
+	}
+	for n := 1; n < 1000; n++ {
+		id := base
+		if n > 1 {
+			id = fmt.Sprintf("%s-%d", base, n)
+		}
+		err := os.Mkdir(filepath.Join(m.Dir, id), 0o700)
+		if err == nil {
+			return id, nil
+		}
+		if !os.IsExist(err) {
+			return "", err
+		}
+	}
+	return "", errors.New("could not find a free name for the job's folder")
 }
 
 func (m *Manager) poke() {

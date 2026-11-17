@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.85 — 17 November 2026
+
+- **A new look.** One dark frame on every screen: the top bar holds the name, the General / On set switch and New copy; the sections (Queue, Disks, Settings, About) are on the left; a strip along the bottom always says what Shuttle is doing, with a System button for memory, processor and open files. Nothing that was on the page before is gone; it is restyled and moved.
+- **Change the queue order.** A copy or verify that has not started can be dragged by its handle, sent to the front with **Run next**, or moved with ⌥↑ / ⌥↓ on a focused row. The running copy is never interrupted; the new order counts from the next one. The order is saved and survives a restart.
+- **On set.** The switch in the top bar shows the copies as camera cards: one tile per source folder, one chip per destination drive. A card says **SAFE TO UNPLUG** once 2 copies are read back and match, and **VERIFIED** once the source has also been read a second time and matched for 2 copies; otherwise **KEEP CONNECTED** or **CHECK PROBLEMS**, with the reason under it. Pick the shoot day; show the cards as tiles or as a table. Clicking a drive opens that copy in the queue with its files and proof.
+- **Fix:** two copies added within the same thousandth of a second (one card to several drives) could share one record, the second replacing the first. Each now always gets its own.
+
 ## 0.2.84 — 17 November 2026
 
 - **Updates no longer ask for drive permission again.** Every release of the Mac programs is now signed with the same certificate (kept as a secret in GitHub), so macOS recognises the new version as the same app. Until the certificate is added, builds are signed the old way and macOS still asks after an update. The first update to a signed version asks one last time.

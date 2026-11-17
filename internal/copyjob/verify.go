@@ -101,13 +101,13 @@ func (m *Manager) addVerify(s Spec) (*Job, error) {
 	}
 	cs := m.Settings()
 	now := time.Now()
-	id := now.Format("20060102-150405.000")
+	id, err := m.newJobDir(now.Format("20060102-150405.000")) // its own folder, never another job's (v0.2.85)
+	if err != nil {
+		return nil, err
+	}
 	j := &Job{dir: filepath.Join(m.Dir, id), st: state{FormatVersion: FormatVersion, ID: id, Created: now, Choice: choice, Phase: "scan",
 		Spec:      Spec{Kind: KindVerify, Source: src, Dest: root, S2: s2, File: file, From: from, SkipSystem: cs.SkipSystem, SkipAppleDouble: cs.SkipSystem && cs.SkipAppleDouble, Algo: normAlgo(cs.Hash)},
 		SourceVol: srcVol, DestVol: v.ID, SameVolume: srcVol == v.ID && src != root}}
-	if err := os.MkdirAll(j.dir, 0o700); err != nil {
-		return nil, err
-	}
 	if err := j.save(); err != nil {
 		return nil, err
 	}

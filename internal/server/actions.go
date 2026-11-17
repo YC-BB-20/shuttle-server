@@ -112,6 +112,13 @@ func (s *Server) jobAction(w http.ResponseWriter, r *http.Request) (any, error) 
 		err = s.Jobs.Stop(id)
 	case "continue": // the copy may not fit; the owner lets it run anyway
 		err = s.Jobs.ContinueAnyway(id)
+	case "move": // v0.2.85: a new place in the queue, right before another job or at the end
+		var b struct {
+			Before string `json:"before"`
+		}
+		if err = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&b); err == nil {
+			err = s.Jobs.Move(id, b.Before)
+		}
 	case "hide", "unhide": // a history entry, page view only
 		err = s.Jobs.SetHidden(id, r.PathValue("action") == "hide")
 	default:
