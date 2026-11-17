@@ -550,3 +550,17 @@ func TestPagePanelTabsStripSystemPalette(t *testing.T) {
 		}
 	}
 }
+
+// v0.2.88: one card to several drives, the card's panel and wall view.
+func TestPageOffloadSeveralDrivesCardPanelWall(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`id="addDst"`, `function addDstRow(value)`, `const isDst = id => /^dst\d*$/.test(id);`, `for (const dest of dests)`, `"Start " + n + " copies"`,
+		`"Offload a card"`, `function selectCard(src)`, `function cardPanel(g, copies, st, word, why, cls)`, `"Source read a second time"`,
+		`id="wallBtn"`, `function setWall(on)`, `body.wall .ocard .nm`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}

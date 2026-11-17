@@ -531,6 +531,24 @@ dialog.cmd[open] { display:flex; flex-direction:column; }
 /* v0.2.87: as in the design, no panel above the queue: the running copy is the first row, and the
    whole queue's time, speed and limit are in the strip along the bottom. */
 #headline { display:none !important; }
+
+/* v0.2.88: more drives in New copy, the card's panel, wall view. */
+.moredst { display:flex; flex-direction:column; gap:8px; } .moredst .row { margin:0; }
+.addrow { display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; margin:8px 0 4px; } .addrow .mute { font-size:13px; }
+.onhead #wallBtn { margin-left:auto; } .onhead .seg { margin-left:0; }
+.ocard .vd { cursor:pointer; } .ocard.sel { outline:2px solid var(--sel); outline-offset:-1px; }
+.cpanel > p { margin:0 0 10px; }
+.pdrive { padding:12px 0; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:6px; }
+.pdh { display:flex; justify-content:space-between; gap:8px; } .pdh .st-ok { color:var(--ok); font-weight:600; } .pdh .st-bad { color:var(--bad); font-weight:600; } .pdh .st-run { font-weight:600; } .pdh .st-wait { color:var(--mute); }
+.pdrive .path { font-size:12px; color:var(--mute); }
+.pstep { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; font-size:13px; } .pstep span { color:#d9d9df; } .pstep b { font-weight:600; } .pstep b.ok { color:var(--ok); }
+.pdrive button { align-self:flex-start; margin-top:4px; }
+body.wall .side, body.wall .insp, body.wall .topbar > :not(.brand), body.wall .onrule, body.wall .onhead .seg { display:none !important; }
+body.wall .topbar #newBtn { display:none !important; }
+body.wall .ocard .nm { font-size:64px; } body.wall .ocard .vw { font-size:34px; } body.wall .ocard .why { font-size:20px; }
+body.wall .ocard .vi { width:72px; height:72px; } body.wall .ocard .vd { padding:26px 28px; flex-basis:520px; }
+body.wall .dchip .dn { font-size:16px; } body.wall .dchip .ds { font-size:22px; } body.wall .dchip .bar { height:10px; }
+body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .ocard .vw { font-size:22px; }
 </style>
 </head>
 <body>
@@ -558,7 +576,7 @@ dialog.cmd[open] { display:flex; flex-direction:column; }
   </div>
   <section class="onset" id="onset" hidden aria-label="Cards">
     <div class="onhead"><label for="onDay" class="vh">Shoot day</label><select id="onDay"></select><span class="mute" id="onSum"></span>
-      <div class="seg" id="onLayout" role="group" aria-label="Card layout"><button type="button" data-l="tiles" aria-pressed="true">Tiles</button><button type="button" data-l="table" aria-pressed="false">Table</button></div></div>
+      <button type="button" id="wallBtn">Wall view</button><div class="seg" id="onLayout" role="group" aria-label="Card layout"><button type="button" data-l="tiles" aria-pressed="true">Tiles</button><button type="button" data-l="table" aria-pressed="false">Table</button></div></div>
     <p class="onrule"><b>Safe</b> = 2 copies read back and matching · <b>Verified</b> = the source read a second time and matching too</p>
     <div class="cards" id="onCards"></div>
     <p class="mute" id="onNone">No copies started on this day.</p>
@@ -671,6 +689,8 @@ dialog.cmd[open] { display:flex; flex-direction:column; }
     <label for="dst">Copy to (a new or existing folder on the destination)</label>
     <div class="row"><input type="text" id="dst" placeholder="/Volumes/BACKUP_1/Day 01/A001"><button type="button" data-pick="dst">Choose…</button></div>
     <p class="warn" id="dstSpace" style="min-height:1.3em;margin:4px 0 0"></p>
+    <div id="moreDst" class="moredst"></div>
+    <p class="addrow"><button type="button" id="addDst">+ Add another drive</button><span class="mute" id="dstNote"></span></p>
     <label>Proof</label>
     <label class="opt"><input type="checkbox" id="ckCopy" checked disabled><span>Copy, hashing the source as it is read</span></label>
     <label class="opt"><input type="checkbox" id="ckDest" checked><span>Verify the destination: read each copy back</span></label>
@@ -1042,7 +1062,11 @@ $("newBtn").onclick = () => {
   $("newErr").textContent = "";
   const last = ((latest && latest.jobs) || []).concat(olderViews).filter(v => v.kind !== "verify").reduce((a, v) => !a || v.created > a.created ? v : a, null);
   if (last && !$("src").value && !$("dst").value) {
-    $("src").value = last.source; $("dst").value = last.dest;
+    // The last copy, with every drive it went to at the same time (v0.2.88).
+    const group = ((latest && latest.jobs) || []).concat(olderViews).filter(v => v.kind !== "verify" && v.source === last.source && Math.abs(new Date(v.created) - new Date(last.created)) < 15000)
+      .sort((a, b) => a.created < b.created ? -1 : 1).map(v => v.dest).filter((d, i, a) => a.indexOf(d) === i);
+    $("src").value = last.source; $("dst").value = group[0] || last.dest;
+    $("moreDst").replaceChildren(); group.slice(1, 4).forEach(d => addDstRow(d));
     const sep = last.check === "none" && !!last.verify_next;
     $("ckDest").checked = last.check !== "none" || sep;
     $("ckSrc").checked = $("ckDest").checked && last.s2 !== "skip";
@@ -1052,6 +1076,7 @@ $("newBtn").onclick = () => {
   proofForm();
   loadSys();
   layoutDefaults();
+  dstCount();
   $("newDlg").showModal();
   $("srcSize").textContent = ""; srcSize();
 };
@@ -1088,17 +1113,28 @@ $("startBtn").onclick = async () => {
   const dest = $("ckDest").checked, s2 = $("ckSrc").checked ? "now" : "skip";
   const proof = !dest ? { check: "none" } : $("ckSep").checked ? { check: "none", verify: $("ckPaused").checked ? "paused" : "run", s2 } :
     { hash: $("whenEnd").checked ? "later" : "copy", s2 };
-  const body = Object.assign({ source: $("src").value, dest: $("dst").value, only: srcOnly }, proof);
+  const body = Object.assign({ source: $("src").value, only: srcOnly }, proof);
   if ($("ckWrap").checked) Object.assign(body, { wrap: true, wrap_name: $("wrapName").value.trim(), wrap_hash: $("ckWrapHash").checked });
   const p0 = $("src").value.trim();
   if (lastCount && lastCount.key === p0 + "\n" + (p0 === srcOnlyAt ? srcOnly : []).join("\n")) { body.est_bytes = lastCount.bytes; body.est_files = lastCount.files; }
-  const added = () => { $("newDlg").close(); $("src").value = ""; $("dst").value = ""; setOnly([]); };
-  post("/api/jobs", body).then(async r => {
-    if (!r.space) return added();
-    // It may not fit: continue anyway adds it, cancel adds nothing.
-    if (!await spaceBox(r.space, false)) { $("newErr").textContent = "The copy was not added. Choose another destination, or Cancel."; return; }
-    return post("/api/jobs", Object.assign(body, { ignore_space: true })).then(added);
-  }).catch(e => $("newErr").textContent = e.message);
+  const added = () => { $("newDlg").close(); $("src").value = ""; $("dst").value = ""; $("moreDst").replaceChildren(); setOnly([]); dstCount(); };
+  const dests = [$("dst").value].concat(moreDsts().map(i => i.value)).map(d => d.trim()).filter((d, i, a) => d && a.indexOf(d) === i);
+  if (!dests.length) { $("newErr").textContent = "Choose where to copy to."; return; }
+  $("startBtn").disabled = true;
+  const notAdded = [], errs = [];
+  for (const dest of dests) {
+    const b = Object.assign({}, body, { dest });
+    try {
+      const r = await post("/api/jobs", b);
+      // It may not fit: continue anyway adds it, cancel adds nothing.
+      if (r.space) { if (await spaceBox(r.space, false)) await post("/api/jobs", Object.assign(b, { ignore_space: true })); else notAdded.push(dest); }
+    } catch (e) { notAdded.push(dest); errs.push(base(dest) + ": " + e.message); }
+  }
+  $("startBtn").disabled = false;
+  if (!notAdded.length) return added();
+  // Keep only the drives that were not added, and say why.
+  $("dst").value = notAdded[0]; $("moreDst").replaceChildren(); notAdded.slice(1).forEach(d => addDstRow(d));
+  $("newErr").textContent = (dests.length > notAdded.length ? (dests.length - notAdded.length) + " added. " : "") + "Not added: " + notAdded.map(base).join(", ") + (errs.length ? " — " + errs.join(" · ") : "") + ". Choose another drive, or Cancel.";
 };
 
 // Free space: a copy that may not fit on its destination, on its own or with
@@ -1230,11 +1266,33 @@ function pickSize() {
   askSize(pickAt, [...chosen], $("pickSize"), chosen.size ? "The " + chosen.size + " chosen: " : "This whole folder: ");
 }
 $("src").oninput = () => setOnly([]);
-document.querySelectorAll("[data-pick]").forEach(b => b.onclick = () => {
+const bindPick = b => b.onclick = () => {
   pickFor = b.dataset.pick;
   $("pickTitle").textContent = pickFor === "src" ? "Choose what to copy" : "Choose where to copy to";
   openPicker();
-});
+};
+document.querySelectorAll("[data-pick]").forEach(bindPick);
+// v0.2.88: one card to several drives in one step. Each drive gets its own
+// copy in the queue, each read back and proven against the source.
+const isDst = id => /^dst\d*$/.test(id);
+const moreDsts = () => [...$("moreDst").querySelectorAll("input")];
+function addDstRow(value) {
+  if (moreDsts().length >= 3) return;
+  let n = 2; while ($("dst" + n)) n++;
+  const row = el("div", "row"), inp = el("input"), pick = el("button", "", "Choose…"), rm = el("button", "", "✕");
+  inp.type = "text"; inp.id = "dst" + n; inp.value = value || ""; inp.setAttribute("aria-label", "Also copy to"); inp.placeholder = "/Volumes/BACKUP_" + n + "/Day 01/A001";
+  pick.type = "button"; pick.dataset.pick = inp.id; bindPick(pick);
+  rm.type = "button"; rm.setAttribute("aria-label", "Remove this drive"); rm.onclick = () => { row.remove(); dstCount(); };
+  inp.oninput = dstCount; row.append(inp, pick, rm); $("moreDst").append(row); dstCount();
+  if (!value) inp.focus();
+}
+function dstCount() {
+  const n = 1 + moreDsts().filter(i => i.value.trim()).length;
+  $("startBtn").textContent = n > 1 ? "Start " + n + " copies" : "Start copy";
+  $("addDst").hidden = moreDsts().length >= 3;
+  $("dstNote").textContent = moreDsts().length ? "One copy per drive, each read back and proven against the source. A card is safe to unplug at 2." : "";
+}
+$("addDst").onclick = () => addDstRow("");
 function verify(path, opts) {
   return post("/api/jobs", Object.assign({ kind: "verify", source: path }, opts || {}));
 }
@@ -1302,7 +1360,7 @@ function useLabel() {
 }
 function browse(path, keep) {
   if (!keep) chosen = new Set();
-  fetch("/api/browse?path=" + encodeURIComponent(path) + (pickFor !== "dst" ? "&files=1" : "")).then(r => r.json()).then(d => {
+  fetch("/api/browse?path=" + encodeURIComponent(path) + (!isDst(pickFor) ? "&files=1" : "")).then(r => r.json()).then(d => {
     pickAt = d.path;
     $("pickErr").textContent = d.error || d.note || (d.truncated ? "Only the first 2000 items are shown." : "");
     $("places").replaceChildren(...d.places.map(p => {
@@ -1371,7 +1429,7 @@ function browse(path, keep) {
     const here = d.places.find(p => p.kind !== "home" && (d.path === p.path || d.path.startsWith(p.path + "/")) && p.kind !== "internal") ||
       d.places.find(p => p.kind === "internal");
     // Not offered where nothing may be written, but its place is kept so the buttons never move.
-    $("newDirBtn").hidden = pickFor !== "dst";
+    $("newDirBtn").hidden = !isDst(pickFor);
     $("newDirBtn").style.visibility = d.error || d.note || (here && (here.read_only || here.kind === "server")) ? "hidden" : "";
     $("newDirBox").hidden = true;
     useLabel();
@@ -1589,6 +1647,7 @@ function fillOverview(v, q, o) {
 // v0.2.86: one row is selected at a time; its details live in the panel.
 let selId = "";
 function selectJob(id, keepOpen) {
+  if (selCard) { selCard = ""; $("inspTabs").hidden = false; }
   const prev = selId && cards[selId];
   if (prev && keepOpen && selId === id) return;
   if (prev) { prev.classList.remove("open"); if (fv[selId]) toggleFiles(prev._v, prev); prev.append(prev._d); }
@@ -1598,8 +1657,11 @@ function selectJob(id, keepOpen) {
   if (c) { c.classList.add("open"); c._pn = -1; $("inspBody").replaceChildren(c._d); $("insp").scrollTop = 0; card(c._v); setInspTab(inspTab); }
   else $("inspBody").replaceChildren();
 }
-$("inspClose").onclick = () => { if (selId) selectJob(selId); };
-document.addEventListener("keydown", e => { if (e.key === "Escape" && selId && !document.querySelector("dialog[open]")) selectJob(selId); });
+$("inspClose").onclick = () => { if (selId) selectJob(selId); else if (selCard) closeCard(); };
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape" || document.querySelector("dialog[open]")) return;
+  if (document.body.classList.contains("wall")) setWall(false); else if (selId) selectJob(selId); else if (selCard) closeCard();
+});
 const problemShort = v => [v.failed && v.failed + " failed", v.gone && v.gone + " deleted", v.changed && v.changed + " changed",
   v.added && v.added + " added", v.s2_warnings && v.s2_warnings + " source warnings"].filter(Boolean).join(" · ");
 // The State column: a few words, a tone, and a small second line.
@@ -2164,6 +2226,8 @@ function setStyle(st) {
   $("onset").hidden = viewStyle !== "onset";
   $("styleSw").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.style === viewStyle));
   $("tabStatusBtn").textContent = viewStyle === "onset" ? "Cards" : "Queue";
+  $("newBtn").textContent = viewStyle === "onset" ? "Offload a card" : "New copy";
+  if (viewStyle !== "onset" && selCard) closeCard();
   if (latest) renderOnset(latest.jobs || []);
 }
 function setLayout(l) {
@@ -2221,6 +2285,50 @@ function openJob(id) {
   selectJob(id, true);
   c.scrollIntoView({ block: "center", behavior: "smooth" });
 }
+// A card's panel (v0.2.88): each drive with its three reads, and a way into
+// that copy's own details.
+let selCard = "";
+function selectCard(src) {
+  if (selId) selectJob(selId);
+  selCard = selCard === src ? "" : src;
+  if (!selCard) return closeCard();
+  $("insp").classList.add("on"); $("inspEmpty").hidden = true; $("inspHead").hidden = false; $("inspTabs").hidden = true;
+  if (latest) renderOnset(latest.jobs || []);
+}
+function closeCard() {
+  selCard = ""; $("inspTabs").hidden = false;
+  if (!selId) { $("insp").classList.remove("on"); $("inspEmpty").hidden = false; $("inspHead").hidden = true; $("inspBody").replaceChildren(); }
+  if (latest && viewStyle === "onset") renderOnset(latest.jobs || []);
+}
+function cardPanel(g, copies, st, word, why, cls) {
+  $("inspTitle").textContent = base(g.source); $("inspTitle").title = g.source;
+  $("inspState").textContent = word.charAt(0) + word.slice(1).toLowerCase() + " · " + why; $("inspState").className = "ist " + (cls === "keep" ? "warn" : cls === "problem" ? "bad" : "ok");
+  const box = el("div", "cpanel"), tot = Math.max(...copies.map(v => v.bytes || v.est_bytes || 0));
+  box.append(el("p", "mute", g.disk + " · " + size(tot) + " · " + nf(Math.max(...copies.map(v => v.files || 0))) + " files · " + copies.length + (copies.length === 1 ? " drive" : " drives") + " · " + (algoName[copies[0].algo] || "XXH128")),
+    el("p", "", "A copy is safe when its read-back matches, and verified when the second read of the source matches too."));
+  copies.forEach((v, i) => {
+    const k = v.checks, of = k ? k.of : v.files, fin = v.state === "finished";
+    const step = (t, n, planned) => { const r = el("div", "pstep"); r.append(el("span", "", t), el("b", n === "Done" ? "ok" : "", planned === false ? "Not in this copy" : n)); return r; };
+    const pctOf = n => of ? (n >= of ? "Done" : Math.floor(pct(n, of)) + "%") : "—";
+    const d = el("section", "pdrive"), h = el("div", "pdh");
+    h.append(el("b", "", (v.to_disk || diskOf(v.dest))), el("span", "st-" + st[i].k, st[i].t));
+    const copied = fin ? of : Math.min(of, (v.verified || 0) + (v.identical || 0) + (v.failed || 0) + (v.copied || 0) + (v.hashed || 0));
+    const back = k ? k.dest : (v.verified || 0) + (v.identical || 0), twice = k ? k.source : v.strong || 0;
+    const open = el("button", "", "Open this copy"); open.type = "button"; open.onclick = () => openJob(v.id);
+    d.append(h, el("p", "path", v.dest), step("Source hashed while copying", pctOf(copied)), step("Copy read back", pctOf(back), v.check !== "none" || !!(k && k.dest)),
+      step("Source read a second time", pctOf(twice), v.s2 === "now" || !!(k && k.source)), open);
+    box.append(d);
+  });
+  const key = box.textContent;
+  if ($("inspBody").dataset.k !== key || !$("inspBody").querySelector(".cpanel")) { $("inspBody").dataset.k = key; $("inspBody").replaceChildren(box); }
+}
+// Wall view (v0.2.88): only the cards, large, for a screen across the room.
+function setWall(on) {
+  document.body.classList.toggle("wall", on); $("wallBtn").textContent = on ? "Exit wall view" : "Wall view";
+  try { if (on && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {}); else if (!on && document.fullscreenElement) document.exitFullscreen(); } catch (e) {}
+}
+$("wallBtn").onclick = () => setWall(!document.body.classList.contains("wall"));
+document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && document.body.classList.contains("wall")) setWall(false); });
 function renderOnset(list) {
   if (viewStyle !== "onset") return;
   const groups = new Map();
@@ -2252,7 +2360,9 @@ function renderOnset(list) {
     const t = el("article", "ocard " + cls), vd = el("div", "vd"), vt = el("div", "vt");
     const vi = icon(ic, 44); vi.classList.add("vi");
     vt.append(el("span", "nm", base(g.source)), el("span", "vw", word), el("span", "why", g.disk + " · " + why));
-    vd.append(vi, vt); vd.title = g.source;
+    vd.append(vi, vt); vd.title = "Show this card's proof: " + g.source; vd.tabIndex = 0; vd.setAttribute("role", "button");
+    vd.onclick = () => selectCard(g.source); vd.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectCard(g.source); } };
+    if (selCard === g.source) { t.classList.add("sel"); cardPanel(g, copies, st, word, why, cls); }
     const drv = el("div", "drv");
     copies.forEach((v, i) => {
       const x = st[i], b = el("button", "dchip st-" + x.k), ds = el("span", "ds"), bar = el("div", "bar");

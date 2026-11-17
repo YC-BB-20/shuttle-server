@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.88 — 17 November 2026
+
+- **Offload a card to several drives in one step.** New copy (called **Offload a card** on set) takes up to four drives: "+ Add another drive" adds a line with its own Choose button. Start makes one copy per drive, each read back and proven against the source; the card's file list is made once and used by all of them. A drive that may not fit asks on its own; drives not added stay in the pop-up with the reason. New copy opens with the last card's drives already filled in.
+- **A card's panel on set:** click a card's verdict to see, for each drive, where the copy is, the three reads (hashed while copying, read back, source read a second time) and how far each is, with a way into that copy's own details.
+- **Wall view:** only the cards, very large, full screen, for a screen across the room. Esc or "Exit wall view" goes back.
+
 ## 0.2.87 — 17 November 2026
 
 - **The details panel has tabs:** Overview (proven and written in large numbers, from and to, files, hash, proof, start and working time, the speed of each disk with the slower one marked as the limit, and the buttons, Pause and Stop included), Files (the file list with its filters), Proof (what is read for this copy and how far each read is), Problems (counts of failed, deleted, changed, added and source warnings, then each file and what happened) and Log (this copy's own lines from Shuttle's log, with the full log one click away).

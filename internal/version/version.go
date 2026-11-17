@@ -3,7 +3,7 @@
 package version
 
 // Version is the release number shown in the page and printed by -version.
-const Version = "0.2.87"
+const Version = "0.2.88"
 
 // Commit is the short git commit, set by CI at build time.
 var Commit = "dev"
