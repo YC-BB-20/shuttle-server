@@ -438,10 +438,19 @@ func (m *Manager) Problems(id string, limit int) []Problem {
 	}
 	var out []Problem
 	ReadJournal(j.path("journal.log"), 0, func(r Rec) bool {
+		if r.St == "failed" && j.retried(r.I) {
+			return true // tried again since (v0.2.92); the file's history keeps it
+		}
 		if r.St == "failed" || r.St == "s2changed" || r.St == "s2unstable" || r.St == "gone" || r.Chg {
 			kind := r.St
 			if r.Chg {
 				kind = "changed"
+			}
+			for k := range out { // failed again after a retry: one line, the latest reason
+				if out[k].Path == r.P && out[k].Kind == kind && kind == "failed" {
+					out[k].Why = r.Err
+					return true
+				}
 			}
 			out = append(out, Problem{r.P, kind, r.Err})
 		}
@@ -1002,6 +1011,7 @@ var eventText = map[string]string{
 	"verified":   "Copied and verified: the copy read back matches the source",
 	"identical":  "Not copied: already at the destination. Both files read in full, hashes match; left untouched",
 	"failed":     "Failed",
+	"retry":      "Put back in the queue to be tried again",
 	"match":      "Verified again: the copy was read in full and matches the hash stored when it was copied",
 	"copied":     "Copied and hashed as it was read, and given its real name; the check (copy read back, source read again) comes later",
 	"hashed":     "Copied and hashed as it was read, and given its real name; the copy was not read back",
@@ -1085,6 +1095,9 @@ func (m *Manager) FileInfo(id string, i int) (FileInfo, error) {
 			}
 			if r.Err != "" {
 				fi.Why = r.Err
+			}
+			if r.St == "retry" {
+				fi.Why = "" // tried again since (v0.2.92)
 			}
 			fi.Events = append(fi.Events, ev)
 		}

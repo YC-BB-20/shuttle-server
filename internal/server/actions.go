@@ -89,6 +89,12 @@ func (s *Server) addJob(w http.ResponseWriter, r *http.Request) (any, error) {
 		}
 	}
 	if err := add(); err != nil {
+		var fe *copyjob.FormatError
+		if errors.As(err, &fe) {
+			// v0.2.92: some files may not fit the destination's format; the
+			// page asks "copy the rest" (sent again with ignore_format) or cancel.
+			return map[string]any{"ok": false, "format": fe.Short}, nil
+		}
 		var se *copyjob.SpaceError
 		if errors.As(err, &se) {
 			// Not added: the page asks "continue anyway" (sent again with
@@ -119,6 +125,24 @@ func (s *Server) jobAction(w http.ResponseWriter, r *http.Request) (any, error) 
 		if err = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&b); err == nil {
 			err = s.Jobs.Move(id, b.Before)
 		}
+	case "retry": // v0.2.92: a finished copy's failed files, or one of them, back in the queue
+		b := struct {
+			File *int `json:"file"`
+		}{}
+		json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&b) // no body: every failed file
+		rt, ok := s.Jobs.(retrier)
+		if !ok {
+			return nil, errors.New("not available")
+		}
+		file := -1
+		if b.File != nil {
+			file = *b.File
+		}
+		n, err := rt.RetryFailed(id, file)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"ok": true, "files": n}, nil
 	case "hide", "unhide": // a history entry, page view only
 		err = s.Jobs.SetHidden(id, r.PathValue("action") == "hide")
 	default:

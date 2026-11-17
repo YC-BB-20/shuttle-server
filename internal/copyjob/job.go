@@ -89,6 +89,9 @@ type Spec struct {
 	// IgnoreSpace (request only, never saved): the owner chose "continue
 	// anyway" after being told the copy may not fit.
 	IgnoreSpace bool `json:"ignore_space,omitempty"`
+	// IgnoreFormat (request only, never saved, v0.2.92): the owner chose
+	// "copy the rest" after the destination format check.
+	IgnoreFormat bool `json:"ignore_format,omitempty"`
 	// Paused (request only, Verify jobs, v0.2.26): add the job paused.
 	Paused bool `json:"paused,omitempty"`
 }
@@ -174,6 +177,8 @@ type state struct {
 	// Order (v0.2.85): the place in the queue the owner chose by moving the
 	// job. 0 means never moved: the job sits where its creation time puts it.
 	Order int64 `json:"order,omitempty"`
+	// Retries (v0.2.92): how many times the owner put failed files back.
+	Retries int `json:"retries,omitempty"`
 	// A link download (v0.2.90): the file's XXH128 as read back, and where it went.
 	LinkHash string `json:"link_hash,omitempty"`
 	LinkFile string `json:"link_file,omitempty"`
@@ -363,6 +368,11 @@ func (j *Job) apply(r Rec) {
 		j.c.Failed++
 		if j.st.Spec.isVerify() {
 			j.c.BytesFailed += r.N
+		}
+	case "retry": // v0.2.92: the owner put a failed file back in the queue
+		if j.status[r.I] == stFailed {
+			j.status[r.I] = stPending
+			j.c.Failed--
 		}
 	case "s2ok":
 		j.status[r.I] = stStrong

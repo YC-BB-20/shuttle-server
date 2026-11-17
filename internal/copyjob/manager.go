@@ -36,6 +36,8 @@ type Manager struct {
 	Floor    uint64
 	FloorVol string
 	FreeHook func(dst string) uint64 // test hook: free space on dst's disk
+	// formatHook (tests): the format of the disk holding a folder.
+	formatHook func(dir string) destFormat
 	// Secrets is the folder for link downloads' links (secrets/links, 0700).
 	Secrets string
 
@@ -199,8 +201,8 @@ func (m *Manager) add(s Spec, d *Draft) (*Job, error) {
 		return nil, errors.New("copies to or from a network server are not supported yet; connect the disk by cable")
 	}
 	// Free space: this copy plus the copies ahead of it to the same disk.
-	ignoreSpace := s.IgnoreSpace
-	s.IgnoreSpace = false
+	ignoreSpace, ignoreFormat := s.IgnoreSpace, s.IgnoreFormat
+	s.IgnoreSpace, s.IgnoreFormat = false, false
 	var sizeAtAdd *int64
 	if !d.fits(src, s.Only, s.SkipSystem, s.SkipAppleDouble) {
 		d = nil
@@ -208,14 +210,29 @@ func (m *Manager) add(s Spec, d *Draft) (*Job, error) {
 	mctx, mcancel := context.WithTimeout(context.Background(), SizeTimeout)
 	var need int64
 	var merr error
+	var fc *fitCheck
+	if !ignoreFormat {
+		fc = m.newFitCheck(src, dst)
+	}
 	if d != nil {
-		need, merr = measureManifest(mctx, filepath.Join(d.Dir, "manifest.jsonl"), dst)
+		need, merr = measureManifest(mctx, filepath.Join(d.Dir, "manifest.jsonl"), dst, fc)
 	} else {
-		need, merr = measure(mctx, location.Folder{Dir: src, Only: s.Only, System: s.SkipSystem, AppleDouble: s.SkipAppleDouble}, dst)
+		need, merr = measure(mctx, location.Folder{Dir: src, Only: s.Only, System: s.SkipSystem, AppleDouble: s.SkipAppleDouble}, dst, fc)
 	}
 	mcancel()
 	if merr == nil {
 		sizeAtAdd = &need
+		// v0.2.92: files the destination's format may not take. Asked
+		// before space, so "copy the rest" is answered first.
+		disk := dv.Name
+		if n := diskName(dst); n != "" {
+			disk = n
+		}
+		if fs := fc.short(disk); fs != nil {
+			m.Log.Info("some files may not fit the destination's format; asking the owner", "source", src, "destination", dst,
+				"format", fs.Format, "too_big", fs.TooBig, "names", fs.Names, "case_clashes", fs.Clashes)
+			return nil, &FormatError{*fs}
+		}
 		if !ignoreSpace {
 			if short, err := m.spaceFor(dst, need, nil); err == nil && short != nil {
 				m.Log.Info("a new copy may not fit on its destination; asking the owner", "source", src, "destination", dst,
@@ -511,7 +528,7 @@ func (m *Manager) runOne(ctx context.Context, j *Job) {
 		}
 	}()
 	j.startWork(time.Now())
-	err := j.run(jctx, env{budget: m.Budget, src: sd, dst: dd, afterCopy: m.AfterCopy, copyRead: m.CopyRead,
+	err := j.run(jctx, env{format: m.formatFor(j.st.Spec.Dest), budget: m.Budget, src: sd, dst: dd, afterCopy: m.AfterCopy, copyRead: m.CopyRead,
 		space: func() error { return m.checkSpaceAtStart(j) }, wrapHash: func() { m.writeWrapperHashFile(j) }}, m.Accepting)
 	cancel(nil)
 	m.mu.Lock()

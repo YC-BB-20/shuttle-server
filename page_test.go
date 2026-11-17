@@ -607,3 +607,17 @@ func TestPageSitesViewsSafeCount(t *testing.T) {
 		t.Error("the safe count is still fixed")
 	}
 }
+
+// v0.2.92: try failed files again, the destination-format question.
+func TestPageRetryAndFormat(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`async function addCopy(b)`, `if (!await fmtBox(r.format)) return false;`, `ignore_format: true`, `function fmtBox(f)`,
+		`if (!await addCopy(b)) notAdded.push(dest);`, `if (await addCopy(body)) n++;`,
+		`post("/api/jobs/" + v.id + "/retry")`, `post("/api/jobs/" + at.id + "/retry", { file: at.i })`, `"Try this file again"`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}

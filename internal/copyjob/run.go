@@ -158,15 +158,6 @@ func (j *Job) copyPhase(ctx context.Context, e env, jr *Journal, accepting func(
 	}
 	defer it.Close()
 	src, dst := j.source(), j.st.Spec.Dest
-	nextPending := func() *entry {
-		for it.Next() {
-			if j.status[it.E.I] == stPending {
-				en := it.E
-				return &en
-			}
-		}
-		return nil
-	}
 	fail := func(en *entry, err error) {
 		r := Rec{I: en.I, St: "failed", N: en.S, P: en.P, Err: err.Error()}
 		jr.Append(r)
@@ -174,6 +165,21 @@ func (j *Job) copyPhase(ctx context.Context, e env, jr *Journal, accepting func(
 		j.apply(r)
 		j.mu.Unlock()
 		j.dropCheckpoints(en.I)
+	}
+	nextPending := func() *entry {
+		for it.Next() {
+			if j.status[it.E.I] == stPending {
+				en := it.E
+				// v0.2.92: a file the destination's format cannot hold fails
+				// at once, instead of after 4 GB has been written.
+				if why := unfit(e.format, en.S); why != "" {
+					fail(&en, perFile("%s", why))
+					continue
+				}
+				return &en
+			}
+		}
+		return nil
 	}
 
 	if j.st.Spec.checkLater() || j.st.Spec.copyOnly() {
@@ -365,7 +371,7 @@ func (j *Job) oneFile(ctx context.Context, e env, en *entry, srcPath, final stri
 		j.setLive(func(l *live) { l.stage = "Copying" })
 		if err := j.copyFile(ctx, e, srcPath, tmp, en.I, nil); err != nil {
 			if errors.Is(err, errNoSpace) {
-				return rec, waitErr{"Waiting for free space on the destination"}
+				return rec, spaceWait(err)
 			}
 			return rec, err
 		}
@@ -469,7 +475,7 @@ func (j *Job) oneFileHashed(ctx context.Context, e env, en *entry, srcPath, fina
 			j.setLive(func(l *live) { l.stage = "Copying (the source is hashed as it is read)" })
 			if err := j.copyFile(ctx, e, srcPath, tmp, en.I, hs); err != nil {
 				if errors.Is(err, errNoSpace) {
-					return nil, waitErr{"Waiting for free space on the destination"}
+					return nil, spaceWait(err)
 				}
 				return nil, err
 			}
@@ -566,7 +572,7 @@ func (j *Job) copyOnly(ctx context.Context, e env, en *entry, srcPath, final str
 	j.setLive(func(l *live) { l.stage = "Copying (the source is hashed as it is read)" })
 	if err := j.copyFile(ctx, e, srcPath, tmp, en.I, hs); err != nil {
 		if errors.Is(err, errNoSpace) {
-			return nil, waitErr{"Waiting for free space on the destination"}
+			return nil, spaceWait(err)
 		}
 		return nil, err
 	}

@@ -50,9 +50,10 @@ func (e errSpace) Error() string { return e.short.Message }
 // measure counts the bytes a copy will write: the source's files under the
 // job's rules, leaving out those already at the destination with the same
 // size (they are compared, not written). Only counters are held.
-func measure(ctx context.Context, src location.Folder, dst string) (int64, error) {
+func measure(ctx context.Context, src location.Folder, dst string, fc *fitCheck) (int64, error) {
 	var total int64
 	err := src.Walk(ctx, func(e location.Entry) error {
+		fc.add(e.Rel, e.Size)
 		if fi, err := os.Lstat(filepath.Join(dst, filepath.FromSlash(e.Rel))); err == nil && fi.Mode().IsRegular() && fi.Size() == e.Size {
 			return nil
 		}

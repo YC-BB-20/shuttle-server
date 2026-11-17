@@ -1233,9 +1233,8 @@ $("startBtn").onclick = async () => {
   for (const dest of dests) {
     const b = Object.assign({}, body, { dest });
     try {
-      const r = await post("/api/jobs", b);
       // It may not fit: continue anyway adds it, cancel adds nothing.
-      if (r.space) { if (await spaceBox(r.space, false)) await post("/api/jobs", Object.assign(b, { ignore_space: true })); else notAdded.push(dest); }
+      if (!await addCopy(b)) notAdded.push(dest);
     } catch (e) { notAdded.push(dest); errs.push(base(dest) + ": " + e.message); }
   }
   $("startBtn").disabled = false;
@@ -1245,12 +1244,45 @@ $("startBtn").onclick = async () => {
   $("newErr").textContent = (dests.length > notAdded.length ? (dests.length - notAdded.length) + " added. " : "") + "Not added: " + notAdded.map(base).join(", ") + (errs.length ? " — " + errs.join(" · ") : "") + ". Choose another drive, or Cancel.";
 };
 
+// Adds one copy, first asking about the destination's format and then its
+// free space when needed (v0.2.92). True when it was added.
+async function addCopy(b) {
+  let r = await post("/api/jobs", b);
+  if (r.format) {
+    if (!await fmtBox(r.format)) return false;
+    b = Object.assign({}, b, { ignore_format: true });
+    r = await post("/api/jobs", b);
+  }
+  if (r.space) {
+    if (!await spaceBox(r.space, false)) return false;
+    await post("/api/jobs", Object.assign({}, b, { ignore_space: true }));
+  }
+  return true;
+}
+// The destination's format may not take some files (FAT32's 4 GB limit,
+// characters, names differing only by capitals). Counts only. True for
+// "Copy the rest".
+function fmtBox(f) {
+  const dlg = $("spaceDlg");
+  return new Promise(res => {
+    let answer = false;
+    $("spaceTitle").textContent = "Some files may not fit " + f.disk;
+    $("spaceText").textContent = f.message;
+    $("spaceMore").textContent = "Nothing is changed or overwritten at the destination. Files that fail are listed under Problems when the copy has finished; a disk formatted APFS or Mac OS Extended takes them all.";
+    $("spaceGo").textContent = "Copy the rest"; $("spaceCancel").textContent = "Cancel";
+    $("spaceGo").onclick = () => { answer = true; dlg.close(); };
+    $("spaceCancel").onclick = () => dlg.close();
+    dlg.onclose = () => { dlg.onclose = null; res(answer); };
+    dlg.showModal();
+  });
+}
 // Free space: a copy that may not fit on its destination, on its own or with
 // the copies already queued there. Answers true for Continue anyway.
 function spaceBox(sp, started) {
   const dlg = $("spaceDlg");
   return new Promise(res => {
     let answer = false;
+    $("spaceGo").textContent = "Continue anyway"; $("spaceCancel").textContent = "Cancel job";
     $("spaceTitle").textContent = sp.fits_alone ? "Not enough space with the queue" : "Not enough space";
     $("spaceText").textContent = sp.message;
     $("spaceMore").textContent = (sp.unknown ? sp.unknown + (sp.unknown === 1 ? " queued copy is" : " queued copies are") + " still being sized and not counted. " : "") +
@@ -1676,6 +1708,12 @@ function loadProblems(c) {
   counts.forEach(([t, n]) => { const d = el("div", n ? "hot" : ""); d.append(el("b", "", String(n || 0)), el("span", "", t)); grid.append(d); });
   const list = el("div", "plist"), head = [grid];
   if (v.error) head.push(el("p", "bad", v.error));
+  // v0.2.92: a finished copy's failed files go back into the queue.
+  if (v.failed && v.state === "finished" && v.kind !== "verify" && v.kind !== "link") {
+    const rb = el("button", "", v.failed === 1 ? "Try the failed file again" : "Try the " + v.failed + " failed files again"); rb.type = "button";
+    rb.onclick = () => { rb.disabled = true; post("/api/jobs/" + v.id + "/retry").catch(e => { rb.disabled = false; alert(e.message); }); };
+    head.push(el("p", "mute", "Puts them back at the end of the queue, copied with the same proof. Files already proven are not touched, and nothing at the destination is overwritten."), rb);
+  }
   box.replaceChildren(...head, list);
   if (!(v.failed || v.gone || v.changed || v.s2_warnings)) {
     list.append(el("p", "mute", v.added ? "" : "No file had a problem in this copy."));
@@ -2746,9 +2784,7 @@ async function fbCopy(onlyMissing) {
     if (!names.length) continue;
     const body = { source: p.path, dest: t.dest, only: names, s2: "now", hash: "copy" };
     try {
-      const r = await post("/api/jobs", body);
-      if (r.space) { if (await spaceBox(r.space, false)) { await post("/api/jobs", Object.assign(body, { ignore_space: true })); n++; } }
-      else n++;
+      if (await addCopy(body)) n++;
     } catch (e) { errs.push(t.label + ": " + e.message); }
   }
   $("fbMsg").textContent = (n ? n + (n === 1 ? " copy" : " copies") + " added to the queue. Each is read back and the source read again." : "") + (errs.length ? " Not added: " + errs.join(" · ") : "");
@@ -3175,6 +3211,12 @@ function loadInfo() {
       ["Size", size(fi.size) + " (" + fi.size.toLocaleString() + " bytes)"], ["Modified", new Date(fi.mtime).toLocaleString()],
       ["State", state], ["Proof", fi.proof], ["Problem", fi.why || ""]]));
     const dest = fi.dest_exists ? (fi.dest_size === fi.size ? "there, same size" : "there, but " + size(fi.dest_size) + " — not the same size") : "not there yet";
+    const jv = cards[at.id] && cards[at.id]._v;
+    if (fi.status === "failed" && fi.job_done && fi.kind !== "verify" && fi.kind !== "link" && (!jv || jv.state === "finished")) {
+      const rb = el("button", "", "Try this file again"); rb.type = "button";
+      rb.onclick = () => { rb.disabled = true; post("/api/jobs/" + at.id + "/retry", { file: at.i }).then(loadInfo).catch(e => { rb.disabled = false; alert(e.message); }); };
+      body.push(rb);
+    }
     if (fi.kind !== "verify") { const hb = el("button", "", "Hash list for this file…"); hb.type = "button"; hb.onclick = () => { $("infoDlg").close(); openExport(cards[at.id] ? cards[at.id]._v : { id: at.id }, fi.path); }; body.push(hb); }
     body.push(el("h3", "", "Where"), kv(fi.kind === "verify" ? [["File", el("span", "path", fi.dest)], ["At the destination", dest]] :
       [["From", el("span", "path", fi.source)], ["To", el("span", "path", fi.dest)], ["At the destination", dest]]));

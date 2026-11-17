@@ -97,7 +97,7 @@ func linkOrCopy(from, to string) error {
 
 // measureManifest is measure over a finished list: what a copy to dst still
 // has to write, counting a file already there with the same size as done.
-func measureManifest(ctx context.Context, manifest, dst string) (int64, error) {
+func measureManifest(ctx context.Context, manifest, dst string, fc *fitCheck) (int64, error) {
 	it, err := openManifest(manifest)
 	if err != nil {
 		return 0, err
@@ -108,6 +108,7 @@ func measureManifest(ctx context.Context, manifest, dst string) (int64, error) {
 		if err := ctx.Err(); err != nil {
 			return 0, err
 		}
+		fc.add(it.E.P, it.E.S)
 		if fi, err := os.Lstat(filepath.Join(dst, filepath.FromSlash(it.E.P))); err == nil && fi.Mode().IsRegular() && fi.Size() == it.E.S {
 			continue
 		}

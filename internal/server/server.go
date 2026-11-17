@@ -90,6 +90,12 @@ type spaceChecker interface {
 	CheckSpace(dst string, need int64) (*copyjob.SpaceShort, error)
 }
 
+// retrier is an Actions that can put a finished copy's failed files back in
+// the queue (v0.2.92).
+type retrier interface {
+	RetryFailed(id string, file int) (int, error)
+}
+
 // Actions are the commands the page may send about copy jobs.
 type Actions interface {
 	Add(copyjob.Spec) (*copyjob.Job, error)

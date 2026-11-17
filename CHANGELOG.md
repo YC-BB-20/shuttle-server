@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.92 — 17 November 2026
+
+- **Try failed files again.** A finished copy with failed files has a button under Problems, and a failed file has one in its own panel. The files go back to the end of the queue in the same copy and are copied with the same proof. Files already proven are not touched, and nothing at the destination is overwritten: a file in the way still fails without being touched. Each file's story keeps the failure and the retry.
+- **The destination's format is checked before a copy is added.** If the destination disk is FAT32, files over 4 GB are counted and fail at once when their turn comes, instead of after 4 GB has been written. Names with characters FAT32, exFAT or NTFS may refuse, and names that differ only by capital letters on a disk that treats them as one, are counted too. You choose Copy the rest or Cancel. Counts only, never a list.
+- **A full destination disk says what to do:** which disk, how much the next file needs and how much is free. The copy waits, and continues by itself once there is room; nothing copied is lost. The free-space check before each file now also works for files in folders not yet made at the destination.
+- A name the destination's format refuses now fails with that reason in plain words.
+
 ## 0.2.91 — 17 November 2026
 
 - **Vimeo videos in Add link.** Paste a Vimeo link (public, unlisted or with a password) and choose the quality: each picture size is listed with its frame rate and about how big it is, best first. Shuttle downloads the picture and the sound in small pieces and joins them as they arrive into one ordinary MP4 with its table of contents at the front, so it opens at once in any player or editor. No extra program is needed. A piece that does not arrive is tried again, with the video's addresses asked for afresh, and a paused or interrupted download continues from the last pieces kept, not from the start.

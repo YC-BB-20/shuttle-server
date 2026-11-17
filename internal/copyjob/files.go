@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/YC-BB-20/shuttle-server/internal/diskio"
@@ -81,7 +82,61 @@ func perFile(format string, a ...any) error { return fileError{fmt.Sprintf(forma
 
 var errNoSpace = errors.New("not enough free space on the destination")
 
+// noSpace is errNoSpace with the numbers for the waiting line (v0.2.92).
+type noSpace struct {
+	disk       string
+	need, free int64
+}
+
+func (e noSpace) Error() string        { return errNoSpace.Error() }
+func (e noSpace) Is(target error) bool { return target == errNoSpace }
+
+// fullAt describes the destination disk of tmp when a file of need bytes
+// does not fit.
+func fullAt(tmp string, need int64) noSpace {
+	ns := noSpace{disk: diskName(tmp), need: need}
+	if v, err := diskio.VolumeOf(existingDir(tmp)); err == nil {
+		ns.free = int64(v.Free)
+		if ns.disk == "" {
+			ns.disk = v.Name
+		}
+	}
+	return ns
+}
+
+// existingDir is the nearest folder above p that exists.
+func existingDir(p string) string {
+	d := filepath.Dir(p)
+	for {
+		if fi, err := os.Stat(d); err == nil && fi.IsDir() {
+			return d
+		}
+		up := filepath.Dir(d)
+		if up == d {
+			return d
+		}
+		d = up
+	}
+}
+
+// spaceWait is the reason a copy waits on a full destination disk. It
+// needs the owner, so it says what to do; it continues by itself once
+// there is room, and nothing already copied is lost.
+func spaceWait(err error) waitErr {
+	var ns noSpace
+	disk := "The destination disk"
+	if errors.As(err, &ns) && ns.disk != "" {
+		disk = "Destination disk " + ns.disk
+	}
+	if ns.need > 0 {
+		return waitErr{fmt.Sprintf("%s is full: the next file needs %s and %s is free. Make room there, or pause this copy. It continues by itself once there is room; nothing copied is lost",
+			disk, Size(ns.need), Size(max(0, ns.free)))}
+	}
+	return waitErr{disk + " is full. Make room there, or pause this copy. It continues by itself once there is room; nothing copied is lost"}
+}
+
 type env struct {
+	format    destFormat // the destination's format (v0.2.92)
 	budget    *limits.Budget
 	src       *diskio.Disk
 	dst       *diskio.Disk
@@ -290,8 +345,10 @@ func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int, hs 
 		b, _ := hs.MarshalBinary()
 		return b
 	}
-	if v, err := diskio.VolumeOf(tmp); err == nil && v.Free < uint64(size-off)+(64<<20) {
-		return errNoSpace
+	// The copy's folder may not exist yet: ask the nearest folder that does
+	// (v0.2.92; asking about the not-yet-made file skipped this check).
+	if v, err := diskio.VolumeOf(existingDir(tmp)); err == nil && diskio.VolumeMounted(tmp) && v.Free < uint64(size-off)+(64<<20) {
+		return fullAt(tmp, size-off+(64<<20))
 	}
 	in, err := diskio.OpenRead(src)
 	if err != nil {
@@ -316,6 +373,9 @@ func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int, hs 
 	if err != nil {
 		if !diskio.Present(e.dst) {
 			return diskio.ErrGone
+		}
+		if errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.EILSEQ) || errors.Is(err, syscall.ENAMETOOLONG) {
+			return perFile("the destination disk's format does not accept this name (%v)", err)
 		}
 		return perFile("could not write at destination: %v", err)
 	}
@@ -451,8 +511,8 @@ func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int, hs 
 		if errors.Is(werr, diskio.ErrGone) || errors.Is(werr, diskio.ErrStalled) {
 			return werr
 		}
-		if strings.Contains(werr.Error(), "no space") {
-			return errNoSpace
+		if errors.Is(werr, syscall.ENOSPC) || strings.Contains(werr.Error(), "no space") {
+			return fullAt(tmp, size-written+(64<<20))
 		}
 		return perFile("write error: %v", werr)
 	case rerr != nil:
