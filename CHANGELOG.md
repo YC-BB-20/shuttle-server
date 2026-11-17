@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.86 — 17 November 2026
+
+- **The queue and history are now a table,** as in the agreed design: one line per copy with its name and route, kind, size, the written and proven bar, and a short state ("Verified", "Safe · read back", "1 changed", "62% · 412 MB/s · 8:12 left") with the time under it. Columns line up row to row.
+- **Everything about a copy opens in a panel on the right:** click a row for its full summary, paths, proof, problems, buttons (hash list, verify, check source again) and its files with their hashes. Click the row again, press ✕ or Esc to close it. On a wide screen the panel stays beside the list; on a laptop screen it slides over it. Clicking a drive on the On set cards opens the same panel.
+
 ## 0.2.85 — 17 November 2026
 
 - **A new look.** One dark frame on every screen: the top bar holds the name, the General / On set switch and New copy; the sections (Queue, Disks, Settings, About) are on the left; a strip along the bottom always says what Shuttle is doing, with a System button for memory, processor and open files. Nothing that was on the page before is gone; it is restyled and moved.

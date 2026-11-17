@@ -407,6 +407,76 @@ dialog .head, .foot { border-color:var(--line); }
 .cards.table .ocard .drv { padding:8px 14px; }
 .style-onset #tabStatus > :not(#onset) { display:none !important; }
 @media (max-width:760px) { .cards.table .ocard { flex-wrap:wrap; } .cards.table .ocard .vd { flex:1 1 100%; } }
+
+/* ===== v0.2.86: rows are table rows (name, kind, size, written · proven, state), and the details of
+   the selected row live in the panel on the right. ===== */
+.shell > main { max-width:none; }
+.jh, .job .r { display:grid; grid-template-columns:14px 28px minmax(0,1fr) 56px 76px minmax(80px,150px) minmax(150px,230px) var(--acts) 4px;
+  grid-template-areas:"g i m k z b s a c"; column-gap:12px; align-items:center; }
+.jh { padding:8px 14px; font-size:12px; font-weight:600; color:var(--mute); border-bottom:1px solid var(--line); }
+.jh .hn { grid-area:m; } .jh .hk { grid-area:k; } .jh .hz { grid-area:z; text-align:right; } .jh .hb { grid-area:b; } .jh .hs { grid-area:s; }
+.shell > main { container-type:inline-size; }
+.jobs:not(:has(.job)), .hist:not(:has(.job)) { display:none; }
+.job .grip { grid-area:g; } .job .ico { grid-area:i; } .job .m { grid-area:m; } .job .k { grid-area:k; color:var(--mute); font-size:13px; }
+.job .szc { grid-area:z; text-align:right; color:var(--mute); font-size:13px; white-space:nowrap; }
+.job .r > .bar { grid-area:b; margin:0; } .job .st { grid-area:s; min-width:0; display:flex; flex-direction:column; line-height:1.3; }
+.job .acts { grid-area:a; } .job .r::after { grid-area:c; }
+.job .r .grip[hidden] { display:grid !important; visibility:hidden; }
+.job .rspeed, .job .m .sub, .job .m .speed { display:none !important; }
+.job.old .bar { display:block; }
+.job .st b { font-weight:600; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.job .st small { font-size:12px; color:var(--mute); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.job .st b.ok, .ist.ok { color:var(--ok); } .job .st b.warn, .ist.warn { color:var(--warn); } .job .st b.bad, .ist.bad { color:var(--bad); }
+.job .route { max-width:none; font-size:14px; } .job:not(.verify) .route { font-size:14px; }
+.job .r::after { content:""; }
+.job.open { background:#241f35; box-shadow:inset 3px 0 0 var(--sel); }
+.job.open .r::after { transform:none; }
+.job .detail { display:none; }
+.job.verify .r { grid-template-columns:14px 22px minmax(0,1fr) 56px 76px minmax(80px,150px) minmax(150px,230px) var(--acts) 4px; }
+/* The buttons column has one width in each list, so every row's columns line up. */
+.jobs { --acts:170px; } .hist { --acts:34px; }
+.job .acts { justify-content:flex-end; }
+/* The details in the panel (they were styled as part of a row before). */
+.ibody .detail p { margin:2px 0; }
+.ibody .paths .path { margin:0; }
+.ibody .ftop { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin:8px 0 6px; min-width:0; }
+.ibody .ftop .brow, .ibody .ftop .btns, .ibody .ftop .fpage, .ibody .ftop .filters, .ibody .ftop .fhead { margin:0; }
+.ibody .ftop .filters { flex:1 1 auto; min-width:0; }
+.ibody .detail .btns, .ibody .detail .fpage, .ibody .detail .brow { display:flex; gap:8px; flex-wrap:wrap; min-width:0; }
+.ibody .detail .bar:not(.ok) > i { background:var(--copy); }
+.ibody .checks { margin:10px 0; }
+/* The details panel. */
+.insp { flex:none; width:420px; box-sizing:border-box; background:var(--side); border-left:1px solid var(--line);
+  position:sticky; top:53px; align-self:flex-start; height:calc(100vh - 53px - 41px); height:calc(100dvh - 53px - 41px); overflow:auto; }
+.ihead { position:sticky; top:0; z-index:1; display:flex; gap:10px; align-items:flex-start; padding:16px 18px 12px; background:var(--side); border-bottom:1px solid var(--line); }
+.ihead > div { flex:1; min-width:0; }
+.ihead h2 { margin:0; font-size:17px; overflow-wrap:anywhere; }
+.ist { margin:2px 0 0; color:var(--mute); font-size:13px; }
+.ihead button { flex:none; width:30px; height:30px; padding:0; border-radius:15px; background:transparent; }
+.iempty { margin:0; padding:24px 20px; color:var(--mute); }
+.ibody { padding:14px 18px 24px; }
+.ibody .detail { display:block; margin:0; font-size:14px; }
+.ibody .dsub { margin:0 0 12px; color:#d9d9df; } .ibody .dsub.warn { color:var(--warn); } .ibody .dsub.bad { color:var(--bad); }
+.ibody .paths { display:flex; flex-direction:column; gap:4px; margin:0 0 10px; }
+.ibody .path { font-size:12px; color:#d9d9df; }
+.ibody .detail .btns { margin:12px 0 4px; }
+.ibody .files { border-top:1px solid var(--line); margin-top:12px; padding-top:10px; }
+.ibody .frows { max-height:none; }
+.ibody .frow .chip { min-width:8.5em; }
+.ibody .line { color:var(--mute); font-size:13px; }
+@media (max-width:1499px) {
+  .insp { position:fixed; z-index:20; top:0; right:0; height:100vh; height:100dvh; width:min(440px, 100vw); box-shadow:-20px 0 50px rgba(0,0,0,.5); display:none; }
+  .insp.on { display:block; }
+}
+@container (max-width:980px) {
+  .jh, .job .r, .job.verify .r { grid-template-columns:14px 28px minmax(0,1fr) minmax(70px,120px) minmax(140px,200px) var(--acts) 4px; grid-template-areas:"g i m b s a c"; }
+  .job .k, .job .szc, .jh .hk, .jh .hz { display:none; }
+}
+@container (max-width:640px) {
+  .jh { display:none; }
+  .job .r, .job.verify .r { grid-template-columns:14px 28px minmax(0,1fr) auto; grid-template-areas:"g i m a" ". . b b" ". . s s"; row-gap:6px; }
+  .job .r::after { display:none; }
+}
 </style>
 </head>
 <body>
@@ -447,12 +517,12 @@ dialog .head, .foot { border-color:var(--line); }
   <p class="mute qfinfo" id="qfInfo"></p>
   <p class="mute" id="noJobs">Nothing in the queue.</p>
   <p class="mute" id="noJobsF" hidden>Nothing in the queue matches the filters.</p>
-  <div class="jobs" id="jobs"></div>
+  <div class="jobs" id="jobs"><div class="jh" aria-hidden="true"><span class="hn">Name</span><span class="hk">Kind</span><span class="hz">Size</span><span class="hb">Written · proven</span><span class="hs">State</span></div></div>
   <p class="qhint" id="qHint" hidden>Drag a waiting row by its handle, press Run next, or press ⌥↑ / ⌥↓ on a row to change the order.</p>
   <div class="jobs-head"><h2>History</h2></div>
   <p class="mute" id="noDone">Finished and stopped copies appear here.</p>
   <p class="mute" id="noDoneF" hidden>No finished or stopped copies match the filters.</p>
-  <div class="hist" id="done"></div>
+  <div class="hist" id="done"><div class="jh" aria-hidden="true"><span class="hn">Name</span><span class="hk">Kind</span><span class="hz">Size</span><span class="hb">Written · proven</span><span class="hs">State</span></div></div>
   <p><button type="button" id="moreHist" hidden>Show older copies</button></p>
   </div>
   <div id="tabStorage" hidden>
@@ -527,6 +597,11 @@ dialog .head, .foot { border-color:var(--line); }
   </section>
   </div>
 </main>
+<aside class="insp" id="insp" aria-label="Details">
+  <div class="ihead" id="inspHead" hidden><div><h2 id="inspTitle"></h2><p class="ist" id="inspState"></p></div><button type="button" id="inspClose" aria-label="Close the details">✕</button></div>
+  <p class="iempty" id="inspEmpty">Click a copy to see everything about it here: where it goes, its proof, its files and their hashes, problems, and the hash list.</p>
+  <div class="ibody" id="inspBody"></div>
+</aside>
 </div>
 <footer class="strip" id="strip"><span class="lvl" id="stripLvl" aria-hidden="true"></span><b id="stripHead">Loading…</b><span class="mute" id="stripSub"></span><button type="button" id="sysBtn">System</button></footer>
 <dialog id="newDlg">
@@ -1340,26 +1415,62 @@ function jobName(v) {
   const d = v.only_dirs, f = v.only - d;
   return [d && d + (d === 1 ? " folder" : " folders"), f && f + (f === 1 ? " file" : " files")].filter(Boolean).join(", ");
 }
+// v0.2.86: one row is selected at a time; its details live in the panel.
+let selId = "";
+function selectJob(id, keepOpen) {
+  const prev = selId && cards[selId];
+  if (prev && keepOpen && selId === id) return;
+  if (prev) { prev.classList.remove("open"); if (fv[selId]) toggleFiles(prev._v, prev); prev.append(prev._d); }
+  selId = prev && prev._v.id === id ? "" : id;
+  const c = selId && cards[selId];
+  $("insp").classList.toggle("on", !!c); $("inspEmpty").hidden = !!c; $("inspHead").hidden = !c;
+  if (c) { c.classList.add("open"); $("inspBody").replaceChildren(c._d); $("insp").scrollTop = 0; card(c._v); }
+  else $("inspBody").replaceChildren();
+}
+$("inspClose").onclick = () => { if (selId) selectJob(selId); };
+document.addEventListener("keydown", e => { if (e.key === "Escape" && selId && !document.querySelector("dialog[open]")) selectJob(selId); });
+const problemShort = v => [v.failed && v.failed + " failed", v.gone && v.gone + " deleted", v.changed && v.changed + " changed",
+  v.added && v.added + " added", v.s2_warnings && v.s2_warnings + " source warnings"].filter(Boolean).join(" · ");
+// The State column: a few words, a tone, and a small second line.
+function stateShort(v, problems, pc, ver, scanning) {
+  const k = v.checks, t = v.work_ms ? clock(v.work_ms) : "", fin = v.finished ? when(v.finished) : "";
+  const done2 = [t, fin].filter(Boolean).join(" · ");
+  if (v.missing) return ["Disk not connected", "bad", v.reason || ""];
+  if (v.state === "running" && scanning) return [ver ? "Reading hashes" : "Listing files", "run", v.scanned + " files so far"];
+  if (v.state === "running") return [(ver ? "Checking " : "") + pc, "run", [rate(ver ? v.rate : v.copy_rate), v.eta_seconds ? clock(v.eta_seconds * 1000) + " left" : ""].filter(Boolean).join(" · ")];
+  if (v.state === "waiting") return ["Waiting", "warn", v.reason || ""];
+  if (v.state === "paused") return v.space ? ["Needs your answer", "warn", "may not fit"] : ["Paused", "", pc];
+  if (v.state === "queued") return [v.id === queueNext ? "Next" : "Waiting its turn", "", v.after ? "after its copy" : ""];
+  if (v.state === "stopped") return ["Stopped", "", done2];
+  if (v.error) return ["Failed", "bad", fin];
+  if (problems) return [problemShort(v), v.failed ? "bad" : "warn", done2];
+  if (ver) return [(v.s2 === "only" ? v.strong : v.verified) + (v.files === 1 ? " file matches" : " files match"), "ok", done2];
+  if (v.files > 0 && v.identical === v.files) return ["Already there", "ok", done2];
+  if (k && k.of > 0 && k.source >= k.of) return ["Verified", "ok", done2];
+  if (k && k.of > 0 && k.dest >= k.of) return ["Safe · read back", "ok", done2];
+  return ["Copied, not checked", "", done2];
+}
 function card(v) {
   let c = cards[v.id];
   if (!c) {
     c = document.createElement("section"); c.className = "job";
     c.innerHTML = '<div class="r"><button type="button" class="grip" hidden aria-label="Drag to change the order (or ⌥↑ / ⌥↓)" title="Drag to change the order, or press ⌥↑ / ⌥↓"><svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor" aria-hidden="true"><circle cx="2.5" cy="3" r="1.5"/><circle cx="7.5" cy="3" r="1.5"/><circle cx="2.5" cy="8" r="1.5"/><circle cx="7.5" cy="8" r="1.5"/><circle cx="2.5" cy="13" r="1.5"/><circle cx="7.5" cy="13" r="1.5"/></svg></button><span class="ico"></span><div class="m"><div class="route"><span class="s"></span><span class="arr">→</span><span class="d"></span></div><div class="of" hidden></div>' +
-      '<div class="bar"><i></i></div><div class="sub"></div><p class="speed mute"></p></div><div class="rspeed" hidden></div><div class="acts"></div></div>' +
-      '<div class="detail"><div class="paths"><p class="path from"></p><p class="path to"></p></div><p class="fcounts" hidden></p>' +
+      '<div class="sub"></div><p class="speed mute"></p></div><span class="k"></span><span class="szc"></span><div class="bar"><i></i></div><div class="st"><b></b><small></small></div><div class="rspeed" hidden></div><div class="acts"></div></div>' +
+      '<div class="detail"><p class="dsub"></p><div class="paths"><p class="path from"></p><p class="path to"></p></div><p class="fcounts" hidden></p>' +
       '<p class="counts mute"></p><p class="warn same" hidden>Source and destination are on the same disk: this copy does not protect against that disk failing.</p><div class="checks" hidden></div><div class="brow"><div class="btns"></div><div class="fpage"></div></div><div class="tail"><p class="line"></p></div></div>';
     cards[v.id] = c;
+    c._d = c.querySelector(".detail");
     dragRow(c);
-    // Tapping a copy opens its details and files; tapping it again closes them.
+    // v0.2.86: clicking a row shows everything about it in the panel on the
+    // right (paths, proof, files, problems, buttons); clicking it again closes.
     c.onclick = e => {
       if (e.target.closest("button, input, a, .detail") || getSelection().toString()) return;
-      const open = !c.classList.contains("open");
-      c.classList.toggle("open", open);
-      if (open !== !!fv[v.id] && (c._v.phase !== "scan" || !open)) toggleFiles(c._v, c);
+      selectJob(c._v.id);
     };
   }
   c._v = v;
-  const q = sel => c.querySelector(sel);
+  // The details may sit in the panel on the right, outside the row.
+  const q = sel => c.querySelector(sel) || c._d.querySelector(sel.replace(/^\.detail\s+/, ""));
   const old = v.state === "finished" || v.state === "stopped";
   const problems = v.failed || v.s2_warnings || v.error || v.gone || v.changed || v.added;
   c.classList.toggle("old", old); c.classList.toggle("hid", old && !!v.hidden);
@@ -1416,6 +1527,17 @@ function card(v) {
     if (problems) subCls += " warn"; }
   else sub = (v.finished ? when(v.finished) + " · " : "") + "Stopped by you" + (v.work_ms ? " after " + clock(v.work_ms) : "") + " · " + proven + (ver ? " files checked and matching" : " files verified and kept");
   q(".sub").textContent = sub; q(".sub").className = subCls;
+  // v0.2.86: the row shows a short state; the full sentence heads the panel.
+  const [stT, stTone, stSmall] = stateShort(v, problems, pc, ver, scanning);
+  q(".st b").textContent = stT; q(".st b").className = stTone; q(".st small").textContent = stSmall;
+  q(".k").textContent = ver ? "Verify" : "Copy";
+  q(".szc").textContent = v.bytes && !scanning ? size(v.bytes) : v.est_bytes ? size(v.est_bytes) : "—";
+  q(".dsub").textContent = sub; q(".dsub").className = "dsub " + subCls.replace("sub", "").trim();
+  if (selId === v.id) {
+    $("inspTitle").textContent = ver ? verKind(v) : jobName(v); $("inspTitle").title = ver ? place : v.source;
+    $("inspState").textContent = [stT, stSmall].filter(Boolean).join(" · "); $("inspState").className = "ist " + stTone;
+    if (!fv[v.id] && !scanning) toggleFiles(v, c);
+  }
   // Details, shown when the row is open.
   let line = "";
   if (v.state === "running" && !scanning) line = "Now: " + v.stage + (v.file_size ? ", " + size(v.file_done) + " of " + size(v.file_size) : "");
@@ -1785,9 +1907,9 @@ function renderJobs(list) {
   $("qfInfo").textContent = vis === total ? "" : "Showing " + vis + " of " + total;
   $("noJobs").hidden = active.length > 0; $("noDone").hidden = done.length > 0;
   $("noJobsF").hidden = !active.length || qShow.length > 0; $("noDoneF").hidden = !done.length || hShow.length > 0;
-  place($("jobs"), withVerifies(qShow), 0);
+  place($("jobs"), withVerifies(qShow), 1);
   markMovable(qShow);
-  place($("done"), withVerifies(hShow), 0);
+  place($("done"), withVerifies(hShow), 1);
   $("moreHist").hidden = done.length < 20 || $("moreHist").dataset.end === "1";
 }
 // Queue order (v0.2.85). A job that has not started can be moved: drag its
@@ -1909,7 +2031,7 @@ function dayName(key) {
 function openJob(id) {
   setStyle("general"); showTab("status");
   const c = cards[id]; if (!c) return;
-  if (!c.classList.contains("open")) c.click();
+  selectJob(id, true);
   c.scrollIntoView({ block: "center", behavior: "smooth" });
 }
 function renderOnset(list) {
@@ -1989,7 +2111,7 @@ const fileChip = { checkwait: "waiting", already: "ok", already2: "ok", proven: 
 // / Show fewer sit beside Verify files.
 const treeMin = 20, filePage = 50;
 function toggleFiles(v, c) {
-  if (fv[v.id]) { c.querySelector(".detail").insertBefore(c.querySelector(".brow"), c.querySelector(".tail")); fv[v.id].box.remove(); c.querySelector(".fpage").replaceChildren(); delete fv[v.id]; return; }
+  if (fv[v.id]) { c._d.insertBefore(c._d.querySelector(".brow"), c._d.querySelector(".tail")); fv[v.id].box.remove(); c._d.querySelector(".fpage").replaceChildren(); delete fv[v.id]; return; }
   const box = el("div", "files");
   // One file: no filters, the one row says it all.
   const one = v.files <= 1;
@@ -2002,9 +2124,9 @@ function toggleFiles(v, c) {
   });
   // Verify files (and Show more / fewer) at the left of the line above the
   // files, beside the filters or the heading (v0.2.50).
-  const top = el("div", "ftop"); top.append(c.querySelector(".brow"), bar, el("p", "fhead"));
+  const top = el("div", "ftop"); top.append(c._d.querySelector(".brow"), bar, el("p", "fhead"));
   box.append(top, el("div", "frows"), el("p", "mute note"));
-  c.querySelector(".detail").insertBefore(box, c.querySelector(".tail")); loadFiles(f, false); // the Now line stays below the files (v0.2.59)
+  c._d.insertBefore(box, c._d.querySelector(".tail")); loadFiles(f, false); // the Now line stays below the files (v0.2.59)
 }
 const filesURL = (f, dir, from, limit) => "/api/jobs/" + f.v.id + "/files?filter=" + f.filter + "&from=" + from + "&limit=" + limit + (f.tree ? "&tree=1&dir=" + encodeURIComponent(dir) : "");
 // One folder's files and folders; append adds its next page.
@@ -2122,7 +2244,7 @@ function drawFiles(f) {
   const pg = [];
   if (root.next >= 0) { const b = el("button", "", "Show more files"); b.type = "button"; b.onclick = () => loadFiles(f, true); pg.push(b); }
   if (root.rows.length > filePage) { const b = el("button", "", "Show fewer files"); b.type = "button"; b.onclick = () => loadFiles(f, false, false, true); pg.push(b); }
-  f.card.querySelector(".fpage").replaceChildren(...pg);
+  f.card._d.querySelector(".fpage").replaceChildren(...pg);
 }
 // File info: what the file is, where it went, its hashes and its story.
 function kv(pairs) {

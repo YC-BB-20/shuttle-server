@@ -373,7 +373,7 @@ func TestPageCardLayout50(t *testing.T) {
 	for _, want := range []string{
 		`.qhead { display:grid;`, `.qhead h2 { grid-row:2; grid-column:1 / -1;`, `<div class="rspeed" hidden></div><div class="acts">`, `"average copy speed"`,
 		`line = "Now: " + v.stage +`, `<div class="paths"><p class="path from"></p><p class="path to"></p></div>`,
-		`top.append(c.querySelector(".brow"), bar, el("p", "fhead"))`, `c.querySelector(".detail").insertBefore(c.querySelector(".brow"), c.querySelector(".tail"))`, `q(".counts").textContent = "";`,
+		`top.append(c._d.querySelector(".brow"), bar, el("p", "fhead"))`, `c._d.insertBefore(c._d.querySelector(".brow"), c._d.querySelector(".tail"))`, `q(".counts").textContent = "";`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
@@ -475,7 +475,7 @@ func TestPageDecimalSpeedsAndCopyRateInHistory(t *testing.T) {
 func TestPageQueueItem59(t *testing.T) {
 	page := string(IndexHTML)
 	for _, want := range []string{`function jobName(v)`, `" folders"`, `"Destination: " + (at(v.to_disk, v.to_path)`, `"Source: " + (at(v.from_disk, v.from_path)`,
-		`<div class="sub"></div><p class="speed mute"></p></div>`, `<div class="tail"><p class="line"></p></div>`, `insertBefore(box, c.querySelector(".tail"))`} {
+		`<div class="sub"></div><p class="speed mute"></p></div>`, `<div class="tail"><p class="line"></p></div>`, `insertBefore(box, c._d.querySelector(".tail"))`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("page lacks %q", want)
 		}
@@ -514,5 +514,23 @@ func TestPageNewLookQueueOrderOnSet(t *testing.T) {
 	}
 	if strings.Contains(s, "prefers-color-scheme: light") {
 		t.Error("the page has one dark look")
+	}
+}
+
+// v0.2.86: rows are table rows with a short state; a row's details open in
+// the panel on the right, wherever the details element sits.
+func TestPageTableRowsAndDetailsPanel(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`<aside class="insp" id="insp" aria-label="Details">`, `function selectJob(id, keepOpen)`, `function stateShort(v, problems, pc, ver, scanning)`,
+		`<span class="hn">Name</span>`, `c._d = c.querySelector(".detail");`, `c._d.querySelector(sel.replace(`, `c._d.insertBefore(box, c._d.querySelector(".tail"))`,
+		`place($("jobs"), withVerifies(qShow), 1);`, `.jobs { --acts:170px; } .hist { --acts:34px; }`, `e.key === "Escape"`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	if strings.Contains(s, `c.querySelector(".detail").insertBefore`) {
+		t.Error("toggleFiles must not look for the details inside the row: they may be in the panel")
 	}
 }
