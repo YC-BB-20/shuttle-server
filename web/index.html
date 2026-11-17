@@ -385,6 +385,9 @@ dialog .head, .foot { border-color:var(--line); }
 .job.drop-end { box-shadow:inset 0 -3px 0 var(--sel); }
 .job .acts .next { width:auto; border-radius:7px; padding:0 10px; font-size:12px; font-weight:600; border:1px solid var(--line2); background:var(--raise); }
 .qhint { font-size:12px; color:var(--mute); margin:6px 2px 0; }
+.pickbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; padding:8px 12px; margin:0 0 8px; border:1px solid var(--sel); border-radius:10px; background:#1f1d27; min-width:0; position:sticky; top:0; z-index:3; }
+.pickbar .pkg { display:flex; flex-wrap:wrap; gap:6px; min-width:0; } .pickbar #pkClear { margin-left:auto; } .pickbar #pkStop:not(:disabled) { color:var(--bad); }
+.job.picked, .job.picked.open { background:#2a2440; box-shadow:inset 3px 0 0 var(--sel); }
 /* On set (v0.2.85): one tile per card, its verdict first and large; one chip per drive. */
 .onset { display:flex; flex-direction:column; gap:12px; margin-bottom:22px; }
 .onhead { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; }
@@ -663,8 +666,12 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
   <p class="mute qfinfo" id="qfInfo"></p>
   <p class="mute" id="noJobs">Nothing in the queue.</p>
   <p class="mute" id="noJobsF" hidden>Nothing in the queue matches the filters.</p>
+  <div class="pickbar" id="pickBar" hidden><b id="pickN"></b>
+    <span class="pkg"><button type="button" id="pkPause">Pause</button><button type="button" id="pkResume">Resume</button><button type="button" id="pkStop">Stop…</button></span>
+    <span class="pkg" id="pkMoves"><button type="button" id="pkTop" title="Before every other waiting job, in the order they are in now">To the top</button><button type="button" id="pkUp" title="One place up (⌥↑)">Up ⌥↑</button><button type="button" id="pkDown" title="One place down (⌥↓)">Down ⌥↓</button><button type="button" id="pkEnd">To the end</button></span>
+    <button type="button" id="pkClear" title="Clear the selection (Esc)">Clear</button></div>
   <div class="jobs" id="jobs"><div class="jh"><button type="button" class="hn" data-sort="name">Name</button><button type="button" class="hk" data-sort="kind">Kind</button><button type="button" class="hz" data-sort="size">Size</button><button type="button" class="hb" data-sort="prog">Written · proven</button><button type="button" class="hs" data-sort="status">State</button></div></div>
-  <p class="qhint" id="qHint" hidden>Drag a waiting row by its handle, press Run next, or press ⌥↑ / ⌥↓ on a row to change the order.</p>
+  <p class="qhint" id="qHint" hidden>Drag a waiting row by its handle, press Run next, or press ⌥↑ / ⌥↓ on a row to change the order. ⇧-click selects a run of rows, ⌘-click adds or removes one; then stop, pause or move them together.</p>
   <div class="jobs-head"><h2>History</h2></div>
   <p class="mute" id="noDone">Finished and stopped copies appear here.</p>
   <p class="mute" id="noDoneF" hidden>No finished or stopped copies match the filters.</p>
@@ -1815,6 +1822,7 @@ function selectJob(id, keepOpen) {
 $("inspClose").onclick = () => { if (selId) selectJob(selId); else if (selCard) closeCard(); else if (fbSel) fbCloseFile(); };
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape" || document.querySelector("dialog[open]")) return;
+  if (picked.size) { picked.clear(); drawPicked(); return; }
   if (document.body.classList.contains("wall")) setWall(false); else if (selId) selectJob(selId); else if (selCard) closeCard(); else if (fbSel) fbCloseFile();
 });
 const problemShort = v => [v.failed && v.failed + " failed", v.gone && v.gone + " deleted", v.changed && v.changed + " changed",
@@ -1859,8 +1867,13 @@ function card(v) {
     // right (paths, proof, files, problems, buttons); clicking it again closes.
     c.onclick = e => {
       if (e.target.closest("button, input, a, .detail") || getSelection().toString()) return;
+      // v0.2.94: ⇧-click and ⌘-click (Ctrl-click) select several rows of the queue.
+      if ((e.shiftKey || e.metaKey || e.ctrlKey) && c.parentNode === $("jobs")) { pickRow(c, e); return; }
+      if (picked.size) { picked.clear(); drawPicked(); }
+      pickAnchor = c._v.id;
       selectJob(c._v.id);
     };
+    c.onmousedown = e => { if (e.shiftKey) e.preventDefault(); }; // ⇧-click selects rows, not text
   }
   c._v = v;
   // The details may sit in the panel on the right, outside the row.
@@ -2207,8 +2220,17 @@ const jobSecs = v => v.work_ms ? v.work_ms / 1000 : secs(v.created, v.finished);
 const jobTime = v => v.work_ms ? "took " + clock(v.work_ms) : took(v.created, v.finished);
 const took = (a, b) => { const sec = Math.max(0, secs(a, b)); if (sec < 90) return Math.round(sec) + " s"; const m = Math.round(sec / 60); return m < 60 ? m + " min" : Math.floor(m / 60) + " h " + (m % 60) + " min"; };
 function place(box, want, keep) {
-  want.forEach((c, i) => { if (box.children[i + keep] !== c) box.insertBefore(c, box.children[i + keep] || null); });
-  while (box.children.length > want.length + keep) box.lastChild.remove();
+  keepFocus(() => {
+    want.forEach((c, i) => { if (box.children[i + keep] !== c) box.insertBefore(c, box.children[i + keep] || null); });
+    while (box.children.length > want.length + keep) box.lastChild.remove();
+  });
+}
+// Moving an element in the page takes the keyboard focus off it: give it
+// back, so ⌥↑ pressed again moves the same row again (v0.2.94).
+function keepFocus(fn) {
+  const a = document.activeElement;
+  fn();
+  if (a && a !== document.body && a !== document.activeElement && a.isConnected) a.focus({ preventScroll: true });
 }
 let olderViews = [];
 // Queue and History filters, as in Shuttle Router: kinds to show, Active only,
@@ -2362,10 +2384,12 @@ function renderJobs(list) {
   $("qfInfo").textContent = vis === total ? "" : "Showing " + vis + " of " + total;
   $("noJobs").hidden = active.length > 0; $("noDone").hidden = done.length > 0;
   $("noJobsF").hidden = !active.length || qShow.length > 0; $("noDoneF").hidden = !done.length || hShow.length > 0;
-  place($("jobs"), withVerifies(qShow), 1);
+  const qCards = withVerifies(qShow);
+  if (!moving) place($("jobs"), qCards, 1); // while moves are on their way the rows keep the order already shown
   markMovable(qShow);
   place($("done"), withVerifies(hShow), 1);
   $("moreHist").hidden = done.length < 20 || $("moreHist").dataset.end === "1";
+  drawPicked();
 }
 // Queue order (v0.2.85). A job that has not started can be moved: drag its
 // handle, press Run next, or focus the row and press ⌥↑ / ⌥↓. The running job
@@ -2409,14 +2433,114 @@ function dragRow(c) {
     e.preventDefault(); const t = dropTarget(c, e.clientY), id = dragging._v.id; clear();
     if (t.before !== id) moveJob(id, t.before);
   };
-  c.onkeydown = e => {
-    if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown") || c.dataset.mv !== "1" || e.target !== c) return;
-    e.preventDefault();
-    const rows = movableRows(), i = rows.indexOf(c);
-    if (e.key === "ArrowUp" && i > 0) moveJob(c._v.id, rows[i - 1]._v.id);
-    if (e.key === "ArrowDown" && i >= 0 && i < rows.length - 1) moveJob(c._v.id, rows[i + 2] ? rows[i + 2]._v.id : "");
-  };
 }
+// Selection (v0.2.94). A click opens a row; ⇧-click selects every row from
+// the last one clicked to this one; ⌘-click (Ctrl-click) adds or removes one.
+// The bar above the queue then pauses, resumes, stops or moves them all.
+// ⌥↑ / ⌥↓ move the focused row, or the selection when it is part of it.
+const picked = new Set();
+let pickAnchor = "", moving = 0, moveChain = Promise.resolve();
+const queueRows = () => [...$("jobs").children].filter(c => c._v);
+function pickRow(c, e) {
+  const rows = queueRows(), id = c._v.id;
+  const from = pickAnchor && rows.some(r => r._v.id === pickAnchor) ? pickAnchor : selId && rows.some(r => r._v.id === selId) ? selId : "";
+  if (e.shiftKey && from) {
+    const a = rows.findIndex(r => r._v.id === from), b = rows.indexOf(c);
+    if (!(e.metaKey || e.ctrlKey)) picked.clear();
+    rows.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(r => picked.add(r._v.id));
+  } else {
+    if (!picked.size && from && from !== id) picked.add(from); // the row open in the panel counts as the first
+    if (picked.has(id)) picked.delete(id); else picked.add(id);
+    pickAnchor = id;
+  }
+  if (picked.size > 1 && selId) selectJob(selId); // the panel shows one job: closed while several are chosen
+  drawPicked();
+}
+function drawPicked() {
+  const here = new Set(queueRows().map(r => r._v.id));
+  [...picked].forEach(id => { if (!here.has(id) || !cards[id]) picked.delete(id); });
+  Object.values(cards).forEach(c => c.classList.toggle("picked", picked.has(c._v.id)));
+  const bar = $("pickBar"); bar.hidden = !picked.size;
+  if (!picked.size) return;
+  const vs = [...picked].map(id => cards[id]._v);
+  const n = f => vs.filter(f).length, label = (b, t, k) => { b.textContent = t + (k && k < vs.length ? " " + k : ""); b.disabled = !k; };
+  $("pickN").textContent = picked.size + " selected";
+  label($("pkPause"), "Pause", n(v => ["running", "waiting", "queued"].includes(v.state)));
+  label($("pkResume"), "Resume", n(v => v.state === "paused" && !v.space));
+  label($("pkStop"), "Stop…", n(v => v.state !== "finished" && v.state !== "stopped"));
+  const inOrder = qf.sort === "queue:1", mv = movableRows().some(r => picked.has(r._v.id));
+  $("pkMoves").querySelectorAll("button").forEach(b => { b.disabled = !inOrder || !mv; });
+  $("pkMoves").title = !inOrder ? "Moving works in the queue order: click the sorted heading until its arrow goes, or choose Queue order" : !mv ? "The running job and Verify items under a copy keep their place" : "";
+}
+// The moves that put the chosen rows one place up or down, at the top or at
+// the end, among the rows that can move; each move is "this job before that
+// one" ("" is the end), worked out on the order shown and done in turn.
+function planMoves(dir, ids) {
+  const order = movableRows().map(r => r._v.id), sel = new Set(ids), moves = [];
+  const mine = order.filter(id => sel.has(id));
+  if (!mine.length) return { order, moves };
+  if (dir === "top" || dir === "end") {
+    const rest = order.filter(id => !sel.has(id));
+    if (dir === "top") { const t = order.find(id => !sel.has(id)); if (t && order.indexOf(t) < order.indexOf(mine[mine.length - 1])) mine.forEach(id => moves.push({ id, before: t })); return { order: moves.length ? mine.concat(rest) : order, moves }; }
+    const last = order.findLastIndex(id => !sel.has(id));
+    if (last > order.indexOf(mine[0])) mine.forEach(id => moves.push({ id, before: "" }));
+    return { order: moves.length ? rest.concat(mine) : order, moves };
+  }
+  const up = dir === "up";
+  (up ? mine : mine.slice().reverse()).forEach(id => {
+    const i = order.indexOf(id), j = up ? i - 1 : i + 1;
+    if (j < 0 || j >= order.length || sel.has(order[j])) return; // at the edge, or behind another chosen row
+    [order[i], order[j]] = [order[j], order[i]];
+    moves.push({ id, before: up ? order[j + 1] : order[j + 1] || "" });
+  });
+  return { order, moves };
+}
+// Shows the new order at once, then sends the moves; renders that arrive
+// meanwhile do not move the rows back (moving > 0).
+function moveRows(dir, ids) {
+  if (qf.sort !== "queue:1") { $("qfInfo").textContent = "Moving works in the queue order: click the sorted heading until its arrow goes, or choose Queue order."; return; }
+  const { order, moves } = planMoves(dir, ids);
+  if (!moves.length) return;
+  const box = $("jobs"), rows = movableRows(), groups = {};
+  rows.forEach(r => { const g = [r]; let x = r.nextElementSibling; while (x && x.classList.contains("nested")) { g.push(x); x = x.nextElementSibling; } groups[r._v.id] = g; });
+  const end = rows[rows.length - 1] ? groups[rows[rows.length - 1]._v.id].slice(-1)[0].nextElementSibling : null;
+  keepFocus(() => order.forEach(id => groups[id].forEach(x => box.insertBefore(x, end))));
+  const f = document.activeElement && document.activeElement.closest && document.activeElement.closest("#jobs .job");
+  if (f) f.scrollIntoView({ block: "nearest" });
+  moving++;
+  moveChain = moveChain.then(() => post("/api/jobs/bulk", { action: "move", moves })).then(r => { if (r.errors && r.errors.length) alert("Not moved: " + r.errors.join(" · ")); })
+    .catch(e => alert(e.message)).finally(() => { if (!--moving && latest) renderJobs(latest.jobs || []); });
+}
+document.addEventListener("keydown", e => {
+  if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown") || document.querySelector("dialog[open]") || e.target.closest("input, select, textarea, [contenteditable]")) return;
+  const row = e.target.closest("#jobs .job");
+  const ids = row && !picked.has(row._v.id) ? (row.dataset.mv === "1" ? [row._v.id] : []) : [...picked];
+  if (!ids.length) return;
+  e.preventDefault(); moveRows(e.key === "ArrowUp" ? "up" : "down", ids);
+});
+const bulk = (action, ids) => post("/api/jobs/bulk", { action, ids }).then(r => { if (r.errors && r.errors.length) alert((r.done ? r.done + " done. " : "") + "Not done: " + r.errors.join(" · ")); }).catch(e => alert(e.message));
+const pickedViews = f => [...picked].map(id => cards[id] && cards[id]._v).filter(v => v && f(v));
+$("pkPause").onclick = () => bulk("pause", pickedViews(v => ["running", "waiting", "queued"].includes(v.state)).map(v => v.id));
+$("pkResume").onclick = () => bulk("resume", pickedViews(v => v.state === "paused" && !v.space).map(v => v.id));
+$("pkClear").onclick = () => { picked.clear(); drawPicked(); };
+["Top", "Up", "Down", "End"].forEach(k => $("pk" + k).onclick = () => moveRows(k.toLowerCase(), [...picked]));
+// Stop the chosen jobs: asked twice, with counts only, as for one job. The
+// running job is stopped last, so the next one does not start in between.
+$("pkStop").onclick = async () => {
+  const vs = pickedViews(v => v.state !== "finished" && v.state !== "stopped");
+  if (!vs.length) return;
+  const add = f => vs.reduce((a, v) => a + (f(v) || 0), 0), what = vs.length === 1 ? "this job" : "these " + vs.length + " jobs";
+  const proven = add(v => v.verified + v.identical), unchecked = add(v => v.copied), notYet = add(v => Math.max(0, v.files - v.verified - v.identical - v.failed - (v.copied || 0)));
+  const fresh = vs.filter(v => !v.files).length, verifies = vs.filter(v => v.verify_job && !picked.has(v.verify_job)).length, running = vs.some(v => v.state === "running");
+  const text = [proven + " files (" + size(add(v => v.bytes_proven)) + ") are copied and verified and will stay.",
+    unchecked ? unchecked + " copied files not yet checked stay, marked not verified." : "",
+    notYet ? notYet + " files have not been copied yet." : "", fresh ? fresh + (fresh === 1 ? " job has" : " jobs have") + " not started." : "",
+    running ? "The file being copied now is discarded." : "", verifies ? "Their Verify items (" + verifies + ") are stopped too." : ""].filter(Boolean).join(" ");
+  if (!await confirmBox("Stop " + what + "?", text, "Stop " + (vs.length === 1 ? "it" : vs.length))) return;
+  if (!await confirmBox("Really stop " + what + "?", "A stopped job cannot be resumed; you can start a new one, which skips files already there after comparing them.", "Yes, stop")) return;
+  const ids = vs.filter(v => v.state !== "running").map(v => v.id).concat(vs.filter(v => v.state === "running").map(v => v.id));
+  bulk("stop", ids).then(() => { picked.clear(); drawPicked(); });
+};
 // On set (v0.2.85): the same copies seen as camera cards. One tile per
 // source folder, with one chip per destination drive. A card is Safe once
 // SAFE_COPIES of its copies are read back and match, and Verified once the

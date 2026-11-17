@@ -152,6 +152,7 @@ func (s *Server) HTTP() *http.Server {
 	mux.HandleFunc("POST /api/quit", s.always(s.quit))
 	mux.HandleFunc("GET /api/update/history", s.history)
 	mux.HandleFunc("POST /api/update/{action}", s.always(s.updateAction))
+	mux.HandleFunc("POST /api/jobs/bulk", s.command(s.bulkAction))
 	mux.HandleFunc("POST /api/jobs/{id}/{action}", s.command(s.jobAction))
 	return &http.Server{
 		Handler:           localOnly(mux),

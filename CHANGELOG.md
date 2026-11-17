@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.94 — 17 November 2026
+
+- **Select several jobs in the queue.** ⇧-click selects every row from the last one clicked to this one; ⌘-click adds or removes one row. A bar above the queue then pauses, resumes or stops them all, or moves them: up or down one place, to the top or to the end. Esc or Clear ends the selection. Stop asks twice, with counts only, as for one job.
+- **⌥↑ / ⌥↓ work every time.** Pressing them again right after a move did nothing, because the row lost the keyboard focus when the list redrew and a quick second press used the old order. The row now keeps its focus, the new order shows at once, and the moves are sent in turn. With rows selected, ⌥↑ / ⌥↓ move them all.
+- Add link no longer refuses a long paste: a batch of signed Frame.io links (over a kilobyte each) was larger than any request was allowed to be.
+- A stopped download keeps its name in the history instead of "Download".
+
 ## 0.2.93 — 17 November 2026
 
 - **Several links are one download.** Pasting a Frame.io folder's links (or any several links) now adds one job to the queue instead of one per file. Before adding, Add link shows the files as the folders they will go into inside the chosen folder. The job downloads them one after another in that order, each checked for size, read back and hashed before it gets its name, exactly as before.

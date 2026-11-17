@@ -325,6 +325,11 @@ func baseView(j *Job) (View, state, live) {
 	}
 	if st.Spec.isLink() && st.Choice != "stopped" {
 		linkView(&v, st, l)
+	} else if st.Spec.isLink() && st.Spec.Link != nil { // a stopped download keeps its name in the history
+		v.LinkName = st.Spec.Link.Name
+		if len(st.Spec.Items) > 0 {
+			v.LinkName = st.Spec.LinkName
+		}
 	}
 	return v, st, l
 }

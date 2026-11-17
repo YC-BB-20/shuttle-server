@@ -41,7 +41,11 @@ func (s *Server) guarded(h func(http.ResponseWriter, *http.Request) (any, error)
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "Shuttle Server is in safe mode; nothing runs."})
 			return
 		}
-		r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+		limit := int64(64 << 10)
+		if strings.HasPrefix(r.URL.Path, "/api/links/") {
+			limit = 2 << 20 // up to 200 pasted links; signed Frame.io links are over 1 KB each
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, limit)
 		out, err := h(w, r)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -406,4 +410,72 @@ func ext2name(id string) string {
 		}
 		return -1
 	}, id)
+}
+
+// maxBulk bounds how many jobs one bulk request acts on.
+const maxBulk = 500
+
+// bulkAction pauses, resumes, stops or moves several jobs at once (v0.2.94,
+// the queue's selection): POST /api/jobs/bulk {"action": "stop", "ids":
+// [...]}, or {"action": "move", "moves": [{"id": …, "before": …}, …]}, each
+// move as POST /api/jobs/{id}/move, done in turn ("before" empty: the end).
+// The jobs are handled in the order given (the page puts the running one
+// last, so the next one does not start in between). One that cannot be
+// handled does not stop the others; the answer says how many were done and
+// why the rest were not.
+func (s *Server) bulkAction(w http.ResponseWriter, r *http.Request) (any, error) {
+	var b struct {
+		Action string   `json:"action"`
+		IDs    []string `json:"ids"`
+		Moves  []struct {
+			ID     string `json:"id"`
+			Before string `json:"before"`
+		} `json:"moves"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&b); err != nil {
+		return nil, errors.New("could not read the request")
+	}
+	if b.Action == "move" {
+		if len(b.Moves) == 0 {
+			return nil, errors.New("nothing is selected")
+		}
+		if len(b.Moves) > maxBulk {
+			return nil, fmt.Errorf("select at most %d at a time", maxBulk)
+		}
+		done, errs := 0, []string{}
+		for _, mv := range b.Moves {
+			if err := s.Jobs.Move(mv.ID, mv.Before); err != nil {
+				errs = append(errs, err.Error())
+				continue
+			}
+			done++
+		}
+		return map[string]any{"ok": len(errs) == 0, "done": done, "errors": errs}, nil
+	}
+	var do func(string) error
+	switch b.Action {
+	case "pause":
+		do = s.Jobs.Pause
+	case "resume":
+		do = s.Jobs.Resume
+	case "stop":
+		do = s.Jobs.Stop
+	default:
+		return nil, errors.New("unknown action")
+	}
+	if len(b.IDs) == 0 {
+		return nil, errors.New("nothing is selected")
+	}
+	if len(b.IDs) > maxBulk {
+		return nil, fmt.Errorf("select at most %d at a time", maxBulk)
+	}
+	done, errs := 0, []string{}
+	for _, id := range b.IDs {
+		if err := do(id); err != nil {
+			errs = append(errs, err.Error())
+			continue
+		}
+		done++
+	}
+	return map[string]any{"ok": len(errs) == 0, "done": done, "errors": errs}, nil
 }

@@ -2,7 +2,9 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/YC-BB-20/shuttle-server/internal/copyjob"
 	"github.com/YC-BB-20/shuttle-server/internal/events"
 	"github.com/YC-BB-20/shuttle-server/internal/location"
 )
@@ -286,4 +289,88 @@ func TestCopySizeOneAtATime(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("never finished")
+}
+
+// fakeJobs records what the bulk endpoint asks of the job manager.
+type fakeJobs struct {
+	Actions
+	did []string
+}
+
+func (f *fakeJobs) Pause(id string) error  { f.did = append(f.did, "pause "+id); return nil }
+func (f *fakeJobs) Resume(id string) error { f.did = append(f.did, "resume "+id); return nil }
+func (f *fakeJobs) Stop(id string) error {
+	if id == "done" {
+		return errors.New("already finished")
+	}
+	f.did = append(f.did, "stop "+id)
+	return nil
+}
+func (f *fakeJobs) Move(id, before string) error {
+	f.did = append(f.did, "move "+id+" before "+before)
+	return nil
+}
+
+// v0.2.94: the queue's selection is paused, resumed, stopped or moved in one
+// request, in the order given; one that fails does not stop the rest.
+func TestBulkActions(t *testing.T) {
+	s, _ := newTest()
+	f := &fakeJobs{}
+	s.Jobs = f
+	h := s.HTTP().Handler
+	do := func(body string) (int, map[string]any) {
+		req := httptest.NewRequest("POST", "/api/jobs/bulk", strings.NewReader(body))
+		req.Host = "localhost:8470"
+		req.Header.Set("X-Shuttle", "1")
+		req.Header.Set("Origin", "http://localhost:8470")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		var out map[string]any
+		json.Unmarshal(rec.Body.Bytes(), &out)
+		return rec.Code, out
+	}
+	code, out := do(`{"action":"stop","ids":["a","done","run"]}`)
+	if code != http.StatusOK || out["done"] != 2.0 || len(out["errors"].([]any)) != 1 {
+		t.Fatalf("stop: %d %v", code, out)
+	}
+	do(`{"action":"pause","ids":["b"]}`)
+	do(`{"action":"resume","ids":["c"]}`)
+	do(`{"action":"move","moves":[{"id":"x","before":"y"},{"id":"z","before":""}]}`)
+	if got := strings.Join(f.did, ", "); got != "stop a, stop run, pause b, resume c, move x before y, move z before " {
+		t.Fatalf("did %q", got)
+	}
+	for _, bad := range []string{`{"action":"delete","ids":["a"]}`, `{"action":"stop","ids":[]}`, `{"action":"move"}`} {
+		if code, _ := do(bad); code != http.StatusBadRequest {
+			t.Errorf("%s: got %d", bad, code)
+		}
+	}
+}
+
+func (f *fakeJobs) LookUpLinks(ctx context.Context, raws []string, password string) []copyjob.LinkInfo {
+	f.did = append(f.did, fmt.Sprintf("look up %d", len(raws)))
+	return nil
+}
+func (f *fakeJobs) AddLinks(ctx context.Context, raws []string, dest string, o copyjob.LinkOpts) (*copyjob.Job, []string, error) {
+	return nil, nil, nil
+}
+
+// Pasting many signed links is more than the usual 64 KB a command may send.
+func TestLinksTakeLongRequests(t *testing.T) {
+	s, _ := newTest()
+	f := &fakeJobs{}
+	s.Jobs = f
+	urls := strings.Repeat("https://example.com/"+strings.Repeat("x", 1400)+" ", 150)
+	b, _ := json.Marshal(map[string]string{"urls": urls})
+	req := httptest.NewRequest("POST", "/api/links/info", strings.NewReader(string(b)))
+	req.Host = "localhost:8470"
+	req.Header.Set("X-Shuttle", "1")
+	req.Header.Set("Origin", "http://localhost:8470")
+	rec := httptest.NewRecorder()
+	s.HTTP().Handler.ServeHTTP(rec, req)
+	if strings.Contains(rec.Body.String(), "could not read the request") {
+		t.Fatalf("%d links refused as too long: %s", 150, rec.Body.String()[:min(200, rec.Body.Len())])
+	}
+	if len(f.did) != 1 || f.did[0] != "look up 150" {
+		t.Fatalf("links not looked up: %v %d", f.did, rec.Code)
+	}
 }

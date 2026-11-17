@@ -524,7 +524,7 @@ func TestPageTableRowsAndDetailsPanel(t *testing.T) {
 	for _, want := range []string{
 		`<aside class="insp" id="insp" aria-label="Details">`, `function selectJob(id, keepOpen)`, `function stateShort(v, problems, pc, ver, scanning)`,
 		`class="hn" data-sort="name">Name</button>`, `c._d = c.querySelector(".detail");`, `c._d.querySelector(sel.replace(`, `c._d.insertBefore(box, c._d.querySelector(".tail"))`,
-		`place($("jobs"), withVerifies(qShow), 1);`, `.jobs { --acts:170px; } .hist { --acts:34px; }`, `e.key !== "Escape"`,
+		`const qCards = withVerifies(qShow);`, `.jobs { --acts:170px; } .hist { --acts:34px; }`, `e.key !== "Escape"`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
@@ -639,5 +639,24 @@ func TestPageLinkGroupAndSortHeads(t *testing.T) {
 	}
 	if strings.Contains(s, `<div class="jh" aria-hidden="true">`) {
 		t.Error("the column headings are still hidden from use")
+	}
+}
+
+// v0.2.94: ⇧-click and ⌘-click select queue rows; the bar pauses, resumes,
+// stops (asked twice) or moves them; ⌥↑ / ⌥↓ keep the row's focus.
+func TestPageSelectAndBatchMove(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`id="pickBar"`, `id="pkStop"`, `id="pkUp"`, `id="pkDown"`, `id="pkTop"`, `id="pkEnd"`, `function pickRow(c, e)`, `function drawPicked()`,
+		`if ((e.shiftKey || e.metaKey || e.ctrlKey) && c.parentNode === $("jobs")) { pickRow(c, e); return; }`,
+		`function planMoves(dir, ids)`, `function moveRows(dir, ids)`, `post("/api/jobs/bulk", { action: "move", moves })`, `post("/api/jobs/bulk", { action, ids })`,
+		`function keepFocus(fn)`, `if (!moving) place($("jobs"), qCards, 1);`, `"Really stop " + what + "?"`, `if (picked.size) { picked.clear(); drawPicked(); return; }`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	if strings.Contains(s, `c.dataset.mv !== "1" || e.target !== c) return;`) {
+		t.Error("⌥↑ still works only while the row itself has the focus")
 	}
 }
