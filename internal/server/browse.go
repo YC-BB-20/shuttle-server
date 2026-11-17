@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/YC-BB-20/shuttle-server/internal/copyjob"
 	"github.com/YC-BB-20/shuttle-server/internal/diskio"
 )
 
@@ -19,6 +20,8 @@ type Folder struct {
 	Path string `json:"path"`
 	File bool   `json:"file,omitempty"`
 	Size int64  `json:"size,omitempty"`
+	// Mtime: when it last changed, for the file browser (v0.2.89).
+	Mtime time.Time `json:"mtime,omitzero"`
 }
 
 // Place is one button in the picker's top row: Home, the computer's own
@@ -213,13 +216,17 @@ func (s *Server) browse(w http.ResponseWriter, r *http.Request) {
 		fp := filepath.Join(p, e.Name())
 		switch {
 		case e.IsDir() || (e.Type()&os.ModeSymlink != 0 && isDir(fp)):
-			dirs = append(dirs, Folder{Name: e.Name(), Path: fp})
-		case withFiles && e.Type().IsRegular():
-			var n int64
+			f := Folder{Name: e.Name(), Path: fp}
 			if fi, err := e.Info(); err == nil {
-				n = fi.Size()
+				f.Mtime = fi.ModTime()
 			}
-			files = append(files, Folder{Name: e.Name(), Path: fp, File: true, Size: n})
+			dirs = append(dirs, f)
+		case withFiles && e.Type().IsRegular():
+			f := Folder{Name: e.Name(), Path: fp, File: true}
+			if fi, err := e.Info(); err == nil {
+				f.Size, f.Mtime = fi.Size(), fi.ModTime()
+			}
+			files = append(files, f)
 		}
 	}
 	byName := func(l []Folder) {
@@ -231,4 +238,16 @@ func (s *Server) browse(w http.ResponseWriter, r *http.Request) {
 		out["folders"] = all
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// copies says, for a folder, which copies Shuttle made of its files and how
+// each file stands in each (GET /api/copies?path=…, v0.2.89). Read only.
+func (s *Server) copies(w http.ResponseWriter, r *http.Request) {
+	c, ok := s.Jobs.(copiesFinder)
+	p := filepath.Clean(r.URL.Query().Get("path"))
+	if !ok || !filepath.IsAbs(p) {
+		writeJSON(w, http.StatusOK, copyjob.Copies{Places: []copyjob.CopyPlace{}, Files: map[string]copyjob.CopyFile{}, Folders: map[string]copyjob.CopyFolder{}})
+		return
+	}
+	writeJSON(w, http.StatusOK, c.CopiesOf(p))
 }

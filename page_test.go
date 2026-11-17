@@ -564,3 +564,16 @@ func TestPageOffloadSeveralDrivesCardPanelWall(t *testing.T) {
 		}
 	}
 }
+
+// v0.2.89: the Files section.
+func TestPageFiles(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`id="tabFilesBtn"`, `id="tabFiles"`, `fetch("/api/copies?path="`, `function fbDraw(p)`, `function fbTray()`, `async function fbCopy(onlyMissing)`,
+		`"Copy only what is missing · "`, `data-s="missing"`, `id="fbTwo"`, `function fbOpenFile(p, f)`, `"Read this file again"`, `Copy to another place…</button>`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}

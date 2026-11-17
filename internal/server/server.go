@@ -66,6 +66,12 @@ type sourceChecker interface {
 	AddedList(id string, from, limit int) ([]copyjob.AddedFile, int, error)
 }
 
+// copiesFinder is an Actions that can say, for a folder, which copies hold
+// its files (the file browser, v0.2.89).
+type copiesFinder interface {
+	CopiesOf(dir string) copyjob.Copies
+}
+
 // exporter is an Actions that can write a copy's hash list (v0.2.80).
 type exporter interface {
 	Export(w io.Writer, id, format, algo string, paths []string) (int, int, error)
@@ -104,6 +110,7 @@ func (s *Server) HTTP() *http.Server {
 	mux.HandleFunc("GET /api/about", s.json(s.About))
 	mux.HandleFunc("GET /api/events", s.events)
 	mux.HandleFunc("GET /api/browse", s.browse)
+	mux.HandleFunc("GET /api/copies", s.copies)
 	mux.HandleFunc("POST /api/mkdir", s.always(s.mkdir))
 	mux.HandleFunc("GET /api/storage", s.storageList)
 	mux.HandleFunc("GET /api/size", s.copySize)

@@ -549,6 +549,49 @@ body.wall .ocard .nm { font-size:64px; } body.wall .ocard .vw { font-size:34px; 
 body.wall .ocard .vi { width:72px; height:72px; } body.wall .ocard .vd { padding:26px 28px; flex-basis:520px; }
 body.wall .dchip .dn { font-size:16px; } body.wall .dchip .ds { font-size:22px; } body.wall .dchip .bar { height:10px; }
 body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .ocard .vw { font-size:22px; }
+
+/* v0.2.89: Files. */
+.fb { display:flex; flex-direction:column; gap:12px; min-height:calc(100vh - 160px); }
+.fbhead { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; }
+.fbhead input { width:200px; padding:6px 10px; } .fbhead #fbTwo { margin-left:auto; }
+.fbpanes { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; } .fbpanes.two { grid-template-columns:repeat(2, minmax(0,1fr)); }
+.fbpane { min-width:0; background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; display:flex; flex-direction:column; }
+.fbpane.act { border-color:var(--sel); }
+.fbph { padding:10px 14px; border-bottom:1px solid var(--line); display:flex; flex-direction:column; gap:8px; }
+.fbpl { display:flex; gap:6px; overflow-x:auto; } .fbpl button { white-space:nowrap; font-size:12px; padding:3px 10px; border-radius:999px; background:transparent; color:var(--mute); }
+.fbpl button.here { background:#2c2540; color:#e2d8fd; border-color:#4a3c78; }
+.fcrumbs { display:flex; flex-wrap:wrap; align-items:center; gap:4px; font-size:15px; }
+.fcrumbs button { border:0; background:transparent; padding:2px 4px; color:#c9b8fa; font-weight:500; } .fcrumbs span { color:#8f909b; } .fcrumbs b { font-weight:600; overflow-wrap:anywhere; }
+.fbt { overflow-x:auto; }
+.fbr { display:grid; grid-template-columns:22px minmax(0,1fr) 84px 150px minmax(170px,240px); gap:12px; align-items:center; padding:7px 14px; border-bottom:1px solid #1f1f24; min-width:560px; }
+.fbr.on { background:#1f1b2e; } .fbr.foc { box-shadow:inset 3px 0 0 var(--sel); background:#241f35; }
+.fbhd { font-size:12px; font-weight:600; color:var(--mute); border-bottom:1px solid var(--line); }
+.fbr .r { text-align:right; } .fbr .mute { font-size:13px; }
+.fbr input { width:16px; height:16px; margin:0; }
+.fbn { border:0; background:transparent; padding:2px 0; text-align:left; font-weight:500; min-width:0; overflow-wrap:anywhere; display:flex; align-items:center; gap:8px; color:var(--fg); }
+.fbn::before { content:""; flex:none; width:12px; height:15px; border:1.5px solid #8f909b; border-radius:2px; box-sizing:border-box; margin:0 2px; }
+.fbn.dir::before { width:16px; height:12px; border:0; border-radius:3px; background:#8e63ea; margin:0; } .fbn.dir { font-weight:600; }
+.fbn:hover { color:#e2d8fd; }
+.fbc { display:flex; align-items:center; gap:5px; flex-wrap:wrap; } .fbc small { margin-left:4px; font-size:12px; } .fbc small.ok { color:var(--ok); font-weight:600; } .fbc small.warn { color:var(--warn); font-weight:600; }
+.pc { display:inline-flex; align-items:center; justify-content:center; min-width:26px; height:20px; padding:0 4px; box-sizing:border-box; border-radius:5px; font-size:11px; font-weight:700; }
+.pc.full { background:#c9b8fa; color:#1d1533; } .pc.half { background:#3b3156; color:#e2d8fd; } .pc.none { border:1.5px dashed #6b6c78; color:var(--mute); } .pc.bad { background:#3a1717; color:var(--bad); border:1px solid var(--bad); }
+.fbtray { position:sticky; bottom:44px; z-index:3; display:flex; flex-wrap:wrap; align-items:center; gap:12px 20px; padding:14px 16px; background:var(--card); border:1px solid var(--line2); border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.45); }
+.fbsel { flex:1 1 360px; min-width:0; display:flex; flex-direction:column; gap:8px; }
+.fbplaces { display:flex; flex-wrap:wrap; gap:8px; }
+.fbd { display:flex; align-items:center; gap:8px; margin:0; padding:6px 10px; border:1px solid var(--line2); border-radius:8px; background:var(--raise); font-weight:400; }
+.fbd span { display:flex; flex-direction:column; line-height:1.25; } .fbd small { font-size:12px; }
+.fbbtns { display:flex; flex-wrap:wrap; gap:8px; } .fbbtns button { height:38px; padding:0 14px; }
+#fbMsg { flex:1 1 100%; margin:0; } #fbMsg:empty { display:none; }
+.fpanel { display:flex; flex-direction:column; gap:4px; }
+.floc { padding:10px 0; border-bottom:1px solid #26262c; display:flex; flex-direction:column; gap:3px; }
+.floc .fh { display:flex; justify-content:space-between; gap:8px; } .floc .fh .ok { color:var(--ok); font-weight:600; } .floc .fh .warn { color:var(--warn); font-weight:600; } .floc .fh .bad { color:var(--bad); font-weight:600; }
+.floc .path { font-size:12px; color:var(--mute); } .floc button { align-self:flex-start; font-size:12px; padding:3px 10px; margin-top:4px; }
+.fhash { margin-top:12px; display:flex; flex-direction:column; gap:8px; } .fhash h4 { margin:0; font-size:12px; color:var(--mute); }
+.hrowc { display:flex; gap:8px; align-items:center; } .hrowc code { flex:1; min-width:0; font:12px ui-monospace, Menlo, monospace; padding:8px 10px; background:var(--bg); border:1px solid var(--line); border-radius:7px; overflow-wrap:anywhere; }
+.fhash .btns { display:flex; flex-wrap:wrap; gap:8px; }
+.fbpanes.two .fbr { grid-template-columns:22px minmax(140px,1fr) 76px minmax(120px,190px); min-width:0; }
+.fbpanes.two .fbr > :nth-child(4) { display:none; }
+@container (max-width:700px) { .fbpanes.two { grid-template-columns:minmax(0,1fr); } }
 </style>
 </head>
 <body>
@@ -561,7 +604,7 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
   <button class="primary" type="button" id="newBtn">New copy</button>
 </header>
 <div class="shell">
-<div class="side"><nav class="tabs" role="tablist" aria-label="Sections"><button type="button" role="tab" id="tabStatusBtn" aria-selected="true">Queue</button><button type="button" role="tab" id="tabStorageBtn" aria-selected="false">Disks</button><button type="button" role="tab" id="tabSettingsBtn" aria-selected="false">Settings</button></nav>
+<div class="side"><nav class="tabs" role="tablist" aria-label="Sections"><button type="button" role="tab" id="tabStatusBtn" aria-selected="true">Queue</button><button type="button" role="tab" id="tabFilesBtn" aria-selected="false">Files</button><button type="button" role="tab" id="tabStorageBtn" aria-selected="false">Disks</button><button type="button" role="tab" id="tabSettingsBtn" aria-selected="false">Settings</button></nav>
 <section class="sdisks" aria-label="Disks"><h3>Disks</h3><div id="sideDisks"></div></section><button id="aboutBtn" type="button">About</button></div>
 <main>
   <div class="banner" id="safe" hidden><b>Safe mode.</b> <span id="safeReason"></span>
@@ -598,6 +641,20 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
   <p class="mute" id="noDoneF" hidden>No finished or stopped copies match the filters.</p>
   <div class="hist" id="done"><div class="jh" aria-hidden="true"><span class="hn">Name</span><span class="hk">Kind</span><span class="hz">Size</span><span class="hb">Written · proven</span><span class="hs">State</span></div></div>
   <p><button type="button" id="moreHist" hidden>Show older copies</button></p>
+  </div>
+  <div id="tabFiles" class="fb" hidden>
+    <div class="fbhead">
+      <h1 class="vh">Files</h1>
+      <label for="fbFilter" class="vh">Filter by name</label><input type="text" id="fbFilter" placeholder="Filter by name" autocomplete="off">
+      <div class="seg" id="fbShow" role="group" aria-label="Show"><button type="button" data-s="all" aria-pressed="true">All</button><button type="button" data-s="missing" aria-pressed="false">Missing on a chosen drive</button></div>
+      <button type="button" id="fbTwo" aria-pressed="false">Two panes</button>
+    </div>
+    <div class="fbpanes" id="fbPanes"></div>
+    <footer class="fbtray" id="fbTray" hidden>
+      <div class="fbsel"><span id="fbSelText"></span><div class="fbplaces" id="fbDests"></div></div>
+      <div class="fbbtns"><button type="button" id="fbOther">Copy to another place…</button><button type="button" id="fbAll"></button><button type="button" class="primary" id="fbMissing"></button></div>
+      <p class="mute" id="fbMsg"></p>
+    </footer>
   </div>
   <div id="tabStorage" hidden>
     <div class="jobs-head"><h2>Storage</h2><div class="row"><button type="button" id="stoRefresh">Refresh</button></div></div>
@@ -856,10 +913,13 @@ function render() {
   if (s.update) renderUpdate(s.update, s);
 }
 function showTab(name) {
-  const settings = name === "settings", sto = name === "storage";
-  $("tabStatus").hidden = settings || sto; $("tabSettings").hidden = !settings; $("tabStorage").hidden = !sto;
-  $("tabStatusBtn").setAttribute("aria-selected", !settings && !sto); $("tabSettingsBtn").setAttribute("aria-selected", settings); $("tabStorageBtn").setAttribute("aria-selected", sto);
-  const h = settings || sto ? "#" + name : "";
+  const settings = name === "settings", sto = name === "storage", files = name === "files";
+  $("tabStatus").hidden = settings || sto || files; $("tabSettings").hidden = !settings; $("tabStorage").hidden = !sto; $("tabFiles").hidden = !files;
+  $("tabStatusBtn").setAttribute("aria-selected", !settings && !sto && !files); $("tabSettingsBtn").setAttribute("aria-selected", settings); $("tabStorageBtn").setAttribute("aria-selected", sto);
+  $("tabFilesBtn").setAttribute("aria-selected", files);
+  document.body.classList.toggle("on-files", files);
+  if (files) fbOpen(); else if (fbSel) fbCloseFile();
+  const h = settings || sto || files ? "#" + name : "";
   if (location.hash !== h) history.replaceState(null, "", h || location.pathname);
   if (sto) loadStorage();
   if (settings && !$("histList").childElementCount) loadHistory();
@@ -867,6 +927,7 @@ function showTab(name) {
 $("tabStatusBtn").onclick = () => showTab("status");
 $("tabSettingsBtn").onclick = () => showTab("settings");
 $("tabStorageBtn").onclick = () => showTab("storage");
+$("tabFilesBtn").onclick = () => showTab("files");
 
 // Storage (v0.2.32): every connected disk, how it is connected, how full,
 // what Shuttle is doing with it, and buttons to copy from or to it.
@@ -988,7 +1049,7 @@ function diskCard(d) {
   c.append(btns);
   return c;
 }
-showTab(location.hash === "#settings" ? "settings" : location.hash === "#storage" ? "storage" : "status");
+setTimeout(() => showTab(location.hash === "#settings" ? "settings" : location.hash === "#storage" ? "storage" : location.hash === "#files" ? "files" : "status"));
 setTimeout(() => { setLayout(onLay); setStyle(viewStyle); });
 
 function loadHistory() {
@@ -1648,6 +1709,7 @@ function fillOverview(v, q, o) {
 let selId = "";
 function selectJob(id, keepOpen) {
   if (selCard) { selCard = ""; $("inspTabs").hidden = false; }
+  if (fbSel) { fbSel = null; $("inspTabs").hidden = false; fbPanes.forEach(fbDraw); }
   const prev = selId && cards[selId];
   if (prev && keepOpen && selId === id) return;
   if (prev) { prev.classList.remove("open"); if (fv[selId]) toggleFiles(prev._v, prev); prev.append(prev._d); }
@@ -1657,10 +1719,10 @@ function selectJob(id, keepOpen) {
   if (c) { c.classList.add("open"); c._pn = -1; $("inspBody").replaceChildren(c._d); $("insp").scrollTop = 0; card(c._v); setInspTab(inspTab); }
   else $("inspBody").replaceChildren();
 }
-$("inspClose").onclick = () => { if (selId) selectJob(selId); else if (selCard) closeCard(); };
+$("inspClose").onclick = () => { if (selId) selectJob(selId); else if (selCard) closeCard(); else if (fbSel) fbCloseFile(); };
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape" || document.querySelector("dialog[open]")) return;
-  if (document.body.classList.contains("wall")) setWall(false); else if (selId) selectJob(selId); else if (selCard) closeCard();
+  if (document.body.classList.contains("wall")) setWall(false); else if (selId) selectJob(selId); else if (selCard) closeCard(); else if (fbSel) fbCloseFile();
 });
 const problemShort = v => [v.failed && v.failed + " failed", v.gone && v.gone + " deleted", v.changed && v.changed + " changed",
   v.added && v.added + " added", v.s2_warnings && v.s2_warnings + " source warnings"].filter(Boolean).join(" · ");
@@ -2425,7 +2487,8 @@ function drawSideDisks() {
   const jobs = ((latest && latest.jobs) || []).filter(v => v.state === "running" && v.phase !== "scan");
   const inside = (p, d) => p === d || (p || "").startsWith(d.replace(/\/$/, "") + "/");
   const rows = sideDisks.filter(d => !d.note && d.kind !== "server").map(d => {
-    const a = el("a", "sd"); a.href = "#storage"; a.onclick = e => { e.preventDefault(); showTab("storage"); };
+    const a = el("a", "sd"); a.href = "#storage"; a.title = d.path;
+    a.onclick = e => { e.preventDefault(); if (!$("tabFiles").hidden && fbPanes[fbActive]) fbLoad(fbPanes[fbActive], d.path); else showTab("storage"); };
     let act = "", cls = "mute";
     const j = jobs.find(v => (d.kind !== "internal" || d.path !== "/") && (inside(v.source, d.path) || inside(v.dest, d.path)));
     if (j) { const src = inside(j.source, d.path); const r = src ? j.source_rate : j.dest_rate; act = (src ? "Reading" : isCheckStage(j.stage) || j.kind === "verify" ? "Reading back" : "Writing") + (r ? " " + rate(r) : ""); cls = ""; }
@@ -2447,6 +2510,7 @@ function cmdAll() {
     ["New copy", "Start a copy", () => $("newBtn").onclick()],
     ["Queue", "Show the queue", () => { setStyle("general"); showTab("status"); }],
     ["On set: cards", "Show the copies as camera cards", () => { setStyle("onset"); showTab("status"); }],
+    ["Files", "Browse disks and see each file's proven copies", () => showTab("files")],
     ["Disks", "Every connected disk, speeds and tests", () => showTab("storage")],
     ["Settings", "Hash, folder layout, start at login, updates", () => showTab("settings")],
     ["System", "Memory, buffers, processor, open files", () => $("sysBtn").onclick()],
@@ -2478,6 +2542,204 @@ $("cmdIn").onkeydown = e => {
 };
 $("cmdDlg").onclick = e => { if (e.target === $("cmdDlg")) $("cmdDlg").close(); };
 document.addEventListener("keydown", e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k" && !document.querySelector("dialog[open]")) { e.preventDefault(); openCmd(); } });
+// Files (v0.2.89): browse any disk and see, for every file and folder, which
+// drives hold a proven copy of it. Tick files, tick drives, and copy only
+// what each drive is missing. One pane by default; two panes on request.
+// Nothing here writes anything except a copy you start.
+let fbPanes = [], fbActive = 0, fbShowMode = "all", fbSel = null, fbDestOff = new Set();
+const fbDone = st => ["strong", "proven", "already", "already2"].includes(st);
+const fbBad = st => ["failed", "warning"].includes(st);
+const fbShort = disk => { const m = /^(.)[^0-9]*([0-9]*)/.exec(disk || "?"); return (m[1] + m[2]).toUpperCase(); };
+function fbPane(i) {
+  const box = el("section", "fbpane"), head = el("div", "fbph"), places = el("div", "fbpl"), crumbs = el("nav", "fcrumbs"), tbl = el("div", "fbt");
+  crumbs.setAttribute("aria-label", "Where you are"); head.append(places, crumbs); box.append(head, tbl);
+  const p = { i, box, places, crumbs, tbl, path: pref("shuttle.fb" + i, ""), data: null, copies: null, sel: new Set(), seq: 0 };
+  box.onpointerdown = () => { if (fbActive !== i) { fbActive = i; fbMark(); fbTray(); } };
+  return p;
+}
+function fbOpen() {
+  if (!fbPanes.length) { fbPanes = [fbPane(0)]; $("fbPanes").replaceChildren(fbPanes[0].box); }
+  fbPanes.forEach(p => fbLoad(p, p.path, true));
+}
+function fbMark() { fbPanes.forEach(p => p.box.classList.toggle("act", fbPanes.length > 1 && p.i === fbActive)); }
+function fbLoad(p, path, keepSel) {
+  const seq = ++p.seq;
+  fetch("/api/browse?files=1&path=" + encodeURIComponent(path || "")).then(r => r.json()).then(d => {
+    if (seq !== p.seq) return;
+    if (d.path !== p.path || !keepSel) p.sel.clear();
+    p.path = d.path; p.data = d; keep("shuttle.fb" + p.i, d.path);
+    fbDraw(p);
+    return fetch("/api/copies?path=" + encodeURIComponent(d.path)).then(r => r.json()).then(c => { if (seq === p.seq) { p.copies = c; fbDraw(p); fbTray(); } });
+  }).catch(() => { p.tbl.replaceChildren(el("p", "mute", "This folder could not be read.")); });
+}
+function fbChip(st, label, title) {
+  const c = el("span", "pc " + (fbDone(st) ? "full" : fbBad(st) ? "bad" : st ? "half" : "none"), label); c.title = title; return c;
+}
+function fbStatusWord(st) { return fbDone(st) ? (st === "strong" || st === "already2" ? "Verified" : "Safe") : fbBad(st) ? "Problem" : st === "working" ? "Copying" : st ? "Not proven yet" : "No copy"; }
+// What each copy says about an entry: a status per place.
+function fbStates(p, f) {
+  const c = p.copies; if (!c || !c.places.length) return [];
+  if (!f.file) { const x = c.folders[f.name]; return c.places.map((pl, k) => !x || !x.files[k] ? "" : x.bad[k] ? "failed" : x.strong[k] >= x.files[k] ? "strong" : x.proven[k] >= x.files[k] ? "proven" : x.proven[k] ? "working" : "waiting"); }
+  const x = c.files[f.name]; return c.places.map((pl, k) => x ? x.status[k] || "" : "");
+}
+const fbDestsOn = p => p.copies ? p.copies.places.filter(pl => pl.dest && !fbDestOff.has(pl.dest)) : [];
+function fbMissing(p, f) { const sts = fbStates(p, f), on = fbDestsOn(p); return !on.length ? !sts.some(fbDone) : p.copies.places.some((pl, k) => pl.dest && !fbDestOff.has(pl.dest) && !fbDone(sts[k])); }
+function fbDraw(p) {
+  const d = p.data; if (!d) return;
+  // Places along the top, then where you are.
+  const pk = JSON.stringify(d.places.map(x => [x.name, x.path]));
+  if (p.places.dataset.k !== pk) { p.places.dataset.k = pk; p.places.replaceChildren(...d.places.map(x => { const b = el("button", "", x.name); b.type = "button"; b.title = x.path; b.onclick = () => fbLoad(p, x.path); return b; })); }
+  p.places.querySelectorAll("button").forEach(b => b.classList.toggle("here", d.path === b.title || d.path.startsWith(b.title + "/") && b.title !== "/"));
+  p.crumbs.replaceChildren(...(d.crumbs || []).flatMap((c, i, a) => { const b = el("button", "", c.name); b.type = "button"; b.onclick = () => fbLoad(p, c.path); return i < a.length - 1 ? [b, el("span", "", "/")] : [el("b", "", c.name)]; }));
+  const words = $("fbFilter").value.toLowerCase().split(/\s+/).filter(Boolean);
+  let list = (d.folders || []).filter(f => words.every(w => f.name.toLowerCase().includes(w)));
+  if (fbShowMode === "missing" && p.copies) list = list.filter(f => fbMissing(p, f));
+  const places = p.copies ? p.copies.places : [];
+  const head = el("div", "fbr fbhd"), all = el("input");
+  all.type = "checkbox"; all.setAttribute("aria-label", "Tick everything shown"); all.checked = list.length > 0 && list.every(f => p.sel.has(f.name));
+  all.onchange = () => { list.forEach(f => all.checked ? p.sel.add(f.name) : p.sel.delete(f.name)); fbDraw(p); fbTray(); };
+  head.append(all, el("span", "", "Name"), el("span", "r", "Size"), el("span", "", "Changed"), el("span", "", places.length ? "Proven copies" : "Copies"));
+  const rows = list.map(f => {
+    const r = el("div", "fbr" + (p.sel.has(f.name) ? " on" : "") + (fbSel && fbSel.path === f.path ? " foc" : "")), ck = el("input");
+    ck.type = "checkbox"; ck.checked = p.sel.has(f.name); ck.setAttribute("aria-label", "Tick " + f.name);
+    ck.onchange = () => { ck.checked ? p.sel.add(f.name) : p.sel.delete(f.name); r.classList.toggle("on", ck.checked); fbTray(); syncAll(); };
+    const nm = el("button", "fbn " + (f.file ? "file" : "dir"), f.name); nm.type = "button";
+    nm.onclick = () => f.file ? fbOpenFile(p, f) : fbLoad(p, f.path);
+    const sts = fbStates(p, f), cp = el("span", "fbc");
+    if (places.length) {
+      sts.forEach((st, k) => cp.append(fbChip(st, fbShort(places[k].disk), places[k].disk + " · " + fbStatusWord(st) + " · " + places[k].dest)));
+      const n = sts.filter(fbDone).length; cp.append(el("small", n === places.length ? "ok" : n ? "" : "warn", n === places.length ? "all " + n : n ? n + " of " + places.length : "none yet"));
+    } else cp.append(el("small", "mute", p.copies ? "never copied by Shuttle" : "…"));
+    const sz = f.file ? size(f.size) : p.copies && p.copies.folders[f.name] ? nf(Math.max(...p.copies.folders[f.name].files)) + " files" : "";
+    r.append(ck, nm, el("span", "r mute", sz), el("span", "mute", f.mtime ? when(f.mtime) : ""), cp);
+    return r;
+  });
+  const syncAll = () => { all.checked = list.length > 0 && list.every(f => p.sel.has(f.name)); };
+  const note = d.error ? [el("p", "mute", d.error)] : !list.length ? [el("p", "mute", fbShowMode === "missing" ? "Nothing here is missing on the chosen drives." : words.length ? "Nothing matches." : "This folder is empty.")] : [];
+  if (d.truncated) note.push(el("p", "mute", "Only the first part of this folder is shown."));
+  p.tbl.replaceChildren(head, ...rows, ...note);
+}
+function fbTray() {
+  const p = fbPanes[fbActive]; if (!p || !p.data) return;
+  const names = [...p.sel], items = (p.data.folders || []).filter(f => p.sel.has(f.name));
+  $("fbTray").hidden = !names.length;
+  if (!names.length) { $("fbMsg").textContent = ""; return; }
+  const bytes = items.reduce((a, f) => a + (f.file ? f.size : 0), 0), dirs = items.filter(f => !f.file).length;
+  $("fbSelText").textContent = names.length + (names.length === 1 ? " item ticked" : " items ticked") + (bytes ? " · " + size(bytes) : "") + (dirs ? " (" + dirs + (dirs === 1 ? " folder" : " folders") + ")" : "") + (fbTargets(p).length ? " · copy to:" : "");
+  const dests = fbTargets(p);
+  $("fbDests").replaceChildren(...dests.map(t => {
+    const lab = el("label", "fbd"), ck = el("input"), tx = el("span", "");
+    ck.type = "checkbox"; ck.checked = !fbDestOff.has(t.dest); ck.onchange = () => { ck.checked ? fbDestOff.delete(t.dest) : fbDestOff.add(t.dest); fbPanes.forEach(fbDraw); fbTray(); };
+    const free = fbFree(t.dest), need = t.k >= 0 ? items.filter(f => !fbDone(fbStates(p, f)[t.k])).reduce((a, f) => a + (f.file ? f.size : 0), 0) : bytes;
+    tx.append(el("b", "", t.label), el("small", "mute", (free != null ? size(Math.max(0, free - need)) + " free after" : "") + (t.k >= 0 ? " · missing " + items.filter(f => !fbDone(fbStates(p, f)[t.k])).length : "")));
+    lab.title = t.dest; lab.append(ck, tx); return lab;
+  }));
+  const on = dests.filter(t => !fbDestOff.has(t.dest));
+  const missing = on.map(t => items.filter(f => t.k < 0 || !fbDone(fbStates(p, f)[t.k])));
+  const nCopies = missing.filter(l => l.length).length, mBytes = missing.reduce((a, l) => a + l.reduce((b, f) => b + (f.file ? f.size : 0), 0), 0);
+  $("fbAll").textContent = "Copy all " + names.length; $("fbAll").hidden = !on.length;
+  $("fbMissing").textContent = nCopies ? "Copy only what is missing · " + nCopies + (nCopies === 1 ? " copy" : " copies") + (mBytes ? " · " + size(mBytes) : "") : "Nothing missing on the chosen drives";
+  $("fbMissing").hidden = !on.length; $("fbMissing").disabled = !nCopies;
+}
+// Where the ticked items can go: each drive that already holds a copy of
+// this folder, and in two panes the other pane's folder.
+function fbTargets(p) {
+  const out = (p.copies ? p.copies.places : []).map((pl, k) => ({ dest: pl.dest, label: pl.disk || base(pl.dest), k })).filter(t => t.dest);
+  const o = fbPanes.find(x => x !== p);
+  if (o && o.data && o.path !== p.path && !out.some(t => t.dest === o.path)) out.push({ dest: o.path, label: "Other pane: " + base(o.path), k: -1 });
+  return out;
+}
+function fbFree(path) {
+  const inside = (x, d) => x === d || x.startsWith(d.replace(/\/$/, "") + "/");
+  const d = sideDisks.filter(d => d.total && inside(path, d.path)).sort((a, b) => b.path.length - a.path.length)[0];
+  return d ? d.free : null;
+}
+async function fbCopy(onlyMissing) {
+  const p = fbPanes[fbActive], items = (p.data.folders || []).filter(f => p.sel.has(f.name));
+  const targets = fbTargets(p).filter(t => !fbDestOff.has(t.dest));
+  let n = 0; const errs = [];
+  for (const t of targets) {
+    const names = items.filter(f => !onlyMissing || t.k < 0 || !fbDone(fbStates(p, f)[t.k])).map(f => f.name);
+    if (!names.length) continue;
+    const body = { source: p.path, dest: t.dest, only: names, s2: "now", hash: "copy" };
+    try {
+      const r = await post("/api/jobs", body);
+      if (r.space) { if (await spaceBox(r.space, false)) { await post("/api/jobs", Object.assign(body, { ignore_space: true })); n++; } }
+      else n++;
+    } catch (e) { errs.push(t.label + ": " + e.message); }
+  }
+  $("fbMsg").textContent = (n ? n + (n === 1 ? " copy" : " copies") + " added to the queue. Each is read back and the source read again." : "") + (errs.length ? " Not added: " + errs.join(" · ") : "");
+  if (n) { p.sel.clear(); setTimeout(() => fbPanes.forEach(x => fbLoad(x, x.path, true)), 1500); }
+}
+$("fbMissing").onclick = () => fbCopy(true);
+$("fbAll").onclick = () => fbCopy(false);
+$("fbOther").onclick = () => {
+  const p = fbPanes[fbActive]; if (!p) return;
+  $("src").value = p.path; $("dst").value = ""; $("moreDst").replaceChildren(); $("newBtn").onclick(); setOnly([...p.sel], p.path);
+};
+$("fbFilter").oninput = () => fbPanes.forEach(fbDraw);
+$("fbShow").querySelectorAll("button").forEach(b => b.onclick = () => {
+  fbShowMode = b.dataset.s; $("fbShow").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); fbPanes.forEach(fbDraw);
+});
+$("fbTwo").onclick = () => {
+  const two = fbPanes.length < 2;
+  if (two) { const q = fbPane(1); fbPanes.push(q); $("fbPanes").append(q.box); fbLoad(q, q.path || fbPanes[0].path); }
+  else { fbPanes.pop().box.remove(); fbActive = 0; }
+  $("fbTwo").setAttribute("aria-pressed", two); $("fbTwo").textContent = two ? "One pane" : "Two panes";
+  $("fbPanes").classList.toggle("two", two); fbMark(); fbTray();
+};
+// ⌘A ticks everything shown in the active pane, ⌘⇧A unticks (not while typing).
+document.addEventListener("keydown", e => {
+  if ($("tabFiles").hidden || !(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "a" || /input|textarea|select/i.test((e.target.tagName || "")) || document.querySelector("dialog[open]")) return;
+  const p = fbPanes[fbActive]; if (!p || !p.data) return;
+  e.preventDefault(); (p.data.folders || []).forEach(f => e.shiftKey ? p.sel.delete(f.name) : p.sel.add(f.name)); fbDraw(p); fbTray();
+});
+// A file's panel: every copy of it, its hash, and its full record.
+function fbOpenFile(p, f) {
+  if (selId) selectJob(selId); if (selCard) closeCard();
+  fbSel = { path: f.path, p, f }; fbPanes.forEach(fbDraw);
+  $("insp").classList.add("on"); $("inspEmpty").hidden = true; $("inspHead").hidden = false; $("inspTabs").hidden = true;
+  $("inspTitle").textContent = f.name; $("inspTitle").title = f.path;
+  $("inspState").textContent = size(f.size) + (f.mtime ? " · changed " + when(f.mtime) : ""); $("inspState").className = "ist";
+  const box = el("div", "fpanel"), c = p.copies, x = c && c.files[f.name];
+  if (!c || !c.places.length || !x) {
+    box.append(el("p", "mute", "Shuttle has not copied this file. Tick it and choose Copy to another place to make copies with proof."));
+  } else {
+    const sts = x.status, twice = sts.some(st => st === "strong" || st === "already2");
+    const orig = el("div", "floc"); orig.append(el("div", "fh", ""), el("p", "path", c.source + "/" + f.name));
+    orig.firstChild.append(el("b", "", "The original"), el("span", twice ? "ok" : "", twice ? "Read twice, the same both times" : sts.some(fbDone) ? "Read once while copying" : "Not read yet"));
+    box.append(orig);
+    c.places.forEach((pl, k) => {
+      const l = el("div", "floc"), h = el("div", "fh"), st = sts[k];
+      h.append(el("b", "", pl.disk || base(pl.dest)), el("span", fbDone(st) ? "ok" : fbBad(st) ? "bad" : st ? "" : "warn", fbStatusWord(st)));
+      l.append(h, el("p", "path", pl.dest + "/" + f.name));
+      if (x.i[k] >= 0) { const more = el("button", "", "Full record…"); more.type = "button"; more.onclick = () => fileInfo(pl.job, x.i[k]); l.append(more); }
+      box.append(l);
+    });
+    const k = x.i.findIndex((i, n) => i >= 0 && fbDone(sts[n]));
+    const hb = el("div", "fhash"); box.append(hb);
+    if (k >= 0) {
+      hb.append(el("p", "mute", "Loading the hash…"));
+      fetch("/api/jobs/" + c.places[k].job + "/files/" + x.i[k]).then(r => r.json()).then(fi => {
+        const h = fi.hash || {}, v = h.d1 || h.c || h.s2 || h.s1 || "";
+        const code = el("code", "", v || "No hash recorded"), cp = el("button", "", "Copy"); cp.type = "button";
+        cp.onclick = () => { try { navigator.clipboard.writeText(v); cp.textContent = "Copied"; } catch (e) {} };
+        const again = el("button", "", "Read this file again"); again.type = "button";
+        again.onclick = () => post("/api/jobs/" + c.places[k].job + "/files/" + x.i[k] + "/recheck", { which: "dest" }).then(() => { again.textContent = "Queued: read again after the copies"; again.disabled = true; }).catch(e => alert(e.message));
+        const exp = el("button", "", "Hash list…"); exp.type = "button";
+        exp.onclick = () => { const v2 = ((latest && latest.jobs) || []).concat(olderViews).find(j => j.id === c.places[k].job); if (v2) openExport(v2); };
+        const row = el("div", "hrowc"); row.append(code, cp);
+        hb.replaceChildren(el("h4", "", (algoName[fi.algo] || "XXH128").split(" and ")[0] + " · the same on every proven copy"), row, el("div", "btns", ""));
+        hb.lastChild.append(again, exp);
+      }).catch(() => hb.replaceChildren(el("p", "mute", "The hash could not be read.")));
+    }
+  }
+  $("inspBody").dataset.k = ""; $("inspBody").replaceChildren(box);
+}
+function fbCloseFile() {
+  fbSel = null; fbPanes.forEach(fbDraw); $("inspTabs").hidden = false;
+  if (!selId && !selCard) { $("insp").classList.remove("on"); $("inspEmpty").hidden = false; $("inspHead").hidden = true; $("inspBody").replaceChildren(); }
+}
 $("moreHist").onclick = () => {
   const skip = ((latest && latest.jobs) || []).filter(v => v.state === "finished" || v.state === "stopped").length + olderViews.length;
   fetch("/api/history?skip=" + skip).then(r => r.json()).then(list => {

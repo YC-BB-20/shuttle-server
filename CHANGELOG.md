@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.89 — 17 November 2026
+
+- **Files:** a new section to browse any disk. Every file and folder shows its **proven copies**, one small mark per drive (filled: read back and matching; half: on its way; dashed: no copy; red: a problem) and "all 3", "2 of 3" or "none yet". It works from the card and from any of the backup drives: either way you see all the copies of that original. A folder holding cards shows each card's copies per drive.
+- **Tick files and drives, then copy only what is missing:** the tray at the bottom lists the drives that already hold this folder, with the space left after; "Copy only what is missing" makes one copy per drive holding just the files that drive lacks, each read back and the source read again. "Copy all" copies everything ticked; "Copy to another place…" opens New copy with the ticked files. ⌘A ticks everything shown.
+- **Missing on a chosen drive** shows only what still needs copying. **Two panes** shows two folders side by side; the other pane's folder is offered as a destination.
+- **Click a file** for its panel: the original and every copy with its state and path, its XXH128 hash with a Copy button, "Read this file again", the hash list, and each copy's full record.
+
 ## 0.2.88 — 17 November 2026
 
 - **Offload a card to several drives in one step.** New copy (called **Offload a card** on set) takes up to four drives: "+ Add another drive" adds a line with its own Choose button. Start makes one copy per drive, each read back and proven against the source; the card's file list is made once and used by all of them. A drive that may not fit asks on its own; drives not added stay in the pop-up with the reason. New copy opens with the last card's drives already filled in.
