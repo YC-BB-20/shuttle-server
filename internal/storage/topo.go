@@ -157,9 +157,6 @@ func pathFromChain(chain []node) Path {
 	case p.Port >= 0:
 		p.Key = "port" + strconv.Itoa(p.Port)
 		p.Bus = "Port " + strconv.Itoa(p.Port) + " · Thunderbolt/USB4 bus " + strconv.Itoa(p.Port)
-		if !p.Thund && len(usbDevs) > 0 {
-			p.Bus += " (its USB controller)"
-		}
 	case ctrl != "":
 		p.Key = "ctrl:" + ctrl
 		p.Bus = "Controller " + ctrl

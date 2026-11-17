@@ -91,7 +91,7 @@ func TestPageVerifyKindsDisksProof(t *testing.T) {
 	for _, want := range []string{
 		`"Source verification"`, `"Destination + source verification"`, `"Destination verification"`,
 		`const diskOf = p =>`, `el("span", "dk", " · " + diskOf(place))`, `[ver && verNow(v), pc,`,
-		`function proofLine(k)`, `v.checks ? " · " + proofLine(v.checks)`,
+		`function proofParts(k)`, `const proofLine = k => proofParts(k).join(" · ");`, `v.checks ? proofParts(v.checks)`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
@@ -459,7 +459,7 @@ func TestPageDecimalSpeedsAndCopyRateInHistory(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
 		`const v = n / 1000 ** i;`, `" " + u[i] + "/s"`,
-		`(!ver && v.copy_rate ? " · copying " + rate(v.copy_rate) : "")`,
+		`!ver && v.copy_rate && "copying " + rate(v.copy_rate)`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
@@ -671,5 +671,35 @@ func TestPageLinkSite(t *testing.T) {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
 		}
+	}
+}
+
+// v0.2.100: the top bar's order, the card above the queue, scrollable
+// filter chips, a finished job's status on separate lines, the Files
+// columns and sort, Eject, and Settings in three pages.
+func TestPageV0_2_100(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`id="newBtn">New copy</button>
+  <button type="button" id="linkBtn">Add link</button>
+  <button type="button" class="cmdk" id="cmdBtn">`,
+		`id="qcard"`, `function renderQcard(active)`, `.qhead .qf::before { content:""; margin-left:auto; }`,
+		`.job.verify.nested::before`, `subCls += " lines";`, `.dsub.lines, .sub.lines { white-space:pre-line; }`,
+		`data-tab="proof">Status</button>`, `["Status", proofScheme(v)]`, `return "Copied, hash generated";`,
+		`const FB_COLS = [["size", "Size", "r"], ["changed", "Changed", ""], ["created", "Created", ""]];`, `const fbSorted = list =>`,
+		`"Backups (" + have.length + ")"`, `el("h4", "fsec", "Source")`, `.shell:has(#tabFiles:not([hidden])) .insp:not(.on) { display:none; }`,
+		`post("/api/disks/eject", { path: d.path })`, `"slowname"`, `function setPage(pg)`, `id="verLog"`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	for _, gone := range []string{`"Proven copies"`, `What this Verify read`, `"stored when the copy was made"`, `"by this Verify"`, `read back by " + (v.verify_next`} {
+		if strings.Contains(s, gone) {
+			t.Errorf("page still has %q", gone)
+		}
+	}
+	if strings.Index(s, `id="styleSw"`) < strings.Index(s, `id="live"`) {
+		t.Error("the General / On set switch is not at the far right of the top bar")
 	}
 }

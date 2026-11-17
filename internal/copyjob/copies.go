@@ -21,6 +21,7 @@ type CopyPlace struct {
 	Created time.Time `json:"created"`
 	Algo    string    `json:"algo"`
 	Partial bool      `json:"partial,omitempty"` // more files than are read for one folder: some are left out
+	Share   string    `json:"share,omitempty"`   // smb or lucidlink when the copy is on a network share or the cloud (v0.2.100)
 }
 
 // CopyFile is one file's state in each place, in the order of Places; Status
@@ -107,7 +108,7 @@ func (m *Manager) CopiesOf(dir string) Copies {
 	for pi, c := range cs {
 		disk, _ := placeOf(c.st.Spec.Dest)
 		state := views[c.st.ID].State
-		out.Places = append(out.Places, CopyPlace{Job: c.st.ID, Dest: filepath.Join(c.st.Spec.Dest, filepath.FromSlash(rel)), Disk: disk, State: state, Created: c.st.Created, Algo: c.st.Spec.Algo})
+		out.Places = append(out.Places, CopyPlace{Job: c.st.ID, Dest: filepath.Join(c.st.Spec.Dest, filepath.FromSlash(rel)), Disk: disk, State: state, Created: c.st.Created, Algo: c.st.Spec.Algo, Share: c.st.Spec.DestShare})
 		n := 0
 		for from := 0; from >= 0 && n < maxCopiesFiles; {
 			page, err := m.FilesIn(c.st.ID, "all", true, rel, from, MaxFilePage)

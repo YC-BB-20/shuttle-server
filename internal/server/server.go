@@ -134,6 +134,7 @@ func (s *Server) HTTP() *http.Server {
 	mux.HandleFunc("POST /api/links/info", s.command(s.linksInfo))
 	mux.HandleFunc("POST /api/links/add", s.command(s.linksAdd))
 	mux.HandleFunc("POST /api/mkdir", s.always(s.mkdir))
+	mux.HandleFunc("POST /api/disks/eject", s.command(s.eject))
 	mux.HandleFunc("GET /api/storage", s.storageList)
 	mux.HandleFunc("GET /api/size", s.copySize)
 	mux.HandleFunc("GET /api/spacecheck", s.spaceCheck)
@@ -200,7 +201,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'")
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:")
 	w.Write(page)
 }
 

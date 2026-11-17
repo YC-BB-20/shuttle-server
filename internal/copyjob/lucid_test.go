@@ -146,3 +146,40 @@ func TestCopyToLucidLinkWithoutClientWaits(t *testing.T) {
 		t.Fatalf("%+v", v)
 	}
 }
+
+// Owner's decision of 17 November 2026: the second read of a LucidLink
+// source (S2) reads LucidLink's cache as it is. LucidLink is never asked,
+// its cache never dropped and nothing downloaded again for it, while a
+// copy to a local disk still reads that disk back.
+func TestLucidLinkSourceSecondReadUsesCache(t *testing.T) {
+	root := t.TempDir()
+	src, dst := filepath.Join(root, "lucid"), filepath.Join(root, "dst")
+	files := makeTree(t, src, 1<<20)
+	m := newManager(t, filepath.Join(root, "state"))
+	fl := &fakeLucid{copies: func() int { return 0 }}
+	m.Lucid, m.LucidMax = fl, 1e9
+	m.shareHook = func(dir string) string {
+		if dir == src {
+			return diskio.ShareLucid
+		}
+		return ""
+	}
+	startRun(t, m)
+	j, err := m.Add(Spec{Source: src, Dest: dst})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j.st.Spec.Lucid || j.st.Spec.SourceShare != diskio.ShareLucid || j.st.Spec.S2 != "now" {
+		t.Fatalf("spec %+v", j.st.Spec)
+	}
+	v := waitState(t, m, j.st.ID, "finished")
+	if v.Strong != len(files) || v.Failed != 0 {
+		t.Fatalf("want every file read a second time and matching: %+v", v)
+	}
+	fl.mu.Lock()
+	defer fl.mu.Unlock()
+	if fl.drops != 0 {
+		t.Fatalf("LucidLink's cache was dropped %d times for a LucidLink source", fl.drops)
+	}
+	checkDest(t, dst, files)
+}

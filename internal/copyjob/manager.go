@@ -38,7 +38,7 @@ type Manager struct {
 	FreeHook func(dst string) uint64 // test hook: free space on dst's disk
 	// formatHook (tests): the format of the disk holding a folder.
 	formatHook func(dir string) destFormat
-	// shareHook (tests): the share kind of a new copy's destination.
+	// shareHook (tests): the share kind of a new copy's source and destination.
 	shareHook func(dir string) string
 	// Secrets is the folder for link downloads' links (secrets/links, 0700).
 	Secrets string
@@ -265,7 +265,7 @@ func (m *Manager) add(s Spec, d *Draft) (*Job, error) {
 		s.Hash = HashDuringCopy // copied now, checked by its own Verify job
 	}
 	if m.shareHook != nil {
-		dv.Share = m.shareHook(dst)
+		sv.Share, dv.Share = m.shareHook(src), m.shareHook(dst)
 	}
 	s.SourceShare, s.DestShare = sv.Share, dv.Share
 	s.Lucid = dv.Share == diskio.ShareLucid

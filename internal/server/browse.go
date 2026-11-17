@@ -22,6 +22,8 @@ type Folder struct {
 	Size int64  `json:"size,omitempty"`
 	// Mtime: when it last changed, for the file browser (v0.2.89).
 	Mtime time.Time `json:"mtime,omitzero"`
+	// Created: when it was made, where the system knows (macOS; v0.2.100).
+	Created time.Time `json:"created,omitzero"`
 }
 
 // Place is one button in the picker's top row: Home, the computer's own
@@ -222,13 +224,13 @@ func (s *Server) browse(w http.ResponseWriter, r *http.Request) {
 		case e.IsDir() || (e.Type()&os.ModeSymlink != 0 && isDir(fp)):
 			f := Folder{Name: e.Name(), Path: fp}
 			if fi, err := e.Info(); err == nil {
-				f.Mtime = fi.ModTime()
+				f.Mtime, f.Created = fi.ModTime(), diskio.Created(fi)
 			}
 			dirs = append(dirs, f)
 		case withFiles && e.Type().IsRegular():
 			f := Folder{Name: e.Name(), Path: fp, File: true}
 			if fi, err := e.Info(); err == nil {
-				f.Size, f.Mtime = fi.Size(), fi.ModTime()
+				f.Size, f.Mtime, f.Created = fi.Size(), fi.ModTime(), diskio.Created(fi)
 			}
 			files = append(files, f)
 		}

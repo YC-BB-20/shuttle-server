@@ -43,6 +43,11 @@
   .sizeline { min-height:2.8em; margin:0 0 6px; font-variant-numeric:tabular-nums; }
   [hidden] { display:none !important; }
   .settings > section { margin-bottom:12px; }
+  /* v0.2.100: Settings in three pages. A section without data-page is a copy setting. */
+  .setnav { margin:0 0 14px; }
+  .settings[data-show="copy"] > [data-page] { display:none; }
+  .settings[data-show="updates"] > :not([data-page="updates"]):not(.setnav), .settings[data-show="versions"] > :not([data-page="versions"]):not(.setnav) { display:none; }
+  .vlog { white-space:pre-wrap; overflow-wrap:anywhere; max-height:60vh; overflow:auto; font-size:13px; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin:0; }
   .sechead { font-size:15px; margin:4px 0 8px; }
   .vers { border:1px solid var(--line); border-radius:8px; max-height:50vh; overflow:auto; margin-top:8px; }
   .vers .v { display:flex; gap:8px; align-items:center; padding:8px 10px; border-bottom:1px solid var(--line); }
@@ -264,7 +269,11 @@
   .filters select { flex:none; font-size:14px; padding:3px 6px; }
   .qf { margin:14px 0 4px; } .job.hid { opacity:.55; } .job.hid .s::after { content:" · hidden"; font-weight:400; color:var(--mute); } .qfinfo { font-size:13px; margin:12px 0 8px; } .qfinfo:empty { display:none; }
   .resources { margin-top:18px; }
-  .disks { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap:12px; }
+  .disks { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; max-width:880px; } /* v0.2.100: one disk under another */
+  .disk h3 .slowname { all:unset; cursor:pointer; color:var(--warn); font-weight:700; overflow-wrap:anywhere; min-width:0; }
+  .disk h3 .slowname::after { content:" ▸"; font-size:11px; } .disk h3 .slowname[aria-expanded=true]::after { content:" ▾"; }
+  .disk .slowbox { display:flex; flex-direction:column; gap:6px; margin:4px 0; } .disk .slowbox[hidden] { display:none; }
+  .sd b.warn { color:var(--warn); }
   .disks > .card { min-width:0; display:flex; flex-direction:column; gap:4px; }
   .disk h3 { margin:0; font-size:16px; display:flex; gap:8px; align-items:baseline; min-width:0; }
   .disk h3 b { overflow-wrap:anywhere; min-width:0; }
@@ -300,7 +309,7 @@ select { padding:5px 8px; }
 .brand { display:flex; align-items:center; gap:10px; font-size:15px; font-weight:600; margin:0; white-space:nowrap; }
 .brand .ver { font-size:12px; }
 .topbar .live { margin-left:auto; }
-.topbar #newBtn { height:34px; padding:0 16px; }
+.topbar #newBtn, .topbar #linkBtn { height:34px; padding:0 16px; }
 .seg { display:inline-grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:2px; padding:3px; background:#0e0e10; border-radius:8px; }
 .seg button { border:0; background:transparent; color:var(--mute); padding:4px 14px; font-size:13px; border-radius:6px; }
 .seg button[aria-pressed=true] { background:var(--line); color:var(--fg); font-weight:600; }
@@ -339,7 +348,9 @@ select { padding:5px 8px; }
 .slow { color:#f7cf7e; background:#3a2d10; border-left-color:var(--warn); }
 .qhead { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; margin:4px 0 8px; }
 .qhead h2 { font-size:18px; font-weight:600; }
-.qhead .qf { flex:1 1 420px; margin:0; justify-content:flex-end; }
+.qhead .qf { flex:1 1 420px; margin:0; justify-content:flex-start; overflow-x:auto; scrollbar-width:thin; }
+/* v0.2.100: chips start after an auto margin, so ones that do not fit can be scrolled to (flex-end hid them off the left edge). */
+.qhead .qf::before { content:""; margin-left:auto; } .qhead .qf > * { flex:none; }
 /* v0.2.91: the three quick views, as designed: one segmented control. */
 .qview { display:inline-flex; border:1px solid var(--line2); border-radius:9px; padding:2px; gap:2px; min-width:0; flex-wrap:wrap; }
 .qview button { border:0; background:transparent; color:var(--mute); padding:4px 11px; border-radius:7px; font-size:13px; font-weight:500; white-space:nowrap; }
@@ -363,7 +374,10 @@ select { padding:5px 8px; }
 .job .ico.ok { background:#173a27; color:var(--ok); } .job .ico.warn { background:#3a2d10; color:var(--warn); }
 .job .ico.bad { background:#3a1717; color:var(--bad); } .job .ico.idle { background:#26262c; color:var(--mute); }
 .job.verify .ico { width:22px; height:22px; font-size:11px; }
-.job.verify.nested { border-left-color:var(--sel); }
+.job.verify.nested { border-left-color:transparent; position:relative; }
+/* v0.2.100: the line of a Verify under its copy runs through the centre of the copy's icon:
+   row padding 14 + grip 14 + gap 12 + half the 28px icon = 54px from the list's edge, less this row's 28px margin, 3px border and half the line. */
+.job.verify.nested::before { content:""; position:absolute; top:0; bottom:0; left:calc(14px + 14px + 12px + 14px - 28px - 3px - 1.5px); width:3px; background:var(--sel); pointer-events:none; }
 .job .bar, .bar { background:var(--line); }
 .job .bar { height:6px; border-radius:3px; }
 .bar.main, .status.monitor .bar.main { height:10px; }
@@ -421,6 +435,23 @@ dialog .head, .foot { border-color:var(--line); }
 .style-onset #tabStatus > :not(#onset) { display:none !important; }
 @media (max-width:760px) { .cards.table .ocard { flex-wrap:wrap; } .cards.table .ocard .vd { flex:1 1 100%; } }
 
+/* v0.2.100: the card above the queue, always shown: how many items, the job running now, and each disk taking part. */
+.qcard { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 18px; margin:4px 0 14px; }
+.qcg { display:grid; grid-template-columns:auto minmax(0,1fr) auto auto auto; gap:6px 28px; align-items:start; }
+.qc { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.qc small { font-size:12px; color:var(--mute); }
+.qc b { font-size:20px; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.qc.qnow b { font-size:15px; overflow:hidden; text-overflow:ellipsis; }
+.qcard .bar { margin:12px 0 4px; height:6px; }
+.qcdisks:empty { display:none; }
+.qcdisks { border-top:1px solid var(--line); margin-top:10px; padding-top:8px; display:grid; grid-template-columns:minmax(0,max-content) auto minmax(0,1fr); gap:5px 22px; font-size:13px; }
+.qcdisks > * { min-width:0; overflow-wrap:anywhere; }
+.qcdisks .dn { font-weight:600; } .qcdisks .sp { color:#d9d9df; font-variant-numeric:tabular-nums; white-space:nowrap; } .qcdisks .dw { color:var(--mute); }
+.qcdisks .dw.on { color:var(--fg); } .qcdisks .dw.warn { color:var(--warn); } .qcdisks .dw.bad { color:var(--bad); }
+@media (max-width:700px) {
+  .qcg { grid-template-columns:repeat(2, minmax(0,1fr)); } .qc.qnow { grid-column:1 / -1; order:-1; } .qc b { font-size:17px; }
+  .qcdisks { grid-template-columns:minmax(0,1fr) auto; } .qcdisks .dw { grid-column:1 / -1; margin:-3px 0 4px; }
+}
 /* ===== v0.2.86: rows are table rows (name, kind, size, written · proven, state), and the details of
    the selected row live in the panel on the right. ===== */
 .shell > main { max-width:none; }
@@ -472,7 +503,7 @@ dialog .head, .foot { border-color:var(--line); }
 .iempty { margin:0; padding:24px 20px; color:var(--mute); }
 .ibody { padding:14px 18px 24px; }
 .ibody .detail { display:block; margin:0; font-size:14px; }
-.ibody .dsub { margin:0 0 12px; color:#d9d9df; } .ibody .dsub.warn { color:var(--warn); } .ibody .dsub.bad { color:var(--bad); }
+.ibody .dsub { margin:0 0 12px; color:#d9d9df; } .ibody .dsub.warn { color:var(--warn); } .ibody .dsub.bad { color:var(--bad); } .dsub.lines, .sub.lines { white-space:pre-line; } /* v0.2.100: a finished job, one part per line */
 .ibody .paths { display:flex; flex-direction:column; gap:4px; margin:0 0 10px; }
 .ibody .path { font-size:12px; color:#d9d9df; }
 .ibody .detail .btns { margin:12px 0 4px; }
@@ -502,6 +533,7 @@ dialog .head, .foot { border-color:var(--line); }
 .sd:hover { background:#202026; } .sd b { font-weight:500; overflow-wrap:anywhere; } .sd small { font-size:12px; } .sd small:not(.mute):not(.warn) { color:var(--fg); }
 .sd small.warn { color:var(--warn); font-weight:600; }
 .side #aboutBtn { margin-top:auto; }
+@media (max-width:760px) { .side .tabs { flex-direction:row; } .sdisks { display:none; } .side #aboutBtn { margin:0 0 0 auto; } } /* v0.2.100: the rules above had undone the phone layout */
 .cmdk { flex:1 1 220px; max-width:420px; height:34px; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:0 12px; background:var(--bg); border:1px solid var(--line); color:var(--mute); font-weight:400; }
 .cmdk kbd { font:12px inherit; padding:1px 6px; border:1px solid var(--line2); border-radius:5px; }
 .topbar .live { margin-left:auto; }
@@ -559,7 +591,7 @@ dialog.cmd[open] { display:flex; flex-direction:column; }
 .pdrive .path { font-size:12px; color:var(--mute); }
 .pstep { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; font-size:13px; } .pstep span { color:#d9d9df; } .pstep b { font-weight:600; } .pstep b.ok { color:var(--ok); }
 .pdrive button { align-self:flex-start; margin-top:4px; }
-body.wall .side, body.wall .insp, body.wall .topbar > :not(.brand), body.wall .onrule, body.wall .onhead .seg { display:none !important; }
+body.wall .qcard, body.wall .side, body.wall .insp, body.wall .topbar > :not(.brand), body.wall .onrule, body.wall .onhead .seg { display:none !important; }
 body.wall .topbar #newBtn { display:none !important; }
 body.wall .ocard .nm { font-size:64px; } body.wall .ocard .vw { font-size:34px; } body.wall .ocard .why { font-size:20px; }
 body.wall .ocard .vi { width:72px; height:72px; } body.wall .ocard .vd { padding:26px 28px; flex-basis:520px; }
@@ -569,7 +601,24 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
 /* v0.2.89: Files. */
 .fb { display:flex; flex-direction:column; gap:12px; min-height:calc(100vh - 160px); }
 .fbhead { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; }
-.fbhead input { width:200px; padding:6px 10px; } .fbhead #fbTwo { margin-left:auto; }
+.fbhead input { width:200px; padding:6px 10px; } .fbhead .fbcols { margin-left:auto; }
+/* v0.2.100: columns to show, and headings that sort. */
+.fbcols { position:relative; } .fbcols summary { list-style:none; cursor:pointer; padding:6px 12px; border:1px solid var(--line2); border-radius:8px; font-size:14px; }
+.fbcols summary::-webkit-details-marker { display:none; } .fbcols[open] summary { border-color:var(--sel); }
+.fbcolm { position:absolute; right:0; top:calc(100% + 6px); z-index:6; background:var(--side); border:1px solid var(--line2); border-radius:10px; padding:8px 12px; display:flex; flex-direction:column; gap:6px; min-width:150px; box-shadow:0 10px 30px rgba(0,0,0,.4); }
+.fbcolm label { display:flex; gap:8px; align-items:center; justify-content:flex-start; font-size:14px; font-weight:400; white-space:nowrap; margin:0; } .fbcolm input { width:auto; flex:none; margin:0; }
+.fbhd button { all:unset; cursor:pointer; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-radius:4px; }
+.fbhd button:hover, .fbhd button[data-dir] { color:var(--fg); } .fbhd button:focus-visible { outline:2px solid var(--sel); outline-offset:2px; }
+.fbhd button[data-dir="1"]::after { content:" ↑"; } .fbhd button[data-dir="-1"]::after { content:" ↓"; }
+.fbhd .r { justify-self:end; }
+/* The details area is gone in Files while no file is open, so the list has the full width. */
+.shell:has(#tabFiles:not([hidden])) .insp:not(.on) { display:none; }
+/* A file's places: the source, then its backups by drive or cloud. */
+.fsec { margin:4px 0 0; font-size:12px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--mute); }
+.fbak { margin-top:18px; } .fbak > summary { cursor:pointer; list-style:none; display:flex; align-items:center; gap:6px; }
+.fbak > summary::-webkit-details-marker { display:none; } .fbak > summary::before { content:"▸"; font-size:11px; color:var(--mute); } .fbak[open] > summary::before { content:"▾"; }
+.fgrp { margin:10px 0 0; } .fgrp h5 { margin:0; font-size:13px; color:#d9d9df; } .fgrp h5 small { color:var(--mute); font-weight:400; margin-left:6px; }
+.fgrp .floc { padding-left:10px; border-left:2px solid #2c2540; margin-left:2px; }
 .fbpanes { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; } .fbpanes.two { grid-template-columns:repeat(2, minmax(0,1fr)); }
 .fbpane { min-width:0; background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; display:flex; flex-direction:column; }
 .fbpane.act { border-color:var(--sel); }
@@ -579,7 +628,7 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
 .fcrumbs { display:flex; flex-wrap:wrap; align-items:center; gap:4px; font-size:15px; }
 .fcrumbs button { border:0; background:transparent; padding:2px 4px; color:#c9b8fa; font-weight:500; } .fcrumbs span { color:#8f909b; } .fcrumbs b { font-weight:600; overflow-wrap:anywhere; }
 .fbt { overflow-x:auto; }
-.fbr { display:grid; grid-template-columns:22px minmax(0,1fr) 84px 150px minmax(170px,240px); gap:12px; align-items:center; padding:7px 14px; border-bottom:1px solid #1f1f24; min-width:560px; }
+.fbr { display:grid; grid-template-columns:var(--fbcols, 22px minmax(0,1fr) 84px 150px 150px); gap:12px; align-items:center; padding:7px 14px; border-bottom:1px solid #1f1f24; min-width:var(--fbmin, 480px); }
 .fbr.on { background:#1f1b2e; } .fbr.foc { box-shadow:inset 3px 0 0 var(--sel); background:#241f35; }
 .fbhd { font-size:12px; font-weight:600; color:var(--mute); border-bottom:1px solid var(--line); }
 .fbr .r { text-align:right; } .fbr .mute { font-size:13px; }
@@ -600,13 +649,12 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
 #fbMsg { flex:1 1 100%; margin:0; } #fbMsg:empty { display:none; }
 .fpanel { display:flex; flex-direction:column; gap:4px; }
 .floc { padding:10px 0; border-bottom:1px solid #26262c; display:flex; flex-direction:column; gap:3px; }
-.floc .fh { display:flex; justify-content:space-between; gap:8px; } .floc .fh .ok { color:var(--ok); font-weight:600; } .floc .fh .warn { color:var(--warn); font-weight:600; } .floc .fh .bad { color:var(--bad); font-weight:600; }
+.floc .fh { display:flex; justify-content:space-between; gap:8px; } .floc .fh .ok { color:var(--ok); font-weight:600; } .floc .fh .warn { color:var(--warn); font-weight:600; } .floc .fh .bad { color:var(--bad); font-weight:600; } .floc .fh > :first-child { min-width:0; overflow-wrap:anywhere; } .floc .fh > :last-child { flex:none; }
 .floc .path { font-size:12px; color:var(--mute); } .floc button { align-self:flex-start; font-size:12px; padding:3px 10px; margin-top:4px; }
 .fhash { margin-top:12px; display:flex; flex-direction:column; gap:8px; } .fhash h4 { margin:0; font-size:12px; color:var(--mute); }
 .hrowc { display:flex; gap:8px; align-items:center; } .hrowc code { flex:1; min-width:0; font:12px ui-monospace, Menlo, monospace; padding:8px 10px; background:var(--bg); border:1px solid var(--line); border-radius:7px; overflow-wrap:anywhere; }
 .fhash .btns { display:flex; flex-wrap:wrap; gap:8px; }
-.fbpanes.two .fbr { grid-template-columns:22px minmax(140px,1fr) 76px minmax(120px,190px); min-width:0; }
-.fbpanes.two .fbr > :nth-child(4) { display:none; }
+.fbpanes.two .fbr { min-width:0; }
 @container (max-width:700px) { .fbpanes.two { grid-template-columns:minmax(0,1fr); } }
 
 /* v0.2.90: Add link. */
@@ -636,12 +684,12 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
 <body>
 <header class="topbar">
   <h1 class="brand"><svg width="24" height="24" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#7c4de0"/><path d="M22 46V18m0 0l-8 8m8-8l8 8M42 18v28m0 0l-8-8m8 8l8-8" stroke="#fff" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>Shuttle Server <span class="ver" id="ver"></span></h1>
-  <div class="seg" id="styleSw" role="group" aria-label="Display style"><button type="button" data-style="general" aria-pressed="true">General</button><button type="button" data-style="onset" aria-pressed="false">On set</button></div>
+  <button class="primary" type="button" id="newBtn">New copy</button>
+  <button type="button" id="linkBtn">Add link</button>
   <button type="button" class="cmdk" id="cmdBtn"><span>Search or run a command</span><kbd>⌘K</kbd></button>
   <span class="live" id="live">Connecting</span>
   <button type="button" class="upd" id="updTop" hidden></button>
-  <button type="button" id="linkBtn">Add link</button>
-  <button class="primary" type="button" id="newBtn">New copy</button>
+  <div class="seg" id="styleSw" role="group" aria-label="Display style"><button type="button" data-style="general" aria-pressed="true">General</button><button type="button" data-style="onset" aria-pressed="false">On set</button></div>
 </header>
 <div class="shell">
 <div class="side"><nav class="tabs" role="tablist" aria-label="Sections"><button type="button" role="tab" id="tabStatusBtn" aria-selected="true">Queue</button><button type="button" role="tab" id="tabFilesBtn" aria-selected="false">Files</button><button type="button" role="tab" id="tabStorageBtn" aria-selected="false">Disks</button><button type="button" role="tab" id="tabSettingsBtn" aria-selected="false">Settings</button></nav>
@@ -663,6 +711,17 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
     <p class="onrule"><b>Safe</b> = <span id="onRuleN">2 copies</span> read back and matching · <b>Fully verified</b> = the card read a second time and matching too</p>
     <div class="cards" id="onCards"></div>
     <p class="mute" id="onNone">No copies started on this day.</p>
+  </section>
+  <section class="qcard" id="qcard" aria-label="The queue at a glance">
+    <div class="qcg">
+      <div class="qc"><small>In the queue</small><b id="qcN">0</b></div>
+      <div class="qc qnow"><small>Now</small><b id="qcJob">Nothing running</b></div>
+      <div class="qc"><small>Done</small><b id="qcPc">—</b></div>
+      <div class="qc"><small>Time left</small><b id="qcLeft">—</b></div>
+      <div class="qc"><small>Whole queue</small><b id="qcQLeft">—</b></div>
+    </div>
+    <div class="bar"><i id="qcBar"></i></div>
+    <div class="qcdisks" id="qcDisks"></div>
   </section>
   <div class="qhead"><h2>Queue<span class="qcount" id="qCount"></span></h2>
   <div class="qview" id="qView" role="group" aria-label="Show"><button type="button" data-v="all">All <span class="n"></span></button><button type="button" data-v="active" title="What is copying, verifying, downloading, waiting or paused">Active <span class="n"></span></button><button type="button" data-v="today" title="Finished or stopped since midnight">Done today <span class="n"></span></button><button type="button" data-v="problems" title="Finished with problems, failed downloads, and anything waiting for a disk, for space or after a problem">Only problems <span class="n"></span></button></div>
@@ -691,9 +750,10 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
   <div id="tabFiles" class="fb" hidden>
     <div class="fbhead">
       <h1 class="vh">Files</h1>
+      <div class="seg" id="fbTwo" role="group" aria-label="Panes"><button type="button" data-n="1" aria-pressed="true">One pane</button><button type="button" data-n="2" aria-pressed="false">Two panes</button></div>
+      <details class="fbcols" id="fbCols"><summary>Columns</summary><div class="fbcolm" id="fbColList"></div></details>
       <label for="fbFilter" class="vh">Filter by name</label><input type="text" id="fbFilter" placeholder="Filter by name" autocomplete="off">
       <div class="seg" id="fbShow" role="group" aria-label="Show"><button type="button" data-s="all" aria-pressed="true">All</button><button type="button" data-s="missing" aria-pressed="false">Missing on a chosen drive</button></div>
-      <button type="button" id="fbTwo" aria-pressed="false">Two panes</button>
     </div>
     <div class="fbpanes" id="fbPanes"></div>
     <footer class="fbtray" id="fbTray" hidden>
@@ -705,18 +765,11 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
   <div id="tabStorage" hidden>
     <div class="jobs-head"><h2>Storage</h2><div class="row"><button type="button" id="stoRefresh">Refresh</button></div></div>
     <p class="mute" id="stoNote">Every disk connected to this Mac. Shuttle only reads here: nothing is written to a disk by this page.</p>
+    <p class="ok" id="stoMsg" hidden></p>
     <div class="disks" id="disks"></div>
   </div>
-  <div id="tabSettings" class="settings" hidden>
-  <section class="card"><h2>Data folder</h2><p class="path" id="data"></p><p class="mute">Temp: <span class="path" id="temp"></span></p></section>
-  <h2 class="sechead">How Shuttle is using this computer</h2>
-  <div class="grid resources" style="margin-bottom:12px">
-    <section class="card"><h2>Memory</h2><p id="mem"></p><div class="bar"><i id="memBar"></i></div><p class="mute" id="memNote"></p></section>
-    <section class="card"><h2>Buffer budget</h2><p id="buf"></p><div class="bar"><i id="bufBar"></i></div><p class="mute" id="bufNote"></p></section>
-    <section class="card"><h2>Free space</h2><p id="disk"></p><p class="mute" id="diskNote"></p></section>
-    <section class="card"><h2>Processor</h2><p id="cpu"></p><p class="mute" id="cpuNote"></p></section>
-    <section class="card"><h2>Open files</h2><p id="files"></p><p class="mute">Pages open: <span id="pages"></span></p></section>
-  </div>
+  <div id="tabSettings" class="settings" data-show="copy" hidden>
+  <div class="seg setnav" id="setNav" role="group" aria-label="Settings pages"><button type="button" data-p="copy" aria-pressed="true">Copy settings</button><button type="button" data-p="updates" aria-pressed="false">Updates</button><button type="button" data-p="versions" aria-pressed="false">Versions</button></div>
   <section class="card" id="sysFiles">
     <h2>System files</h2>
     <label class="opt"><input type="checkbox" id="skipSys"><span>Don't copy system files: .DS_Store, .Spotlight-V100, .Trashes, .fseventsd, .TemporaryItems, Thumbs.db, desktop.ini</span></label>
@@ -782,7 +835,16 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
       <p class="err" id="srvErr"></p>
     </div>
   </section>
-  <section class="card" id="updates">
+  <section class="card"><h2>Data folder</h2><p class="path" id="data"></p><p class="mute">Temp: <span class="path" id="temp"></span></p></section>
+  <h2 class="sechead">How Shuttle is using this computer</h2>
+  <div class="grid resources" style="margin-bottom:12px">
+    <section class="card"><h2>Memory</h2><p id="mem"></p><div class="bar"><i id="memBar"></i></div><p class="mute" id="memNote"></p></section>
+    <section class="card"><h2>Buffer budget</h2><p id="buf"></p><div class="bar"><i id="bufBar"></i></div><p class="mute" id="bufNote"></p></section>
+    <section class="card"><h2>Free space</h2><p id="disk"></p><p class="mute" id="diskNote"></p></section>
+    <section class="card"><h2>Processor</h2><p id="cpu"></p><p class="mute" id="cpuNote"></p></section>
+    <section class="card"><h2>Open files</h2><p id="files"></p><p class="mute">Pages open: <span id="pages"></span></p></section>
+  </div>
+  <section class="card" id="updates" data-page="updates">
     <h2>Updates</h2>
     <p id="updLine">…</p>
     <p class="mute" id="updNote"></p>
@@ -795,7 +857,13 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
     </div>
     <p class="mute path" id="undo"></p>
   </section>
-  <section class="card" id="history">
+  <section class="card" id="verSet" data-page="versions">
+    <h2>Installed version</h2>
+    <p id="verNow">…</p>
+    <h3 class="sechead">What changed</h3>
+    <pre class="vlog" id="verLog">Loading…</pre>
+  </section>
+  <section class="card" id="history" data-page="versions">
     <h2>Version history</h2>
     <p class="mute">Any recent green build, or any version kept on this Mac, can be installed. It is checked the same way as an update, and the version it replaces is kept. Copies pause and continue after the restart; an older version carries on with them in its own way, and nothing already verified is lost.</p>
     <div class="btns" style="display:flex;gap:8px;margin-top:8px"><button type="button" id="histLoad">Refresh list</button></div>
@@ -806,7 +874,7 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
 </main>
 <aside class="insp" id="insp" aria-label="Details">
   <div class="ihead" id="inspHead" hidden><div><h2 id="inspTitle"></h2><p class="ist" id="inspState"></p></div><button type="button" id="inspClose" aria-label="Close the details">✕</button></div>
-  <div class="itabs" id="inspTabs" role="tablist" aria-label="Details"><button type="button" role="tab" data-tab="overview">Overview</button><button type="button" role="tab" data-tab="files">Files</button><button type="button" role="tab" data-tab="proof">Proof</button><button type="button" role="tab" data-tab="problems">Problems</button><button type="button" role="tab" data-tab="log">Log</button></div>
+  <div class="itabs" id="inspTabs" role="tablist" aria-label="Details"><button type="button" role="tab" data-tab="overview">Overview</button><button type="button" role="tab" data-tab="files">Files</button><button type="button" role="tab" data-tab="proof">Status</button><button type="button" role="tab" data-tab="problems">Problems</button><button type="button" role="tab" data-tab="log">Log</button></div>
   <p class="iempty" id="inspEmpty">Click a copy to see everything about it here: where it goes, its proof, its files and their hashes, problems, and the hash list.</p>
   <div class="ibody" id="inspBody"></div>
 </aside>
@@ -1006,7 +1074,22 @@ function render() {
   renderStrip(s); drawSideDisks();
   if (s.update) renderUpdate(s.update, s);
 }
-function showTab(name) {
+// Settings pages (v0.2.100): Copy settings, Updates, Versions.
+function setPage(pg) {
+  if (!["copy", "updates", "versions"].includes(pg)) pg = "copy";
+  $("tabSettings").dataset.show = pg;
+  $("setNav").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.p === pg));
+  if (pg === "versions") {
+    if (!$("histList").childElementCount) loadHistory();
+    fetch("/api/about").then(r => r.json()).then(a => { $("verNow").textContent = "Shuttle Server " + a.version + " (" + a.commit + ")"; $("verLog").textContent = a.changelog; })
+      .catch(() => { $("verLog").textContent = "Could not load the changelog."; });
+  }
+  const h = "#" + (pg === "copy" ? "settings" : pg);
+  if (!$("tabSettings").hidden && location.hash !== h) history.replaceState(null, "", h);
+}
+$("setNav").querySelectorAll("button").forEach(b => b.onclick = () => setPage(b.dataset.p));
+function showTab(name, page) {
+  if (name === "updates" || name === "versions") { page = name; name = "settings"; }
   const settings = name === "settings", sto = name === "storage", files = name === "files";
   $("tabStatus").hidden = settings || sto || files; $("tabSettings").hidden = !settings; $("tabStorage").hidden = !sto; $("tabFiles").hidden = !files;
   $("tabStatusBtn").setAttribute("aria-selected", !settings && !sto && !files); $("tabSettingsBtn").setAttribute("aria-selected", settings); $("tabStorageBtn").setAttribute("aria-selected", sto);
@@ -1016,7 +1099,7 @@ function showTab(name) {
   const h = settings || sto || files ? "#" + name : "";
   if (location.hash !== h) history.replaceState(null, "", h || location.pathname);
   if (sto) loadStorage();
-  if (settings && !$("histList").childElementCount) loadHistory();
+  if (settings) setPage(page || $("tabSettings").dataset.show);
 }
 $("tabStatusBtn").onclick = () => showTab("status");
 $("tabSettingsBtn").onclick = () => showTab("settings");
@@ -1079,7 +1162,7 @@ function pollSpeed() {
 // Live (v0.2.47): while Storage is open and the tab is visible, the list is
 // asked for again every 3 s, so disks plugged in or out and space freed show
 // by themselves. The cards are redrawn only when something changed.
-let stoLast = "";
+let stoLast = "", stoOpen = {};
 function loadStorage(fresh) {
   if (stoBusy) return; stoBusy = true; clearTimeout(stoTimer);
   if (!$("disks").childElementCount) $("stoNote").textContent = "Asking the Mac about its disks…";
@@ -1108,15 +1191,26 @@ function diskUse(path) {
 }
 function diskCard(d) {
   const c = el("section", "card disk");
-  const h = el("h3"); h.append(el("b", "", d.name), el("span", "mute", d.kind === "internal" ? "this Mac's own disk" : d.kind === "server" ? "network server" : d.kind === "share" ? (d.share === "lucidlink" ? "LucidLink" : "network share") : d.ejectable === false ? "" : "external"));
+  const h = el("h3");
+  // v0.2.100: a slowed-down drive has its name in orange; clicking it shows why.
+  let slowBox = null;
+  if (d.slow) {
+    const nb = el("button", "slowname", d.name); nb.type = "button"; nb.setAttribute("aria-expanded", "false"); nb.title = "Slowed down: click for the details";
+    slowBox = el("div", "slowbox"); slowBox.hidden = true;
+    if (d.can) slowBox.append(el("p", "conn", "Drive can do: " + d.can));
+    slowBox.append(el("p", "slow", "Slowed down. " + d.slow));
+    nb.onclick = () => { slowBox.hidden = !slowBox.hidden; nb.setAttribute("aria-expanded", String(!slowBox.hidden)); stoOpen[d.path] = !slowBox.hidden; };
+    if (stoOpen[d.path]) nb.onclick();
+    h.append(nb);
+  } else h.append(el("b", "", d.name));
+  h.append(el("span", "mute", d.kind === "internal" ? "this Mac's own disk" : d.kind === "server" ? "network server" : d.kind === "share" ? (d.share === "lucidlink" ? "LucidLink" : "network share") : d.ejectable === false ? "" : "external"));
   c.append(h, el("p", "path mute", d.path));
   if (d.note) { c.append(el("p", "warn", d.note)); return c; }
   const conn = el("p", "conn");
   const cn = d.connection || (d.kind === "internal" ? "Internal" : "Connection not reported");
   conn.append(el("b", "", cn), d.speed || d.detail ? " link: " : "", [d.speed, d.detail].filter(Boolean).join(" · "));
   c.append(conn);
-  if (d.can) c.append(el("p", "conn", "Drive can do: " + d.can));
-  if (d.slow) c.append(el("p", "slow", "Slowed down. " + d.slow));
+  if (slowBox) c.append(slowBox); else if (d.can) c.append(el("p", "conn", "Drive can do: " + d.can));
   if (d.bus && d.kind !== "internal") c.append(el("p", "mute", "Attached to " + d.bus + (d.via && d.via.length ? " · through " + d.via.join(" → ") : "")));
   if (d.shares && d.shares.length) c.append(el("p", "warn", "Shares this port with " + d.shares.join(", ") + ": used at the same time, they split its bandwidth."));
   else if (d.bus_key && d.kind !== "internal") c.append(el("p", "mute", "No other disk on this port."));
@@ -1140,10 +1234,20 @@ function diskCard(d) {
     b("Copy from here", () => { showTab("status"); $("src").value = d.path; $("newBtn").onclick(); });
     if (!d.read_only && !d.camera) b("Copy to here", () => { showTab("status"); $("dst").value = d.path; $("newBtn").onclick(); });
   }
+  // v0.2.100: Eject, for any connected disk or share (not this computer's own disk).
+  if (d.kind !== "internal" && d.kind !== "home" && d.path !== "/") {
+    const msg = el("p", "mute ejmsg");
+    b("Eject", e => {
+      const x = e.currentTarget; x.disabled = true; x.textContent = "Ejecting…"; msg.className = "mute ejmsg"; msg.textContent = "";
+      post("/api/disks/eject", { path: d.path }).then(() => { $("stoMsg").hidden = false; $("stoMsg").textContent = d.name + " was ejected. It can be unplugged."; x.textContent = "Ejected"; setTimeout(() => { loadStorage(true); loadSideDisks(); }, 800); setTimeout(() => { $("stoMsg").hidden = true; }, 20000); })
+        .catch(err => { x.disabled = false; x.textContent = "Eject"; msg.className = "bad ejmsg"; msg.textContent = err.message; });
+    }, "eject");
+    c.append(btns, msg); return c;
+  }
   c.append(btns);
   return c;
 }
-setTimeout(() => showTab(location.hash === "#settings" ? "settings" : location.hash === "#storage" ? "storage" : location.hash === "#files" ? "files" : "status"));
+setTimeout(() => showTab({ "#settings": "settings", "#updates": "updates", "#versions": "versions", "#storage": "storage", "#files": "files" }[location.hash] || "status"));
 setTimeout(() => { setLayout(onLay); setStyle(viewStyle); });
 
 function loadHistory() {
@@ -1497,12 +1601,13 @@ const verKindHelp = v => v.s2 === "only" ? "The source is read again and compare
 const verNow = v => /source/i.test(v.stage || "") && !/destination/i.test(v.stage || "") ? "Reading the source again" : /destination and the source/i.test(v.stage || "") ? "Reading the destination and the source" : "Reading the destination back";
 // A finished copy's proof in one short line: destination read back, source
 // read a second time, by the copy itself or by later Verify jobs.
-function proofLine(k) {
-  if (!k || !k.of) return "";
+function proofParts(k) {
+  if (!k || !k.of) return [];
   const part = (n, yes, no) => n >= k.of ? yes + " ✓" : n ? yes + " " + n + " of " + k.of : no;
-  return part(k.dest, "destination read back", "destination not read back") + " · " + part(k.source, "source read twice", "source not read again") +
-    (k.checking ? " · checking now: " + k.check_done + " of " + k.check_of + " files" : "") + (k.queued ? " · a check is queued" : "");
+  return [part(k.dest, "destination read back", "destination not read back"), part(k.source, "source read twice", "source not read again"),
+    k.checking && "checking now: " + k.check_done + " of " + k.check_of + " files", k.queued && "a check is queued"].filter(Boolean);
 }
+const proofLine = k => proofParts(k).join(" · ");
 function drawChecks(box, v) {
   const k = v.checks;
   const key = k ? JSON.stringify(k) : "";
@@ -1804,14 +1909,14 @@ function shareNotes(v) {
   const n = [];
   if (v.dest_share === "smb") n.push("The destination is a network share: each copy is read back from the share over the network. If the share is a CTERA Edge Filer, the filer uploads to the CTERA cloud by itself afterwards. Shuttle cannot see that upload, so check the filer's sync status before deleting the source.");
   if (v.dest_share === "lucidlink") n.push("The destination is LucidLink: every file is copied first. The copies are read back only once LucidLink says nothing is left to upload and its cache on this Mac is cleared, so what is read comes from LucidLink's storage. Until then they count as written, not proven.");
-  if (v.source_share === "lucidlink" && v.s2 === "now") n.push("The source is LucidLink: its second read may come from LucidLink's cache on this Mac rather than its storage.");
+  if (v.source_share === "lucidlink" && v.s2 === "now") n.push("The source is LucidLink: its second read comes from LucidLink's cache on this Mac, not from LucidLink's storage (nothing is downloaded again for it).");
   return n;
 }
 // Overview: the two numbers, the facts, and the speed of each disk.
 function proofScheme(v) {
   if (v.kind === "verify") return verKind(v);
   if (v.kind === "link") return (v.files > 1 ? "Each file downloaded" : "Downloaded") + ", size checked, read back from the disk and hashed";
-  if (v.check === "none") return "Copied and hashed; read back by " + (v.verify_next ? "its own Verify item" : "a later Verify");
+  if (v.check === "none") return "Copied, hash generated";
   if (v.dest_share === "lucidlink") return "Copied first; read back once LucidLink has uploaded everything" + (v.s2 === "now" ? ", source read a second time" : "");
   return v.s2 === "now" ? "Copy read back, source read a second time" : "Copy read back";
 }
@@ -1829,7 +1934,7 @@ function fillOverview(v, q, o) {
   const at = (d, p) => d ? d + " → " + p : "";
   const facts = [[o.ver ? "Checks" : "From", o.ver ? o.place : v.kind === "link" ? (v.link_site && v.link_site !== v.from_disk ? v.link_site + " · " + v.from_disk : v.from_disk) : at(v.from_disk, v.from_path) || v.source], o.ver ? null : ["To", v.link_file || at(v.to_disk, v.to_path) || v.dest],
     ["Files", !o.ver && !fin && !o.scanning ? fileCounts(v) : o.scanning ? v.scanned + " listed so far" : nf(v.files)],
-    ["Hash", v.link_hash ? "XXH128 " + v.link_hash : v.kind === "link" && v.files > 1 ? "XXH128 of each file" : algoName[v.algo] || "XXH128"], ["Proof", proofScheme(v)],
+    ["Hash", v.link_hash ? "XXH128 " + v.link_hash : v.kind === "link" && v.files > 1 ? "XXH128 of each file" : algoName[v.algo] || "XXH128"], ["Status", proofScheme(v)],
     ["Started", when(v.created) + (v.work_ms ? " · worked " + clock(v.work_ms) : "")], fin && v.finished ? ["Finished", when(v.finished)] : null].filter(Boolean);
   const dl = q(".facts"), key = JSON.stringify(facts);
   if (dl.dataset.k !== key) { dl.dataset.k = key; dl.replaceChildren(...facts.flatMap(([a, b]) => [el("dt", "", a), el("dd", /^(From|To|Checks)$/.test(a) ? "path" : "", b)])); }
@@ -1978,12 +2083,14 @@ function card(v) {
   else if (v.state === "paused") sub = v.after ? "Paused · press ▶ and it starts when the copy above has finished" : pc + " · Paused by you";
   else if (v.state === "queued") sub = v.after ? "Starts when the copy above has finished" : "Waiting for the job before it to finish";
   else if (v.state === "finished" && v.error) { sub = (v.finished ? when(v.finished) + " · " : "") + "Failed · " + v.error; subCls += " bad"; }
-  else if (v.state === "finished") { sub = (v.finished ? when(v.finished) + " · " : "") + jobTime(v) + " · " + size(v.bytes) +
-      (jobSecs(v) >= 1 && v.bytes ? " · " + rate(v.bytes / jobSecs(v)) + " average" : "") +
-      (!ver && v.copy_rate ? " · copying " + rate(v.copy_rate) : "") +
-      (ver ? " · " + (srcOnly ? "source: " : "") + (v.failed ? (srcOnly ? v.strong : v.verified) + " match, " + v.failed + " do not" : (srcOnly ? v.strong : v.verified) + ((srcOnly ? v.strong : v.verified) === 1 ? " file matches" : " files match")) :
-      problems ? " · " + problemCounts(v) :
-      v.checks ? " · " + proofLine(v.checks) : only ? " · " + ((v.hashed || 0) + v.identical) + " files copied, not verified" : " · " + proven + " files verified");
+  else if (v.state === "finished") {
+    // v0.2.100: the time, size and average on the first line, then one line for each part after it.
+    const n = srcOnly ? v.strong : v.verified;
+    sub = [[v.finished && when(v.finished), jobTime(v), size(v.bytes), jobSecs(v) >= 1 && v.bytes && rate(v.bytes / jobSecs(v)) + " average"].filter(Boolean).join(" · "),
+      !ver && v.copy_rate && "copying " + rate(v.copy_rate),
+      ...(ver ? [(srcOnly ? "source: " : "") + (v.failed ? n + " match, " + v.failed + " do not" : n + (n === 1 ? " file matches" : " files match"))] :
+        problems ? [problemCounts(v)] : v.checks ? proofParts(v.checks) : [only ? ((v.hashed || 0) + v.identical) + " files copied, not verified" : proven + " files verified"])].filter(Boolean).join("\n");
+    subCls += " lines";
     if (problems) subCls += " warn"; }
   else sub = (v.finished ? when(v.finished) + " · " : "") + "Stopped by you" + (v.work_ms ? " after " + clock(v.work_ms) : "") + " · " + proven + (ver ? " files checked and matching" : " files verified and kept");
   q(".sub").textContent = sub; q(".sub").className = subCls;
@@ -2128,7 +2235,7 @@ function renderMonitor(list) {
   $("qCount").textContent = [nc ? nc + (nc === 1 ? " copy" : " copies") : "", nv ? nv + (nv === 1 ? " verify" : " verifies") : ""].filter(Boolean).join(", ");
   $("mon").hidden = !active.length;
   monInfo = {};
-  if (!active.length) return;
+  if (!active.length) { renderQcard(active); return; }
   const run = active.find(v => v.state === "running") || active.find(v => v.state === "waiting");
   let total = 0, done = 0, unknown = 0;
   // A Verify item that has not started yet reads what its copy writes, so it is sized by its copy.
@@ -2159,6 +2266,51 @@ function renderMonitor(list) {
   $("monCopy").textContent = run ? (run.kind === "verify" ? base(run.source) : jobName(run)) + " → " + base(run.dest) + " · " + (run.phase === "scan" ? "scanning, " + run.scanned + " files so far" :
     rp + "% · " + (run.state === "waiting" ? (run.missing ? "waiting for the disk" : "waiting") : run.eta_seconds ? left(run.eta_seconds) : "working out the time left")) : "";
   $("monRate").textContent = run && run.state === "running" && run.phase !== "scan" ? (rate(run.kind === "verify" ? run.rate : run.copy_rate) || "measuring…") : "";
+  renderQcard(active);
+}
+// The card above the queue (v0.2.100): how many items wait, the job running
+// now with its percent and time left, the whole queue's time left, and one
+// line for each disk the queued jobs use: its speed and what it is doing.
+function renderQcard(active) {
+  const run = monInfo.run, rp = run && run.phase !== "scan" ? (run.progress || 0) * 100 : 0;
+  $("qcN").textContent = active.length + (active.length === 1 ? " item" : " items");
+  $("qcJob").textContent = run ? (run.kind === "verify" ? verKind(run) + " · " + base(run.dest) : jobName(run) + " → " + base(run.dest)) : active.length ? "Nothing running" : "Nothing in the queue";
+  $("qcJob").title = run ? (run.source || "") + " → " + (run.dest || "") : "";
+  $("qcPc").textContent = !run ? "—" : run.phase === "scan" ? "Scanning" : (rp >= 100 ? 100 : rp.toFixed(rp < 10 ? 1 : 0)) + "%";
+  $("qcLeft").textContent = !run ? "—" : run.state === "waiting" ? "Waiting" : run.eta_seconds ? left(run.eta_seconds).replace(/ left$/, "") : run.state === "running" ? "Working it out" : "—";
+  $("qcQLeft").textContent = monInfo.qleft ? left(monInfo.qleft).replace(/ left$/, "") : run && run.state === "running" ? "Working it out" : "—";
+  $("qcBar").style.width = rp + "%";
+  $("qcBar").style.background = run && run.missing ? "var(--bad)" : run && run.state === "running" ? "var(--copy)" : "var(--mute)";
+  // Each disk once; the busiest thing it does wins (running, then waiting, then queued, then paused).
+  const disks = new Map(), rank = { on: 4, bad: 3, warn: 2, mute: 1 };
+  const put = (name, speed, doing, tone) => { if (!name) return; const was = disks.get(name);
+    if (was && tone === "on" && was.tone === "on") disks.set(name, { name, tone, speed: [was.speed, speed].filter(Boolean).join(" · "), doing: was.doing + " · " + doing.charAt(0).toLowerCase() + doing.slice(1) }); // source and copy on one disk
+    else if (!was || rank[tone] > rank[was.tone]) disks.set(name, { name, speed, doing, tone }); };
+  active.forEach(v => {
+    const ver = v.kind === "verify", from = v.from_disk || diskOf(v.source), to = v.to_disk || diskOf(v.dest), again = ver && (v.s2 === "now" || v.s2 === "after") && v.source !== v.dest;
+    if (v.kind === "link") { put(to, "", v.state === "running" ? "Saving downloads" : "In the queue", v.state === "running" ? "on" : "mute"); return; }
+    if (v.state === "running" && v.phase !== "scan") {
+      const chk = isCheckStage(v.stage), both = /destination and the source/i.test(v.stage || "");
+      if (ver) {
+        put(to, v.dest_rate ? "read " + rate(v.dest_rate) : "", "Verifying: reading the copy back", "on");
+        if (again || v.s2 === "only") put(from, v.source_rate ? "read " + rate(v.source_rate) : "", "Verifying: reading the source again", "on");
+      } else {
+        put(from, v.source_rate ? "read " + rate(v.source_rate) : "", chk ? (both ? "Reading the source a second time" : "Waiting while the copy is read back") : "Reading for the copy", chk && !both ? "mute" : "on");
+        put(to, v.dest_rate ? (chk ? "read " : "write ") + rate(v.dest_rate) : "", chk ? "Reading the copy back" : "Writing the copy", "on");
+      }
+    } else if (v.state === "running") { put(from, "", "Being scanned", "on"); put(to, "", "Waiting for the scan", "mute"); }
+    else if (v.state === "waiting") {
+      const miss = v.missing || "", src = /source|both/.test(miss), dst = /destination|both/.test(miss);
+      put(from, "", src ? "Not connected: waiting for it" : "Waiting", src ? "bad" : "warn");
+      put(to, "", dst ? "Not connected: waiting for it" : "Waiting", dst ? "bad" : "warn");
+    } else {
+      const w = v.state === "paused" ? (v.errors ? "Waiting for your answer" : "Paused") : "Queued: waiting its turn";
+      put(from, "", w, v.errors ? "warn" : "mute"); if (to !== from) put(to, "", w, v.errors ? "warn" : "mute");
+    }
+  });
+  const rows = [...disks.values()].flatMap(d => [el("span", "dn", d.name), el("span", "sp", d.speed || "—"), el("span", "dw " + d.tone, d.doing)]);
+  const key = rows.map(r => r.textContent + r.className).join("|");
+  if ($("qcDisks").dataset.k !== key) { $("qcDisks").dataset.k = key; $("qcDisks").replaceChildren(...rows); }
 }
 // After an update the server is new but an open tab still runs the old page:
 // reload as soon as the version changes, waiting while a pop-up is open so
@@ -2189,7 +2341,7 @@ function renderUpdate(u, s) {
   top.className = "upd" + (u.available && !u.busy && !u.waiting_for_copy ? " go" : "");
   top.textContent = busyText || (u.waiting_for_copy ? "Update after this copy" : u.available ? "Update to " + u.available.version : "Updates: problem");
   top.title = u.available ? u.available.version + " — " + u.available.title : u.error || "";
-  top.onclick = u.available && !u.busy ? () => installUpdate(u, running) : () => showTab("settings");
+  top.onclick = u.available && !u.busy ? () => installUpdate(u, running) : () => showTab("settings", "updates");
   $("updNote").className = u.error ? "err" : "mute";
   $("keyBox").hidden = u.key_set && !$("keyBox").dataset.open;
   $("undo").textContent = u.undo ? "To undo the last update by hand: " + u.undo : "";
@@ -2869,7 +3021,7 @@ function fillSys(s) {
 }
 $("sysBtn").onclick = () => { if (latest) fillSys(latest); $("sysDlg").showModal(); };
 $("sysLog").onclick = () => { $("sysDlg").close(); openFullLog(); };
-$("sysUpd").onclick = () => { $("sysDlg").close(); showTab("settings"); $("updates").scrollIntoView({ block: "start" }); };
+$("sysUpd").onclick = () => { $("sysDlg").close(); showTab("settings", "updates"); };
 $("sysSet").onclick = () => { $("sysDlg").close(); showTab("settings"); };
 // Disks in the sidebar (v0.2.87): free space and what each is doing now.
 let sideTimer = 0, sideDisks = [];
@@ -2890,7 +3042,7 @@ function drawSideDisks() {
     if (j) { const src = inside(j.source, d.path); const r = src ? j.source_rate : j.dest_rate; act = (src ? "Reading" : isCheckStage(j.stage) || j.kind === "verify" ? "Reading back" : "Writing") + (r ? " " + rate(r) : ""); cls = ""; }
     else if (d.slow) { act = "Slowed down: check the cable"; cls = "warn"; }
     else act = d.read_only || d.camera ? "Read only" : "Idle";
-    a.append(el("b", "", d.name), el("small", "mute", d.total ? size(d.free) + " free of " + size(d.total) : ""), el("small", cls, act));
+    a.append(el("b", d.slow ? "warn" : "", d.name), el("small", "mute", d.total ? size(d.free) + " free of " + size(d.total) : ""), el("small", cls, act));
     return a;
   });
   const key = rows.map(r => r.textContent).join("|");
@@ -2912,7 +3064,8 @@ function cmdAll() {
     ["Settings", "Hash, folder layout, start at login, updates", () => showTab("settings")],
     ["System", "Memory, buffers, processor, open files", () => $("sysBtn").onclick()],
     ["Open the full log", "The last lines Shuttle wrote", openFullLog],
-    ["Updates", "Check for and install a new version", () => { showTab("settings"); $("updates").scrollIntoView({ block: "start" }); }],
+    ["Updates", "Check for and install a new version", () => showTab("settings", "updates")],
+    ["Versions", "The installed version, what changed, and older versions", () => showTab("settings", "versions")],
     ["About", "Version and what changed", () => $("aboutBtn").onclick()]];
   const jobs = ((latest && latest.jobs) || []).concat(olderViews);
   const seen = new Set();
@@ -2944,6 +3097,19 @@ document.addEventListener("keydown", e => { if ((e.metaKey || e.ctrlKey) && e.ke
 // what each drive is missing. One pane by default; two panes on request.
 // Nothing here writes anything except a copy you start.
 let fbPanes = [], fbActive = 0, fbShowMode = "all", fbSel = null, fbDestOff = new Set();
+// v0.2.100: columns to show and the sort, both remembered in this browser.
+const FB_COLS = [["size", "Size", "r"], ["changed", "Changed", ""], ["created", "Created", ""]];
+let fbCols = new Set(pref("shuttle.fbcols", "size,changed,created").split(",").filter(c => FB_COLS.some(x => x[0] === c)));
+let fbSort = (() => { try { const x = JSON.parse(pref("shuttle.fbsort", "")); if (x && x.k && (x.dir === 1 || x.dir === -1)) return x; } catch (e) {} return { k: "name", dir: 1 }; })();
+const fbKey = (f, k) => k === "size" ? (f.file ? f.size || 0 : -1) : k === "changed" ? (f.mtime || "") : k === "created" ? (f.created || "") : f.name.toLowerCase();
+const fbSorted = list => list.slice().sort((a, b) => { const x = fbKey(a, fbSort.k), y = fbKey(b, fbSort.k);
+  return (x < y ? -1 : x > y ? 1 : 0) * fbSort.dir || a.name.localeCompare(b.name, undefined, { numeric: true }); });
+function fbColMenu() {
+  $("fbColList").replaceChildren(...FB_COLS.map(([k, name]) => { const l = el("label"), c = el("input"); c.type = "checkbox"; c.checked = fbCols.has(k);
+    c.onchange = () => { c.checked ? fbCols.add(k) : fbCols.delete(k); keep("shuttle.fbcols", [...fbCols].join(",")); fbPanes.forEach(fbDraw); }; l.append(c, name); return l; }));
+}
+fbColMenu();
+document.addEventListener("pointerdown", e => { if ($("fbCols").open && !$("fbCols").contains(e.target)) $("fbCols").open = false; });
 const fbDone = st => ["strong", "proven", "already", "already2"].includes(st);
 const fbBad = st => ["failed", "warning"].includes(st);
 const fbShort = disk => { const m = /^(.)[^0-9]*([0-9]*)/.exec(disk || "?"); return (m[1] + m[2]).toUpperCase(); };
@@ -2992,23 +3158,27 @@ function fbDraw(p) {
   let list = (d.folders || []).filter(f => words.every(w => f.name.toLowerCase().includes(w)));
   if (fbShowMode === "missing" && p.copies) list = list.filter(f => fbMissing(p, f));
   const places = p.copies ? p.copies.places : [];
+  list = fbSorted(list);
+  const cols = FB_COLS.filter(c => fbCols.has(c[0])), two = fbPanes.length > 1;
+  const w = { size: two ? "76px" : "84px", changed: two ? "130px" : "150px", created: two ? "130px" : "150px" };
+  p.tbl.style.setProperty("--fbcols", ["22px", "minmax(" + (two ? 120 : 160) + "px,1fr)"].concat(cols.map(c => w[c[0]])).join(" "));
+  p.tbl.style.setProperty("--fbmin", (two ? 0 : 230 + cols.reduce((a, c) => a + parseInt(w[c[0]]) + 12, 0)) + "px");
   const head = el("div", "fbr fbhd"), all = el("input");
   all.type = "checkbox"; all.setAttribute("aria-label", "Tick everything shown"); all.checked = list.length > 0 && list.every(f => p.sel.has(f.name));
   all.onchange = () => { list.forEach(f => all.checked ? p.sel.add(f.name) : p.sel.delete(f.name)); fbDraw(p); fbTray(); };
-  head.append(all, el("span", "", "Name"), el("span", "r", "Size"), el("span", "", "Changed"), el("span", "", places.length ? "Proven copies" : "Copies"));
+  const hb = (k, name, cls) => { const b = el("button", cls, name); b.type = "button"; b.title = "Sort by " + name.toLowerCase();
+    if (fbSort.k === k) b.dataset.dir = fbSort.dir;
+    b.onclick = () => { fbSort = { k, dir: fbSort.k === k ? -fbSort.dir : k === "name" ? 1 : -1 }; keep("shuttle.fbsort", JSON.stringify(fbSort)); fbPanes.forEach(fbDraw); }; return b; };
+  head.append(all, hb("name", "Name", ""), ...cols.map(c => hb(...c)));
   const rows = list.map(f => {
     const r = el("div", "fbr" + (p.sel.has(f.name) ? " on" : "") + (fbSel && fbSel.path === f.path ? " foc" : "")), ck = el("input");
     ck.type = "checkbox"; ck.checked = p.sel.has(f.name); ck.setAttribute("aria-label", "Tick " + f.name);
     ck.onchange = () => { ck.checked ? p.sel.add(f.name) : p.sel.delete(f.name); r.classList.toggle("on", ck.checked); fbTray(); syncAll(); };
     const nm = el("button", "fbn " + (f.file ? "file" : "dir"), f.name); nm.type = "button";
     nm.onclick = () => f.file ? fbOpenFile(p, f) : fbLoad(p, f.path);
-    const sts = fbStates(p, f), cp = el("span", "fbc");
-    if (places.length) {
-      sts.forEach((st, k) => cp.append(fbChip(st, fbShort(places[k].disk), places[k].disk + " · " + fbStatusWord(st) + " · " + places[k].dest)));
-      const n = sts.filter(fbDone).length; cp.append(el("small", n === places.length ? "ok" : n ? "" : "warn", n === places.length ? "all " + n : n ? n + " of " + places.length : "none yet"));
-    } else cp.append(el("small", "mute", p.copies ? "never copied by Shuttle" : "…"));
-    const sz = f.file ? size(f.size) : p.copies && p.copies.folders[f.name] ? nf(Math.max(...p.copies.folders[f.name].files)) + " files" : "";
-    r.append(ck, nm, el("span", "r mute", sz), el("span", "mute", f.mtime ? when(f.mtime) : ""), cp);
+    const sz = f.file ? size(f.size) : p.copies && p.copies.folders[f.name] ? (n => nf(n) + (n === 1 ? " file" : " files"))(Math.max(...p.copies.folders[f.name].files)) : "";
+    const cell = { size: el("span", "r mute", sz), changed: el("span", "mute", f.mtime ? when(f.mtime) : ""), created: el("span", "mute", f.created ? when(f.created) : "—") };
+    r.append(ck, nm, ...cols.map(c => cell[c[0]]));
     return r;
   });
   const syncAll = () => { all.checked = list.length > 0 && list.every(f => p.sel.has(f.name)); };
@@ -3076,19 +3246,24 @@ $("fbFilter").oninput = () => fbPanes.forEach(fbDraw);
 $("fbShow").querySelectorAll("button").forEach(b => b.onclick = () => {
   fbShowMode = b.dataset.s; $("fbShow").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); fbPanes.forEach(fbDraw);
 });
-$("fbTwo").onclick = () => {
-  const two = fbPanes.length < 2;
+$("fbTwo").querySelectorAll("button").forEach(btn => btn.onclick = () => {
+  const two = btn.dataset.n === "2";
+  if (two === fbPanes.length > 1) return;
   if (two) { const q = fbPane(1); fbPanes.push(q); $("fbPanes").append(q.box); fbLoad(q, q.path || fbPanes[0].path); }
   else { fbPanes.pop().box.remove(); fbActive = 0; }
-  $("fbTwo").setAttribute("aria-pressed", two); $("fbTwo").textContent = two ? "One pane" : "Two panes";
-  $("fbPanes").classList.toggle("two", two); fbMark(); fbTray();
-};
+  $("fbTwo").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", (x.dataset.n === "2") === two));
+  $("fbPanes").classList.toggle("two", two); fbMark(); fbTray(); fbPanes.forEach(fbDraw);
+});
 // ⌘A ticks everything shown in the active pane, ⌘⇧A unticks (not while typing).
 document.addEventListener("keydown", e => {
   if ($("tabFiles").hidden || !(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "a" || /input|textarea|select/i.test((e.target.tagName || "")) || document.querySelector("dialog[open]")) return;
   const p = fbPanes[fbActive]; if (!p || !p.data) return;
   e.preventDefault(); (p.data.folders || []).forEach(f => e.shiftKey ? p.sel.delete(f.name) : p.sel.add(f.name)); fbDraw(p); fbTray();
 });
+// The name of the disk a source path is on, as the sidebar shows it.
+const fbSrcDisk = path => { const inside = (x, d) => x === d || x.startsWith(d.replace(/\/$/, "") + "/");
+  const d = sideDisks.filter(d => inside(path, d.path) && d.path !== "/").sort((a, b) => b.path.length - a.path.length)[0];
+  return d ? d.name : diskOf(path); };
 // A file's panel: every copy of it, its hash, and its full record.
 function fbOpenFile(p, f) {
   if (selId) selectJob(selId); if (selCard) closeCard();
@@ -3100,17 +3275,31 @@ function fbOpenFile(p, f) {
   if (!c || !c.places.length || !x) {
     box.append(el("p", "mute", "Shuttle has not copied this file. Tick it and choose Copy to another place to make copies with proof."));
   } else {
+    // v0.2.100: the source first, then the backups, grouped by the drive or cloud they are on.
     const sts = x.status, twice = sts.some(st => st === "strong" || st === "already2");
     const orig = el("div", "floc"); orig.append(el("div", "fh", ""), el("p", "path", c.source + "/" + f.name));
-    orig.firstChild.append(el("b", "", "The original"), el("span", twice ? "ok" : "", twice ? "Read twice, the same both times" : sts.some(fbDone) ? "Read once while copying" : "Not read yet"));
-    box.append(orig);
-    c.places.forEach((pl, k) => {
-      const l = el("div", "floc"), h = el("div", "fh"), st = sts[k];
-      h.append(el("b", "", pl.disk || base(pl.dest)), el("span", fbDone(st) ? "ok" : fbBad(st) ? "bad" : st ? "" : "warn", fbStatusWord(st)));
-      l.append(h, el("p", "path", pl.dest + "/" + f.name));
-      if (x.i[k] >= 0) { const more = el("button", "", "Full record…"); more.type = "button"; more.onclick = () => fileInfo(pl.job, x.i[k]); l.append(more); }
-      box.append(l);
+    orig.firstChild.append(el("b", "", fbSrcDisk(c.source)), el("span", twice ? "ok" : "", twice ? "Read twice, the same both times" : sts.some(fbDone) ? "Read once while copying" : "Not read yet"));
+    box.append(el("h4", "fsec", "Source"), orig);
+    const have = c.places.map((pl, k) => k).filter(k => sts[k] || x.i[k] >= 0), groups = new Map();
+    have.forEach(k => { const pl = c.places[k], g = pl.disk || base(pl.dest); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(k); });
+    const bak = el("details", "fbak"); bak.open = pref("shuttle.fbbak", "1") === "1";
+    bak.ontoggle = () => keep("shuttle.fbbak", bak.open ? "1" : "0");
+    const sum = el("summary"); sum.append(el("h4", "fsec", "Backups (" + have.length + ")")); bak.append(sum);
+    if (!have.length) bak.append(el("p", "mute", "No backup of this file yet."));
+    groups.forEach((ks, g) => {
+      const grp = el("div", "fgrp"), h5 = el("h5", "", g), sh = c.places[ks[0]].share;
+      if (sh) h5.append(el("small", "", sh === "lucidlink" ? "LucidLink · cloud" : "network share"));
+      grp.append(h5);
+      ks.forEach(k => {
+        const pl = c.places[k], l = el("div", "floc"), h = el("div", "fh"), st = sts[k];
+        h.append(el("span", "path", pl.dest + "/" + f.name), el("span", fbDone(st) ? "ok" : fbBad(st) ? "bad" : st ? "" : "warn", fbStatusWord(st)));
+        l.append(h);
+        if (x.i[k] >= 0) { const more = el("button", "", "Full record…"); more.type = "button"; more.onclick = () => fileInfo(pl.job, x.i[k]); l.append(more); }
+        grp.append(l);
+      });
+      bak.append(grp);
     });
+    box.append(bak);
     const k = x.i.findIndex((i, n) => i >= 0 && fbDone(sts[n]));
     const hb = el("div", "fhash"); box.append(hb);
     if (k >= 0) {
@@ -3495,7 +3684,7 @@ function proofSlots(fi) {
       v.append(hashEl(h));
       if (ref && h !== ref) v.append(el("span", "nomatch", "  ✗ differs"));
       else if (ref && side !== "first") v.append(el("span", "match", "  ✓ same as the first"));
-      v.append(el("div", "mute", from));
+      if (from) v.append(el("div", "mute", from));
       d.append(v);
       if (side !== "first" || fi.hash.c && !ver) d.append(againButton(fi, side === "first" ? "source" : side));
     } else {
@@ -3506,9 +3695,9 @@ function proofSlots(fi) {
   };
   const by = r => "by a Verify, " + new Date(r.time).toLocaleString();
   const rows = [
-    slot(src, ref, ver ? "stored when the copy was made" : fi.already ? "when the copy found the file already there" : "during the copy", "first", "", ver ? "No hash was stored for this file." : "Not made yet: it is made as the file is copied."),
-    slot("Destination — full read of the copy", d1, ver ? "by this Verify" : fi.hash.d1 ? "by the copy itself" : vd ? by(vd) : "", "dest", s2 ? "dest" : "src", "Not done: the copy has not been read back."),
-    slot("Source — second full read (safety check)", s2, ver ? "by this Verify" : fi.hash.s2 ? "by the copy itself" : vs2 ? by(vs2) : "", "source", d1 ? "only" : "src", "Not done: the source has not been read a second time."),
+    slot(src, ref, ver ? "" : fi.already ? "when the copy found the file already there" : "during the copy", "first", "", ver ? "No hash was stored for this file." : "Not made yet: it is made as the file is copied."),
+    slot("Destination — full read of the copy", d1, ver ? "" : fi.hash.d1 ? "by the copy itself" : vd ? by(vd) : "", "dest", s2 ? "dest" : "src", "Not done: the copy has not been read back."),
+    slot("Source — second full read (safety check)", s2, ver ? "" : fi.hash.s2 ? "by the copy itself" : vs2 ? by(vs2) : "", "source", d1 ? "only" : "src", "Not done: the source has not been read a second time."),
   ];
   const older = vs.filter(r => r !== vd && r !== vs2 || r.err).map(r => {
     const d = el("div", "hrow"); d.append(el("div", "mute", "Verify — " + new Date(r.time).toLocaleString()));
@@ -3530,7 +3719,7 @@ function proofSlots(fi) {
   const kinds = el("p", "mute", "Hashes made: " + (made.length ? made.join(" and ") : "none yet") + (fi.algo ? " · this " + (ver ? "Verify" : "copy") + " was set to " + algoName[fi.algo] : "") + ".");
   const legacy = [];
   if (fi.hash.x64) { const d = el("div", "hrow"), v = el("div"); d.append(el("div", "mute", "Destination — XXH64 made for a list (version 0.2.57)")); v.append(hashEl(fi.hash.x64)); d.append(v); legacy.push(d); }
-  return [el("h3", "", "Fingerprints (" + (made.length ? made.join(" and ") : "hashes") + ")"), kinds, el("p", "mute", ver ? "What this Verify read, against the hash stored when the file was copied. All three must be the same for the copy to be fully verified." : "Three separate full reads: the source as it was copied, the copy read back, and the source read again. All must be the same for the copy to be fully verified."),
+  return [el("h3", "", "Fingerprints (" + (made.length ? made.join(" and ") : "hashes") + ")"), kinds, ...(ver ? [] : [el("p", "mute", "Three separate full reads: the source as it was copied, the copy read back, and the source read again. All must be the same for the copy to be fully verified.")]),
     ...rows, ...legacy, ...(older.length ? [el("h3", "", "Earlier checks")] : []), ...older, ...rech, el("p", "bad againmsg", "")];
 }
 function fileInfo(id, i) {

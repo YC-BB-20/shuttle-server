@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.100 — 17 November 2026
+
+- **A card above the queue, always shown.** How many items are in the queue, the job running now with its percent and time left, and the time left for the whole queue. Under it, one line for each disk the queued jobs use: its read or write speed and what it is doing (copying, reading back, waiting, not connected…).
+- **Top bar:** New copy, then Add link, then the search field, next to the logo; the General / On set switch is at the far right.
+- **Queue:** the filter chips scroll sideways when they do not fit (some were hidden off the left edge). A Verify's purple line runs through the centre of its copy's icon. A finished job's status shows each part on its own line (the copy speed, the read-back, the second source read, a queued check). "Proof" is now "Status"; a copy without checks says "Copied, hash generated".
+- **Files:** the "Proven copies" column is gone. Click a heading to sort by name, size, changed or created; Columns chooses which show, with a new Created date (macOS). The pane switch comes first; the name filter and All / Missing sit on the right. With no file open, the list takes the full width. A file's panel shows its Source first, then "Backups (n)", which folds, grouped by drive or cloud. The file record no longer has the three Verify notes.
+- **Disks:** one under another, each with an Eject button (refused while a job in the queue uses the disk). A slowed-down drive's name is orange; click it for what the drive can do and what holds it back. "(its USB controller)" is gone.
+- **Settings** in three pages: Copy settings, Updates, Versions (the installed version, what changed, and older versions).
+- **LucidLink as a source (owner's decision):** the second read of the source reads LucidLink's cache as it is, never dropping it or downloading again; the page says so. A local source is always read a second time from the disk.
+- On a phone, the sections bar sits in one row again.
+
 ## 0.2.99 — 17 November 2026
 
 - **A copy that ends with failed files asks what to do.** It no longer slips into the history: it stays in the queue as "Needs your answer", says how many files failed and the most common reason, and offers "Try the failed files again" or "Leave them failed". Only that copy waits; the rest of the queue carries on, overnight too. Its Verify item waits for the answer. Nothing on disk changes either way, and the question survives a restart.
