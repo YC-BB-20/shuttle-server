@@ -372,8 +372,8 @@ func TestPageCardLayout50(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
 		`.qhead { display:grid;`, `.qhead h2 { grid-row:2; grid-column:1 / -1;`, `<div class="rspeed" hidden></div><div class="acts">`, `"average copy speed"`,
-		`line = "Now: " + v.stage +`, `<div class="paths"><p class="path from"></p><p class="path to"></p></div>`,
-		`top.append(c._d.querySelector(".brow"), bar, el("p", "fhead"))`, `c._d.insertBefore(c._d.querySelector(".brow"), c._d.querySelector(".tail"))`, `q(".counts").textContent = "";`,
+		`line = "Now: " + v.stage +`, `<div class="paths" data-t="proof"><p class="path from"></p><p class="path to"></p></div>`,
+		`top.append(c._d.querySelector(".fpage"), bar, el("p", "fhead"))`, `c._d.querySelector(".brow").append(c._d.querySelector(".fpage"))`, `q(".counts").textContent = "";`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
@@ -475,7 +475,7 @@ func TestPageDecimalSpeedsAndCopyRateInHistory(t *testing.T) {
 func TestPageQueueItem59(t *testing.T) {
 	page := string(IndexHTML)
 	for _, want := range []string{`function jobName(v)`, `" folders"`, `"Destination: " + (at(v.to_disk, v.to_path)`, `"Source: " + (at(v.from_disk, v.from_path)`,
-		`<div class="sub"></div><p class="speed mute"></p></div>`, `<div class="tail"><p class="line"></p></div>`, `insertBefore(box, c._d.querySelector(".tail"))`} {
+		`<div class="sub"></div><p class="speed mute"></p></div>`, `<div class="tail" data-t="overview"><p class="line"></p></div>`, `insertBefore(box, c._d.querySelector(".tail"))`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("page lacks %q", want)
 		}
@@ -502,7 +502,7 @@ func TestPageWarnsBeforeStartWhenCopyMayNotFit(t *testing.T) {
 func TestPageNewLookQueueOrderOnSet(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
-		`color-scheme: dark;`, `<header class="topbar">`, `<nav class="side tabs" role="tablist"`, `<footer class="strip" id="strip">`, `id="sysBtn">System</button>`,
+		`color-scheme: dark;`, `<header class="topbar">`, `<div class="side"><nav class="tabs" role="tablist"`, `<footer class="strip" id="strip">`, `id="sysBtn">System</button>`,
 		`id="styleSw"`, `data-style="onset"`, `id="onset"`, `id="onLayout"`, `data-l="table"`,
 		`const SAFE_COPIES = 2;`, `"SAFE TO UNPLUG"`, `"VERIFIED"`, `"KEEP CONNECTED"`, `function driveState(v)`, `k.source >= of`, `k.dest >= of`,
 		`"/api/jobs/" + id + "/move"`, `"Run next"`, `function markMovable(list)`, `e.altKey`, `(a.order ?? 0) - (b.order ?? 0)`,
@@ -532,5 +532,21 @@ func TestPageTableRowsAndDetailsPanel(t *testing.T) {
 	}
 	if strings.Contains(s, `c.querySelector(".detail").insertBefore`) {
 		t.Error("toggleFiles must not look for the details inside the row: they may be in the panel")
+	}
+}
+
+// v0.2.87: tabs in the details panel, the strip's items, System, sidebar
+// disks and the command palette.
+func TestPagePanelTabsStripSystemPalette(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`id="inspTabs"`, `data-tab="overview"`, `data-tab="files"`, `data-tab="proof"`, `data-tab="problems"`, `data-tab="log"`,
+		`.ibody[data-tab="log"] .detail > [data-t]:not([data-t="log"])`, `box.dataset.t = "files";`, `function fillOverview(v, q, o)`,
+		`"/api/jobs/" + v.id + "/log?since="`, `fetch("/api/log")`, `function loadProblems(c)`, `function renderStrip(s)`, `id="sysDlg"`,
+		`id="sideDisks"`, `function loadSideDisks()`, `id="cmdDlg"`, `e.key.toLowerCase() === "k"`, `#headline { display:none !important; }`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
 	}
 }

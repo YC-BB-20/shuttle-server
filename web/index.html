@@ -325,7 +325,7 @@ select { padding:5px 8px; }
   .side button { width:auto; white-space:nowrap; } .side #aboutBtn { margin:0 0 0 auto; }
   .shell > main { padding:14px 12px 24px; }
   .topbar .live { margin-left:0; }
-  .shell .side.tabs { order:-1; width:auto; }
+  .shell .side { order:-1; width:auto; } .side .tabs { flex-direction:row; } .sdisks { display:none; } .cmdk { display:none; }
   #stripSub { display:none; }
 }
 /* The panel on top of the queue: only while something runs; the words moved to the strip. */
@@ -460,7 +460,7 @@ dialog .head, .foot { border-color:var(--line); }
 .ibody .paths { display:flex; flex-direction:column; gap:4px; margin:0 0 10px; }
 .ibody .path { font-size:12px; color:#d9d9df; }
 .ibody .detail .btns { margin:12px 0 4px; }
-.ibody .files { border-top:1px solid var(--line); margin-top:12px; padding-top:10px; }
+.ibody .files { border-top:0; margin-top:0; padding-top:0; }
 .ibody .frows { max-height:none; }
 .ibody .frow .chip { min-width:8.5em; }
 .ibody .line { color:var(--mute); font-size:13px; }
@@ -477,18 +477,74 @@ dialog .head, .foot { border-color:var(--line); }
   .job .r, .job.verify .r { grid-template-columns:14px 28px minmax(0,1fr) auto; grid-template-areas:"g i m a" ". . b b" ". . s s"; row-gap:6px; }
   .job .r::after { display:none; }
 }
+
+/* ===== v0.2.87: panel tabs, sidebar disks, strip, System, ⌘K. ===== */
+.side .tabs { display:flex; flex-direction:column; gap:2px; background:transparent; padding:0; border-radius:0; }
+.sdisks { margin-top:22px; padding:0 2px; display:flex; flex-direction:column; gap:4px; }
+.sdisks h3 { margin:0 10px 6px; font-size:12px; font-weight:600; color:var(--mute); }
+.sd { display:flex; flex-direction:column; padding:6px 10px; border-radius:7px; text-decoration:none; color:var(--fg); }
+.sd:hover { background:#202026; } .sd b { font-weight:500; overflow-wrap:anywhere; } .sd small { font-size:12px; } .sd small:not(.mute):not(.warn) { color:var(--fg); }
+.sd small.warn { color:var(--warn); font-weight:600; }
+.side #aboutBtn { margin-top:auto; }
+.cmdk { flex:1 1 220px; max-width:420px; height:34px; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:0 12px; background:var(--bg); border:1px solid var(--line); color:var(--mute); font-weight:400; }
+.cmdk kbd { font:12px inherit; padding:1px 6px; border:1px solid var(--line2); border-radius:5px; }
+.topbar .live { margin-left:auto; }
+.sitems { display:flex; flex-wrap:wrap; gap:4px 20px; } .si b { font-weight:600; }
+.itabs { position:sticky; top:62px; z-index:1; display:flex; gap:2px; padding:0 12px; background:var(--side); border-bottom:1px solid var(--line); overflow-x:auto; }
+.itabs button { border:0; background:transparent; color:var(--mute); padding:9px 8px 10px; border-radius:0; font-size:13px; white-space:nowrap; }
+.itabs button[aria-selected=true] { color:var(--fg); font-weight:600; box-shadow:inset 0 -2px 0 var(--sel); }
+.itabs button .n { color:var(--mute); font-weight:400; }
+.insp:not(.on) .itabs { display:none; }
+.ibody[data-tab="overview"] .detail > [data-t]:not([data-t="overview"]),
+.ibody[data-tab="files"] .detail > [data-t]:not([data-t="files"]),
+.ibody[data-tab="proof"] .detail > [data-t]:not([data-t="proof"]),
+.ibody[data-tab="problems"] .detail > [data-t]:not([data-t="problems"]),
+.ibody[data-tab="log"] .detail > [data-t]:not([data-t="log"]) { display:none !important; }
+.nums { display:flex; gap:24px; margin:4px 0 16px; } .nums > div { display:flex; flex-direction:column; }
+.nums b { font-size:30px; font-weight:600; line-height:1.1; letter-spacing:-.02em; } .nums .nw { color:var(--mute); } .nums small { font-size:12px; color:var(--mute); }
+.facts { display:grid; grid-template-columns:72px minmax(0,1fr); gap:7px 10px; margin:0 0 14px; }
+.facts dt { color:var(--mute); } .facts dd { margin:0; overflow-wrap:anywhere; } .facts dd.path { font-size:12px; }
+.spd { padding-top:12px; border-top:1px solid var(--line); margin-bottom:12px; }
+.spd h4, .plist h4 { margin:0 0 8px; font-size:12px; font-weight:600; color:var(--mute); }
+.spd .sr { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 10px; margin-bottom:8px; } .spd .sr small { grid-column:1 / -1; color:var(--warn); font-size:12px; }
+.ibody .brow { padding-top:12px; border-top:1px solid var(--line); }
+.pf p { margin:0 0 10px; } .ibody .paths { margin-bottom:12px; }
+.pcounts { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px; margin-bottom:14px; }
+.pcounts > div { display:flex; flex-direction:column; padding:10px 12px; border-radius:9px; background:var(--bg); color:var(--mute); }
+.pcounts > div.hot { background:#3a2d10; color:#f7cf7e; } .pcounts b { font-size:22px; font-weight:600; line-height:1.1; } .pcounts span { font-size:12px; }
+.plist { display:flex; flex-direction:column; gap:8px; margin-bottom:14px; }
+.prow { display:flex; flex-direction:column; padding:8px 0; border-bottom:1px solid #26262c; } .prow small { color:var(--mute); font-size:12px; }
+.lrows { display:flex; flex-direction:column; gap:6px; font:12px/1.45 ui-monospace, Menlo, monospace; margin-bottom:12px; }
+.lrow { display:grid; grid-template-columns:62px minmax(0,1fr); gap:8px; } .lrow .lt { color:var(--mute); } .lrow .lm { overflow-wrap:anywhere; color:#d9d9df; }
+.lrow.warn .lm { color:#f7cf7e; } .lrow.bad .lm { color:var(--bad); }
+#logDlg { width:min(860px, calc(100vw - 24px)); } #logList { max-height:60vh; overflow:auto; }
+#sysDlg .sysg { display:flex; flex-direction:column; gap:14px; }
+.sg { display:flex; flex-direction:column; gap:5px; } .sgt { display:flex; justify-content:space-between; gap:8px; } .sg .bar { height:6px; margin:0; } .sg .bar > i { background:var(--verify); }
+.job .nowl { font-size:12px; color:var(--mute); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; font-family:ui-monospace, Menlo, monospace; }
+dialog.cmd { width:min(620px, calc(100vw - 24px)); margin:12vh auto auto; padding:0; }
+dialog.cmd[open] { display:flex; flex-direction:column; }
+.cmd input { border:0; border-bottom:1px solid var(--line); border-radius:0; padding:14px 16px; font-size:16px; background:transparent; }
+.cmd input:focus-visible { outline:none; }
+.clist { max-height:50vh; overflow:auto; padding:6px; }
+.citem { display:flex; flex-direction:column; align-items:flex-start; width:100%; text-align:left; border:0; background:transparent; padding:8px 10px; border-radius:7px; }
+.citem.on, .citem:hover { background:#2c2540; } .citem small { color:var(--mute); font-size:12px; overflow-wrap:anywhere; } .clist p { margin:10px; }
+/* v0.2.87: as in the design, no panel above the queue: the running copy is the first row, and the
+   whole queue's time, speed and limit are in the strip along the bottom. */
+#headline { display:none !important; }
 </style>
 </head>
 <body>
 <header class="topbar">
   <h1 class="brand"><svg width="24" height="24" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#7c4de0"/><path d="M22 46V18m0 0l-8 8m8-8l8 8M42 18v28m0 0l-8-8m8 8l8-8" stroke="#fff" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>Shuttle Server <span class="ver" id="ver"></span></h1>
   <div class="seg" id="styleSw" role="group" aria-label="Display style"><button type="button" data-style="general" aria-pressed="true">General</button><button type="button" data-style="onset" aria-pressed="false">On set</button></div>
+  <button type="button" class="cmdk" id="cmdBtn"><span>Search or run a command</span><kbd>⌘K</kbd></button>
   <span class="live" id="live">Connecting</span>
   <button type="button" class="upd" id="updTop" hidden></button>
   <button class="primary" type="button" id="newBtn">New copy</button>
 </header>
 <div class="shell">
-<nav class="side tabs" role="tablist" aria-label="Sections"><button type="button" role="tab" id="tabStatusBtn" aria-selected="true">Queue</button><button type="button" role="tab" id="tabStorageBtn" aria-selected="false">Disks</button><button type="button" role="tab" id="tabSettingsBtn" aria-selected="false">Settings</button><button id="aboutBtn" type="button">About</button></nav>
+<div class="side"><nav class="tabs" role="tablist" aria-label="Sections"><button type="button" role="tab" id="tabStatusBtn" aria-selected="true">Queue</button><button type="button" role="tab" id="tabStorageBtn" aria-selected="false">Disks</button><button type="button" role="tab" id="tabSettingsBtn" aria-selected="false">Settings</button></nav>
+<section class="sdisks" aria-label="Disks"><h3>Disks</h3><div id="sideDisks"></div></section><button id="aboutBtn" type="button">About</button></div>
 <main>
   <div class="banner" id="safe" hidden><b>Safe mode.</b> <span id="safeReason"></span>
     <p class="mute">Nothing runs. Fix the problem, then quit Shuttle Server and start it again with <span class="path">-clear-safe-mode</span>.</p></div>
@@ -599,11 +655,12 @@ dialog .head, .foot { border-color:var(--line); }
 </main>
 <aside class="insp" id="insp" aria-label="Details">
   <div class="ihead" id="inspHead" hidden><div><h2 id="inspTitle"></h2><p class="ist" id="inspState"></p></div><button type="button" id="inspClose" aria-label="Close the details">✕</button></div>
+  <div class="itabs" id="inspTabs" role="tablist" aria-label="Details"><button type="button" role="tab" data-tab="overview">Overview</button><button type="button" role="tab" data-tab="files">Files</button><button type="button" role="tab" data-tab="proof">Proof</button><button type="button" role="tab" data-tab="problems">Problems</button><button type="button" role="tab" data-tab="log">Log</button></div>
   <p class="iempty" id="inspEmpty">Click a copy to see everything about it here: where it goes, its proof, its files and their hashes, problems, and the hash list.</p>
   <div class="ibody" id="inspBody"></div>
 </aside>
 </div>
-<footer class="strip" id="strip"><span class="lvl" id="stripLvl" aria-hidden="true"></span><b id="stripHead">Loading…</b><span class="mute" id="stripSub"></span><button type="button" id="sysBtn">System</button></footer>
+<footer class="strip" id="strip"><span class="lvl" id="stripLvl" aria-hidden="true"></span><b id="stripHead">Loading…</b><span class="mute" id="stripSub"></span><span id="stripItems" class="sitems"></span><button type="button" id="sysBtn">System</button></footer>
 <dialog id="newDlg">
   <div class="head"><h2>New copy</h2><button type="button" data-close>Cancel</button></div>
   <div class="body">
@@ -690,6 +747,20 @@ dialog .head, .foot { border-color:var(--line); }
   </div>
   <div class="foot"><button type="button" data-close>Cancel</button><button type="button" class="primary" id="verGo">Add Verify</button></div>
 </dialog>
+<dialog id="sysDlg">
+  <div class="head"><h2>How Shuttle is using this computer</h2><button type="button" data-close>Close</button></div>
+  <div class="body"><p class="mute" id="sysVer"></p><div class="sysg" id="sysList"></div></div>
+  <div class="foot"><button type="button" id="sysLog">Open the full log</button><button type="button" id="sysUpd">Updates</button><button type="button" id="sysSet">Settings</button></div>
+</dialog>
+<dialog id="logDlg">
+  <div class="head"><h2>Shuttle's log</h2><button type="button" data-close>Close</button></div>
+  <div class="body"><p class="mute">The last lines Shuttle wrote, newest at the bottom. The full log is in the data folder under logs, one folder per month.</p><div class="lrows" id="logList"></div></div>
+</dialog>
+<dialog id="cmdDlg" class="cmd">
+  <label for="cmdIn" class="vh">Search or run a command</label>
+  <input type="text" id="cmdIn" placeholder="Search copies, disks, or type a command" autocomplete="off" spellcheck="false">
+  <div class="clist" id="cmdList" role="listbox" aria-label="Results"></div>
+</dialog>
 <dialog id="probDlg">
   <div class="head"><h2>Files that need attention</h2><button type="button" data-close>Close</button></div>
   <div class="body" id="probList"></div>
@@ -723,6 +794,9 @@ dialog .head, .foot { border-color:var(--line); }
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
+// Small choices remembered in this browser (layout, tab, style).
+const pref = (k, d) => { try { return localStorage.getItem(k) || d; } catch (e) { return d; } };
+const keep = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
 const size = n => { if (!n) return "0 B"; const u = ["B","KB","MB","GB","TB"]; let i = Math.min(4, Math.floor(Math.log(n)/Math.log(1024))); return (n/1024**i).toFixed(i > 2 ? 1 : 0) + " " + u[i]; };
 const pct = (a, b) => b ? Math.min(100, a / b * 100) : 0;
 const ago = t => { const s = Math.round((Date.now() - new Date(t)) / 1000); if (s < 90) return s + " s"; if (s < 5400) return Math.round(s/60) + " min"; return (s/3600).toFixed(1) + " h"; };
@@ -758,7 +832,7 @@ function render() {
   // v0.2.85: the strip along the bottom says what Shuttle is doing, on every screen.
   $("stripHead").textContent = s.headline;
   $("stripLvl").className = "lvl " + (s.level === "bad" ? "bad" : s.level === "warn" ? "warn" : "");
-  $("stripSub").textContent = [$("mon").hidden ? "" : $("monOf").textContent, "running for " + ago(s.started_at)].concat(s.notes || []).filter(Boolean).join(" · ");
+  renderStrip(s); drawSideDisks();
   if (s.update) renderUpdate(s.update, s);
 }
 function showTab(name) {
@@ -1415,6 +1489,103 @@ function jobName(v) {
   const d = v.only_dirs, f = v.only - d;
   return [d && d + (d === 1 ? " folder" : " folders"), f && f + (f === 1 ? " file" : " files")].filter(Boolean).join(", ");
 }
+// v0.2.87: the panel has tabs. Each part of a copy's details says which tab
+// it belongs to (data-t); the panel shows only the parts of the tab chosen.
+let inspTab = pref("shuttle.insptab", "overview");
+const tabLabel = (t, name, n) => { const b = $("inspTabs").querySelector('[data-tab="' + t + '"]'); b.replaceChildren(name, ...(n ? [el("span", "n", " " + n)] : [])); };
+function setInspTab(t) {
+  inspTab = t; keep("shuttle.insptab", t); $("inspBody").dataset.tab = t;
+  $("inspTabs").querySelectorAll("button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t));
+  const c = selId && cards[selId];
+  if (c && t === "problems") loadProblems(c);
+  if (c && t === "log") loadLog(c);
+}
+$("inspTabs").querySelectorAll("button").forEach(b => b.onclick = () => setInspTab(b.dataset.tab));
+// Problems tab: the counts, then each file with what happened to it.
+function loadProblems(c) {
+  const v = c._v, box = c._d.querySelector(".pb");
+  const counts = [["failed", v.failed], ["deleted before their turn", v.gone], ["changed since listed", v.changed], ["added to the source afterwards", v.added], ["source read differently", v.s2_warnings]];
+  const grid = el("div", "pcounts");
+  counts.forEach(([t, n]) => { const d = el("div", n ? "hot" : ""); d.append(el("b", "", String(n || 0)), el("span", "", t)); grid.append(d); });
+  const list = el("div", "plist"), head = [grid];
+  if (v.error) head.push(el("p", "bad", v.error));
+  box.replaceChildren(...head, list);
+  if (!(v.failed || v.gone || v.changed || v.s2_warnings)) {
+    list.append(el("p", "mute", v.added ? "" : "No file had a problem in this copy."));
+  } else {
+    list.append(el("p", "mute", "Loading…"));
+    fetch("/api/jobs/" + v.id + "/problems").then(r => r.json()).then(ps => {
+      list.replaceChildren(...ps.map(p => { const d = el("div", "prow"); d.append(el("span", "path", p.path), el("small", "", p.why)); return d; }));
+      if (!ps.length) list.replaceChildren(el("p", "mute", "Nothing to show."));
+    }).catch(() => list.replaceChildren(el("p", "mute", "The list could not be read.")));
+  }
+  if (v.added) {
+    const a = el("div", "plist"); a.append(el("h4", "", v.added + " files added to the source after the list was made (not copied)"));
+    box.append(a);
+    fetch("/api/jobs/" + v.id + "/added?limit=200").then(r => r.json()).then(o => {
+      a.append(...o.rows.map(p => { const d = el("div", "prow"); d.append(el("span", "path", p.path), el("small", "", size(p.size))); return d; }));
+      if (o.next >= 0) a.append(el("p", "mute", "The first 200 are shown. \"Copy these too\" copies all of them."));
+    }).catch(() => {});
+  }
+}
+// Log tab: this copy's own lines from Shuttle's log.
+const logRows = lines => lines.map(l => { const d = el("div", "lrow " + (l.level === "WARN" ? "warn" : l.level === "ERROR" ? "bad" : ""));
+  d.append(el("span", "lt", l.t ? new Date(l.t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : ""), el("span", "lm", l.msg + (l.more ? " · " + l.more : ""))); return d; });
+function loadLog(c) {
+  const v = c._v, box = c._d.querySelector(".lg");
+  if (!box.childElementCount) box.append(el("p", "mute", "Loading…"));
+  fetch("/api/jobs/" + v.id + "/log?since=" + encodeURIComponent(v.created)).then(r => r.json()).then(lines => {
+    const full = el("button", "", "Open the full log"); full.type = "button"; full.onclick = openFullLog;
+    const rows = el("div", "lrows"); rows.append(...logRows(lines));
+    box.replaceChildren(rows, ...(lines.length ? [] : [el("p", "mute", "No lines for this copy in the log.")]), full);
+  }).catch(() => box.replaceChildren(el("p", "mute", "The log could not be read.")));
+}
+setInterval(() => { if (inspTab === "log" && selId && cards[selId] && !document.hidden && cards[selId]._v.state === "running") loadLog(cards[selId]); }, 4000);
+function openFullLog() {
+  $("logList").replaceChildren(el("p", "mute", "Loading…")); $("logDlg").showModal();
+  fetch("/api/log").then(r => r.json()).then(lines => { $("logList").replaceChildren(...logRows(lines)); $("logList").scrollTop = 1e9; })
+    .catch(() => $("logList").replaceChildren(el("p", "mute", "The log could not be read.")));
+}
+// Overview: the two numbers, the facts, and the speed of each disk.
+function proofScheme(v) {
+  if (v.kind === "verify") return verKind(v);
+  if (v.check === "none") return "Copied and hashed; read back by " + (v.verify_next ? "its own Verify item" : "a later Verify");
+  return v.s2 === "now" ? "Copy read back, source read a second time" : "Copy read back";
+}
+function fillOverview(v, q, o) {
+  const k = v.checks, fin = o.old;
+  let prov, wrote;
+  if (o.ver) { prov = v.progress || 0; wrote = null; }
+  else if (fin) { wrote = 1; prov = k && k.of ? k.dest / k.of : v.check === "none" ? null : 1; }
+  else { wrote = v.copied_part || 0; prov = v.check === "none" ? null : v.proven_part || 0; }
+  const P = x => (x >= 1 ? 100 : Math.floor(x * 1000) / 10) + "%", tot = v.bytes || v.est_bytes || 0;
+  q(".np").textContent = prov == null ? "—" : P(prov);
+  q(".npl").textContent = o.ver ? "checked" : prov == null ? "not read back yet" : "proven · " + size(prov * tot);
+  q(".nwb").hidden = wrote == null;
+  if (wrote != null) { q(".nw").textContent = P(wrote); q(".nwl").textContent = "written · " + size(wrote * tot) + " of " + size(tot); }
+  const at = (d, p) => d ? d + " → " + p : "";
+  const facts = [[o.ver ? "Checks" : "From", o.ver ? o.place : at(v.from_disk, v.from_path) || v.source], o.ver ? null : ["To", at(v.to_disk, v.to_path) || v.dest],
+    ["Files", !o.ver && !fin && !o.scanning ? fileCounts(v) : o.scanning ? v.scanned + " listed so far" : nf(v.files)],
+    ["Hash", algoName[v.algo] || "XXH128"], ["Proof", proofScheme(v)],
+    ["Started", when(v.created) + (v.work_ms ? " · worked " + clock(v.work_ms) : "")], fin && v.finished ? ["Finished", when(v.finished)] : null].filter(Boolean);
+  const dl = q(".facts"), key = JSON.stringify(facts);
+  if (dl.dataset.k !== key) { dl.dataset.k = key; dl.replaceChildren(...facts.flatMap(([a, b]) => [el("dt", "", a), el("dd", /^(From|To|Checks)$/.test(a) ? "path" : "", b)])); }
+  const live = v.state === "running" && !o.scanning;
+  q(".spd").hidden = !live;
+  if (live) {
+    const back = o.ver || isCheckStage(v.stage);
+    const rows = [[(v.from_disk || diskOf(v.source)) + " reading", v.source_rate], [(v.to_disk || diskOf(v.dest)) + (back ? " reading back" : " writing"), v.dest_rate]].filter(r => r[1] > 0);
+    const lim = rows.length > 1 ? rows.reduce((a, b) => a[1] <= b[1] ? a : b) : null;
+    q(".spdl").replaceChildren(...(rows.length ? rows.map(r => { const d = el("div", "sr"); d.append(el("span", "", r[0]), el("b", "", rate(r[1])));
+      if (r === lim) d.append(el("small", "", "The slower one: this is the limit right now")); return d; }) : [el("p", "mute", "Measuring…")]));
+  }
+  // Proof tab: what is read for this copy, and how far each read is.
+  const lines = [el("p", "", o.ver ? verKindHelp(v) : "Every file is hashed with " + (algoName[v.algo] || "XXH128") + " as it is read from the source" +
+    (v.check === "none" ? ". This copy does not read its files back; a Verify does." : v.s2 === "now" ? "; the copy is then read back, and the source read a second time, and all three must match." : "; the copy is then read back and must match."))];
+  if (!o.ver && !fin && !o.scanning) lines.push(el("p", "mute", "So far: " + fileCounts(v) + (v.s2 === "now" ? " · source read twice: " + (v.strong || 0) : "")));
+  const pk = lines.map(x => x.textContent).join("|");
+  if (q(".pf").dataset.k !== pk) { q(".pf").dataset.k = pk; q(".pf").replaceChildren(...lines); }
+}
 // v0.2.86: one row is selected at a time; its details live in the panel.
 let selId = "";
 function selectJob(id, keepOpen) {
@@ -1424,7 +1595,7 @@ function selectJob(id, keepOpen) {
   selId = prev && prev._v.id === id ? "" : id;
   const c = selId && cards[selId];
   $("insp").classList.toggle("on", !!c); $("inspEmpty").hidden = !!c; $("inspHead").hidden = !c;
-  if (c) { c.classList.add("open"); $("inspBody").replaceChildren(c._d); $("insp").scrollTop = 0; card(c._v); }
+  if (c) { c.classList.add("open"); c._pn = -1; $("inspBody").replaceChildren(c._d); $("insp").scrollTop = 0; card(c._v); setInspTab(inspTab); }
   else $("inspBody").replaceChildren();
 }
 $("inspClose").onclick = () => { if (selId) selectJob(selId); };
@@ -1454,10 +1625,15 @@ function card(v) {
   let c = cards[v.id];
   if (!c) {
     c = document.createElement("section"); c.className = "job";
-    c.innerHTML = '<div class="r"><button type="button" class="grip" hidden aria-label="Drag to change the order (or ⌥↑ / ⌥↓)" title="Drag to change the order, or press ⌥↑ / ⌥↓"><svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor" aria-hidden="true"><circle cx="2.5" cy="3" r="1.5"/><circle cx="7.5" cy="3" r="1.5"/><circle cx="2.5" cy="8" r="1.5"/><circle cx="7.5" cy="8" r="1.5"/><circle cx="2.5" cy="13" r="1.5"/><circle cx="7.5" cy="13" r="1.5"/></svg></button><span class="ico"></span><div class="m"><div class="route"><span class="s"></span><span class="arr">→</span><span class="d"></span></div><div class="of" hidden></div>' +
+    c.innerHTML = '<div class="r"><button type="button" class="grip" hidden aria-label="Drag to change the order (or ⌥↑ / ⌥↓)" title="Drag to change the order, or press ⌥↑ / ⌥↓"><svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor" aria-hidden="true"><circle cx="2.5" cy="3" r="1.5"/><circle cx="7.5" cy="3" r="1.5"/><circle cx="2.5" cy="8" r="1.5"/><circle cx="7.5" cy="8" r="1.5"/><circle cx="2.5" cy="13" r="1.5"/><circle cx="7.5" cy="13" r="1.5"/></svg></button><span class="ico"></span><div class="m"><div class="route"><span class="s"></span><span class="arr">→</span><span class="d"></span></div><div class="of" hidden></div><div class="nowl" hidden></div>' +
       '<div class="sub"></div><p class="speed mute"></p></div><span class="k"></span><span class="szc"></span><div class="bar"><i></i></div><div class="st"><b></b><small></small></div><div class="rspeed" hidden></div><div class="acts"></div></div>' +
-      '<div class="detail"><p class="dsub"></p><div class="paths"><p class="path from"></p><p class="path to"></p></div><p class="fcounts" hidden></p>' +
-      '<p class="counts mute"></p><p class="warn same" hidden>Source and destination are on the same disk: this copy does not protect against that disk failing.</p><div class="checks" hidden></div><div class="brow"><div class="btns"></div><div class="fpage"></div></div><div class="tail"><p class="line"></p></div></div>';
+      '<div class="detail"><p class="dsub" data-t="overview"></p>' +
+      '<div class="nums" data-t="overview"><div><b class="np"></b><small class="npl"></small></div><div class="nwb"><b class="nw"></b><small class="nwl"></small></div></div>' +
+      '<dl class="facts" data-t="overview"></dl><div class="spd" data-t="overview" hidden><h4>Speed by disk</h4><div class="spdl"></div></div>' +
+      '<div class="paths" data-t="proof"><p class="path from"></p><p class="path to"></p></div><p class="fcounts" data-t="overview" hidden></p>' +
+      '<p class="counts mute" data-t="overview"></p><p class="warn same" data-t="overview" hidden>Source and destination are on the same disk: this copy does not protect against that disk failing.</p>' +
+      '<div class="pf" data-t="proof"></div><div class="checks" data-t="proof" hidden></div><div class="brow" data-t="overview"><div class="btns"></div><div class="fpage"></div></div>' +
+      '<div class="pb" data-t="problems"></div><div class="lg" data-t="log"></div><div class="tail" data-t="overview"><p class="line"></p></div></div>';
     cards[v.id] = c;
     c._d = c.querySelector(".detail");
     dragRow(c);
@@ -1564,6 +1740,14 @@ function card(v) {
   }
   q(".line").textContent = line; q(".line").title = line; q(".sub").title = sub;
   const live = v.state === "running" && !scanning;
+  q(".nowl").hidden = !(live && v.file); if (live && v.file) q(".nowl").textContent = v.file + " · " + (v.stage || "");
+  fillOverview(v, q, { ver, old, scanning, place });
+  if (selId === v.id) {
+    const np = (v.failed || 0) + (v.gone || 0) + (v.changed || 0) + (v.added || 0) + (v.s2_warnings || 0) + (v.error ? 1 : 0);
+    tabLabel("files", "Files", v.files ? nf(v.files) : ""); tabLabel("problems", "Problems", String(np));
+    $("inspTabs").querySelector('[data-tab="files"]').hidden = scanning || !v.files;
+    if (c._pn !== np || c._pst !== v.state) { c._pn = np; c._pst = v.state; if (inspTab === "problems") loadProblems(c); }
+  }
   c.classList.toggle("going", live);
   if (fv[v.id]) {
     fv[v.id].live = live && v.file ? { file: v.file, stage: v.stage, file_done: v.file_done, file_size: v.file_size } : null;
@@ -1605,7 +1789,10 @@ function card(v) {
   if (!old && v.state !== "running" && queueNext && queueNext !== v.id && qf.sort === "queue:1" && !(ver && v.after))
     btn(acts, "Run next", () => moveJob(v.id, queueNext), "next", "Run next: start this one as soon as the running one finishes");
   if (!old) btn(acts, "✕", () => stopJob(v), "", "Stop…");
-  if (problems) btn(btns, "Show problems", () => showProblems(v.id));
+  if (v.state === "running" || v.state === "waiting" || v.state === "queued") btn(btns, "Pause", () => post("/api/jobs/" + v.id + "/pause").catch(e => alert(e.message)));
+  if (v.state === "paused" && !v.space) btn(btns, "Resume", () => post("/api/jobs/" + v.id + "/resume").catch(e => alert(e.message)));
+  if (!old && !v.space) btn(btns, "Stop…", () => stopJob(v));
+  if (problems) btn(btns, "Show problems", () => { if (selId === v.id) setInspTab("problems"); else showProblems(v.id); });
   if (!ver && !scanning && v.files > 0 && (v.state === "finished" || v.state === "running" || v.state === "paused")) btn(btns, "Hash list…", () => openExport(v));
   if (v.state === "finished" && !ver && v.added) {
     btn(btns, "Show added files", () => showAdded(v.id));
@@ -1647,6 +1834,7 @@ function renderMonitor(list) {
   const nv = active.filter(v => v.kind === "verify").length, nc = active.length - nv;
   $("qCount").textContent = [nc ? nc + (nc === 1 ? " copy" : " copies") : "", nv ? nv + (nv === 1 ? " verify" : " verifies") : ""].filter(Boolean).join(", ");
   $("mon").hidden = !active.length;
+  monInfo = {};
   if (!active.length) return;
   const run = active.find(v => v.state === "running") || active.find(v => v.state === "waiting");
   let total = 0, done = 0, unknown = 0;
@@ -1661,6 +1849,7 @@ function renderMonitor(list) {
   // it is on), applied to everything left in the queue, jobs not started yet included.
   const r = run && run.state === "running" ? (run.avg_rate || run.rate) : 0;
   const qleft = r > 0 ? Math.max(0, total - done) / r : 0;
+  monInfo = { qleft, run, active: active.length };
   $("monOf").textContent = [size(done) + " of " + size(total) + (unknown ? " (+" + unknown + (unknown === 1 ? " item" : " items") + " not sized yet: still listing its files)" : ""),
     qleft ? left(qleft) + " for the whole queue" : run && run.state === "running" ? "working out the time left" : ""].filter(Boolean).join(" · ");
   // v0.2.54: two layers, as on each copy: written in purple, read back and matching in pink over it.
@@ -1968,8 +2157,6 @@ function dragRow(c) {
 // source has also been read a second time and matched for that many copies.
 // General is the queue as before. Remembered in this browser.
 const SAFE_COPIES = 2;
-const pref = (k, d) => { try { return localStorage.getItem(k) || d; } catch (e) { return d; } };
-const keep = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
 let viewStyle = pref("shuttle.style", "general"), onLay = pref("shuttle.onlayout", "tiles"), onDaySel = "";
 function setStyle(st) {
   viewStyle = st === "onset" ? "onset" : "general"; keep("shuttle.style", viewStyle);
@@ -2081,7 +2268,106 @@ function renderOnset(list) {
   $("onSum").textContent = shownG.length ? shownG.length + (shownG.length === 1 ? " card · " : " cards · ") + size(bytes) + " · " + nSafe + " safe to unplug" : "";
   $("onCards").replaceChildren(...tiles);
 }
-$("sysBtn").onclick = () => { showTab("settings"); const r = document.querySelector(".resources"); if (r) r.scrollIntoView({ block: "start", behavior: "smooth" }); };
+// The strip along the bottom (v0.2.87): the state, then the whole queue's
+// time, the speed and what limits it, and System.
+let monInfo = {};
+function renderStrip(s) {
+  const run = monInfo.run && monInfo.run.state === "running" ? monInfo.run : null, items = [];
+  const item = (k, v) => { const x = el("span", "si"); x.append(el("span", "mute", k + " "), el("b", "", v)); items.push(x); };
+  if (monInfo.qleft) item("Whole queue", left(monInfo.qleft).replace(/ left$/, ""));
+  if (run && run.phase !== "scan") {
+    const sp = run.kind === "verify" ? run.rate : run.copy_rate || run.rate;
+    if (sp) item("Speed", rate(sp));
+    const rs = [[(run.from_disk || diskOf(run.source)) + " reading", run.source_rate], [(run.to_disk || diskOf(run.dest)) + (isCheckStage(run.stage) || run.kind === "verify" ? " reading back" : " writing"), run.dest_rate]].filter(r => r[1] > 0);
+    if (rs.length > 1) item("Limited by", rs.reduce((a, b) => a[1] <= b[1] ? a : b)[0]);
+  }
+  const key = items.map(x => x.textContent).join("|");
+  if ($("stripItems").dataset.k !== key) { $("stripItems").dataset.k = key; $("stripItems").replaceChildren(...items); }
+  $("stripSub").textContent = items.length ? "" : ["running for " + ago(s.started_at)].concat(s.notes || []).join(" · ");
+  $("sysBtn").textContent = "System · memory " + size(s.memory.used);
+  if ($("sysDlg").open) fillSys(s);
+}
+// System (v0.2.87): how Shuttle is using this computer, from the strip.
+function fillSys(s) {
+  $("sysVer").textContent = "v" + s.version + " · running for " + ago(s.started_at);
+  const g = (k, v, part, note) => { const d = el("div", "sg"), t = el("div", "sgt"), b = el("div", "bar"), i = el("i");
+    t.append(el("span", "", k), el("b", "", v)); i.style.width = Math.min(100, part * 100) + "%"; b.append(i); d.append(t, b, el("small", "mute", note)); return d; };
+  $("sysList").replaceChildren(
+    g("Memory", size(s.memory.used), s.memory.used / (s.memory.ceiling || 1), "Limit " + size(s.memory.ceiling) + (s.memory.state === "ok" ? "" : " · over the limit: starting nothing new")),
+    g("Buffers for file data", size(s.buffers.used) + " of " + size(s.buffers.limit), s.buffers.used / (s.buffers.limit || 1), s.buffers.waiting ? s.buffers.waiting + " waiting for buffers" : "Never grows past this budget"),
+    g("Processor", s.cpu.procs + " of " + s.cpu.num_cpu + " cores", s.cpu.procs / (s.cpu.num_cpu || 1), s.cpu.nice_error ? "Priority not lowered" : "Lower priority (nice " + s.cpu.nice + ")"),
+    g("Open files", "cap " + s.open_files.cap + " of " + s.open_files.limit, s.open_files.cap / (s.open_files.limit || 1), "Pages open: " + s.pages.open + " of " + s.pages.max),
+    g("Free space on this Mac", s.disk.error ? "unknown" : size(s.disk.free), 0, "Floor " + size(s.disk.floor) + (s.disk.below_floor ? " · below the floor" : "")));
+}
+$("sysBtn").onclick = () => { if (latest) fillSys(latest); $("sysDlg").showModal(); };
+$("sysLog").onclick = () => { $("sysDlg").close(); openFullLog(); };
+$("sysUpd").onclick = () => { $("sysDlg").close(); showTab("settings"); $("updates").scrollIntoView({ block: "start" }); };
+$("sysSet").onclick = () => { $("sysDlg").close(); showTab("settings"); };
+// Disks in the sidebar (v0.2.87): free space and what each is doing now.
+let sideTimer = 0, sideDisks = [];
+function loadSideDisks() {
+  clearTimeout(sideTimer);
+  if (document.hidden) return;
+  fetch("/api/storage").then(r => r.json()).then(d => { sideDisks = d.disks || []; drawSideDisks(); }).catch(() => {})
+    .finally(() => { sideTimer = setTimeout(loadSideDisks, 15000); });
+}
+function drawSideDisks() {
+  const jobs = ((latest && latest.jobs) || []).filter(v => v.state === "running" && v.phase !== "scan");
+  const inside = (p, d) => p === d || (p || "").startsWith(d.replace(/\/$/, "") + "/");
+  const rows = sideDisks.filter(d => !d.note && d.kind !== "server").map(d => {
+    const a = el("a", "sd"); a.href = "#storage"; a.onclick = e => { e.preventDefault(); showTab("storage"); };
+    let act = "", cls = "mute";
+    const j = jobs.find(v => (d.kind !== "internal" || d.path !== "/") && (inside(v.source, d.path) || inside(v.dest, d.path)));
+    if (j) { const src = inside(j.source, d.path); const r = src ? j.source_rate : j.dest_rate; act = (src ? "Reading" : isCheckStage(j.stage) || j.kind === "verify" ? "Reading back" : "Writing") + (r ? " " + rate(r) : ""); cls = ""; }
+    else if (d.slow) { act = "Slowed down: check the cable"; cls = "warn"; }
+    else act = d.read_only || d.camera ? "Read only" : "Idle";
+    a.append(el("b", "", d.name), el("small", "mute", d.total ? size(d.free) + " free of " + size(d.total) : ""), el("small", cls, act));
+    return a;
+  });
+  const key = rows.map(r => r.textContent).join("|");
+  if ($("sideDisks").dataset.k !== key) { $("sideDisks").dataset.k = key; $("sideDisks").replaceChildren(...rows); }
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) loadSideDisks(); });
+setTimeout(loadSideDisks, 400);
+// Search or run a command (⌘K, v0.2.87): copies, disks and every action, by
+// typing a few letters. Enter runs the highlighted line.
+let cmdSel = 0, cmdItems = [];
+function cmdAll() {
+  const out = [
+    ["New copy", "Start a copy", () => $("newBtn").onclick()],
+    ["Queue", "Show the queue", () => { setStyle("general"); showTab("status"); }],
+    ["On set: cards", "Show the copies as camera cards", () => { setStyle("onset"); showTab("status"); }],
+    ["Disks", "Every connected disk, speeds and tests", () => showTab("storage")],
+    ["Settings", "Hash, folder layout, start at login, updates", () => showTab("settings")],
+    ["System", "Memory, buffers, processor, open files", () => $("sysBtn").onclick()],
+    ["Open the full log", "The last lines Shuttle wrote", openFullLog],
+    ["Updates", "Check for and install a new version", () => { showTab("settings"); $("updates").scrollIntoView({ block: "start" }); }],
+    ["About", "Version and what changed", () => $("aboutBtn").onclick()]];
+  const jobs = ((latest && latest.jobs) || []).concat(olderViews);
+  const seen = new Set();
+  jobs.forEach(v => { if (seen.has(v.id)) return; seen.add(v.id);
+    out.push([(v.kind === "verify" ? "Verify · " : "") + (v.kind === "verify" ? base(v.dest) : jobName(v)) + " → " + base(v.dest), (stateText[v.state] || v.state) + " · " + when(v.created) + " · " + v.source, () => { setStyle("general"); showTab("status"); selectJob(v.id, true); if (cards[v.id]) cards[v.id].scrollIntoView({ block: "center" }); }]); });
+  sideDisks.forEach(d => out.push([d.name, "Disk · " + (d.total ? size(d.free) + " free" : d.path), () => showTab("storage")]));
+  return out;
+}
+function cmdDraw() {
+  const words = $("cmdIn").value.toLowerCase().split(/\s+/).filter(Boolean);
+  cmdItems = cmdAll().filter(([t, sub]) => words.every(w => (t + " " + sub).toLowerCase().includes(w))).slice(0, 40);
+  cmdSel = Math.min(cmdSel, Math.max(0, cmdItems.length - 1));
+  $("cmdList").replaceChildren(...cmdItems.map(([t, sub, f], i) => { const b = el("button", "citem" + (i === cmdSel ? " on" : "")); b.type = "button"; b.setAttribute("role", "option");
+    b.append(el("b", "", t), el("small", "", sub)); b.onclick = () => { $("cmdDlg").close(); f(); }; return b; }));
+  if (!cmdItems.length) $("cmdList").replaceChildren(el("p", "mute", "Nothing matches."));
+}
+function openCmd() { $("cmdIn").value = ""; cmdSel = 0; cmdDraw(); $("cmdDlg").showModal(); $("cmdIn").focus(); }
+$("cmdBtn").onclick = openCmd;
+$("cmdIn").oninput = () => { cmdSel = 0; cmdDraw(); };
+$("cmdIn").onkeydown = e => {
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); cmdSel = Math.max(0, Math.min(cmdItems.length - 1, cmdSel + (e.key === "ArrowDown" ? 1 : -1))); cmdDraw();
+    const on = $("cmdList").querySelector(".on"); if (on) on.scrollIntoView({ block: "nearest" }); }
+  if (e.key === "Enter" && cmdItems[cmdSel]) { e.preventDefault(); $("cmdDlg").close(); cmdItems[cmdSel][2](); }
+};
+$("cmdDlg").onclick = e => { if (e.target === $("cmdDlg")) $("cmdDlg").close(); };
+document.addEventListener("keydown", e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k" && !document.querySelector("dialog[open]")) { e.preventDefault(); openCmd(); } });
 $("moreHist").onclick = () => {
   const skip = ((latest && latest.jobs) || []).filter(v => v.state === "finished" || v.state === "stopped").length + olderViews.length;
   fetch("/api/history?skip=" + skip).then(r => r.json()).then(list => {
@@ -2111,8 +2397,8 @@ const fileChip = { checkwait: "waiting", already: "ok", already2: "ok", proven: 
 // / Show fewer sit beside Verify files.
 const treeMin = 20, filePage = 50;
 function toggleFiles(v, c) {
-  if (fv[v.id]) { c._d.insertBefore(c._d.querySelector(".brow"), c._d.querySelector(".tail")); fv[v.id].box.remove(); c._d.querySelector(".fpage").replaceChildren(); delete fv[v.id]; return; }
-  const box = el("div", "files");
+  if (fv[v.id]) { c._d.querySelector(".brow").append(c._d.querySelector(".fpage")); fv[v.id].box.remove(); c._d.querySelector(".fpage").replaceChildren(); delete fv[v.id]; return; }
+  const box = el("div", "files"); box.dataset.t = "files";
   // One file: no filters, the one row says it all.
   const one = v.files <= 1;
   const f = fv[v.id] = { v, box, card: c, filter: !one && (v.failed || v.s2_warnings) ? "problems" : "all", rows: [], next: -1, busy: false,
@@ -2124,7 +2410,7 @@ function toggleFiles(v, c) {
   });
   // Verify files (and Show more / fewer) at the left of the line above the
   // files, beside the filters or the heading (v0.2.50).
-  const top = el("div", "ftop"); top.append(c._d.querySelector(".brow"), bar, el("p", "fhead"));
+  const top = el("div", "ftop"); top.append(c._d.querySelector(".fpage"), bar, el("p", "fhead"));
   box.append(top, el("div", "frows"), el("p", "mute note"));
   c._d.insertBefore(box, c._d.querySelector(".tail")); loadFiles(f, false); // the Now line stays below the files (v0.2.59)
 }

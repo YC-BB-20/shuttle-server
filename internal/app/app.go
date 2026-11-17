@@ -368,7 +368,7 @@ func Run(opts Options) (code int) {
 			}}
 	}
 	srv := (&server.Server{Page: shuttle.IndexHTML, Speed: speed, PageDir: cfg.PageDir, Hub: hub, Status: status, Jobs: actions, Listen: cfg.Listen,
-		Updates: updater, Restart: restart, Quit: quit, Login: login,
+		Updates: updater, Restart: restart, Quit: quit, Login: login, LogsDir: filepath.Join(data, "logs"),
 		About: func() any {
 			return map[string]string{"version": version.Version, "commit": version.Commit, "changelog": shuttle.Changelog}
 		}}).HTTP()

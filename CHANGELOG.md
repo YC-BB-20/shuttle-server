@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.87 — 17 November 2026
+
+- **The details panel has tabs:** Overview (proven and written in large numbers, from and to, files, hash, proof, start and working time, the speed of each disk with the slower one marked as the limit, and the buttons, Pause and Stop included), Files (the file list with its filters), Proof (what is read for this copy and how far each read is), Problems (counts of failed, deleted, changed, added and source warnings, then each file and what happened) and Log (this copy's own lines from Shuttle's log, with the full log one click away).
+- **The strip along the bottom** says the state, the whole queue's time, the speed and what limits it. **System** opens a pop-up with memory, buffers, processor, open files and free space, the full log and updates.
+- **Disks in the sidebar,** with free space and what each disk is doing now (reading, writing, idle, or slowed down by its cable).
+- **Search or run a command (⌘K):** find any copy, disk or action by typing a few letters.
+- The running copy shows the file it is on under its name. The panel above the queue is gone; its numbers are in the strip.
+
 ## 0.2.86 — 17 November 2026
 
 - **The queue and history are now a table,** as in the agreed design: one line per copy with its name and route, kind, size, the written and proven bar, and a short state ("Verified", "Safe · read back", "1 changed", "62% · 412 MB/s · 8:12 left") with the time under it. Columns line up row to row.

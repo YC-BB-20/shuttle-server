@@ -32,6 +32,7 @@ type Server struct {
 	Quit    func()
 	Login   Login             // nil where starting at login is not supported
 	Speed   *speedtest.Tester // nil in safe mode
+	LogsDir string            // logs/YYYY-MM/shuttle.log, read for a copy's Log tab (v0.2.87)
 	sizes   sizer             // the copy size being counted for the picker
 }
 
@@ -110,6 +111,8 @@ func (s *Server) HTTP() *http.Server {
 	mux.HandleFunc("GET /api/speedtest", s.speedStatus)
 	mux.HandleFunc("POST /api/speedtest/{action}", s.always(s.speedAction))
 	mux.HandleFunc("GET /api/jobs/{id}/problems", s.problems)
+	mux.HandleFunc("GET /api/jobs/{id}/log", s.jobLog)
+	mux.HandleFunc("GET /api/log", s.jobLog)
 	mux.HandleFunc("GET /api/jobs/{id}/added", s.added)
 	mux.HandleFunc("GET /api/jobs/{id}/export", s.export)
 	mux.HandleFunc("POST /api/jobs/{id}/check-source", s.command(s.checkSource))
