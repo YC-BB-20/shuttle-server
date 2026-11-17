@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.99 — 17 November 2026
+
+- **A copy that ends with failed files asks what to do.** It no longer slips into the history: it stays in the queue as "Needs your answer", says how many files failed and the most common reason, and offers "Try the failed files again" or "Leave them failed". Only that copy waits; the rest of the queue carries on, overnight too. Its Verify item waits for the answer. Nothing on disk changes either way, and the question survives a restart.
+- **Safe and Fully verified.** A card or copy whose copies are read back shows "Safe" with a short note that the card (or source) has not been read a second time yet; it does not stop you unplugging. Once it has been read again and matched, it shows "Fully verified" (it said "Verified").
+
 ## 0.2.98 — 17 November 2026
 
 - **Copies to LucidLink.** The LucidLink mount can now be a copy's destination, for example from a CTERA share. Every file is copied and hashed first. The copies are read back only once LucidLink says nothing written on this Mac is still waiting to upload, and after its cache is cleared, so the read-back comes from LucidLink's storage and not from this Mac. Until then they count as written, not proven; a read-back from this Mac's cache would prove nothing about the upload.

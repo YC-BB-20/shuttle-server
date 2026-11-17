@@ -174,6 +174,9 @@ type state struct {
 	SizeAtAdd *int64      `json:"size_at_add,omitempty"`
 	SpaceOK   bool        `json:"space_ok,omitempty"`
 	SpaceAsk  *SpaceShort `json:"space_ask,omitempty"`
+	// ErrorsAsk (v0.2.99): the copy finished with failed files and waits for
+	// the owner: try them again, or leave them failed.
+	ErrorsAsk *ErrorsAsk `json:"errors_ask,omitempty"`
 	// Error (added in 0.2.26): why a Verify job stopped on its own, such as
 	// a folder that is missing. The job is done and shows as failed.
 	Error string `json:"error,omitempty"`

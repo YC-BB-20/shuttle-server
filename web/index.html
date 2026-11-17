@@ -660,7 +660,7 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
   <section class="onset" id="onset" hidden aria-label="Cards">
     <div class="onhead"><label for="onDay" class="vh">Shoot day</label><select id="onDay"></select><span class="mute" id="onSum"></span>
       <button type="button" id="wallBtn">Wall view</button><div class="seg" id="onLayout" role="group" aria-label="Card layout"><button type="button" data-l="tiles" aria-pressed="true">Tiles</button><button type="button" data-l="table" aria-pressed="false">Table</button></div></div>
-    <p class="onrule"><b>Safe</b> = <span id="onRuleN">2 copies</span> read back and matching · <b>Verified</b> = the source read a second time and matching too</p>
+    <p class="onrule"><b>Safe</b> = <span id="onRuleN">2 copies</span> read back and matching · <b>Fully verified</b> = the card read a second time and matching too</p>
     <div class="cards" id="onCards"></div>
     <p class="mute" id="onNone">No copies started on this day.</p>
   </section>
@@ -741,7 +741,7 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
   <section class="card" id="safeSet">
     <h2>On set: copies needed</h2>
     <div class="lpos"><label class="opt"><input type="radio" name="safeN" value="1"><span>1 copy</span></label><label class="opt"><input type="radio" name="safeN" value="2"><span>2 copies (recommended)</span></label><label class="opt"><input type="radio" name="safeN" value="3"><span>3 copies</span></label><label class="opt"><input type="radio" name="safeN" value="4"><span>4 copies</span></label></div>
-    <p class="mute">A camera card shows SAFE TO UNPLUG once this many of its copies are read back and match, and VERIFIED once the card has also been read a second time and matched for that many copies. Changes only what the On set view shows; the copies themselves are not touched.</p>
+    <p class="mute">A camera card shows SAFE TO UNPLUG once this many of its copies are read back and match, and FULLY VERIFIED once the card has also been read a second time and matched for that many copies. Changes only what the On set view shows; the copies themselves are not touched.</p>
     <p class="err" id="safeErr"></p>
   </section>
   <section class="card" id="layoutSet">
@@ -1757,7 +1757,7 @@ function loadProblems(c) {
   const list = el("div", "plist"), head = [grid];
   if (v.error) head.push(el("p", "bad", v.error));
   // v0.2.92: a finished copy's failed files go back into the queue.
-  if (v.failed && v.state === "finished" && v.kind !== "verify" && v.kind !== "link") {
+  if (v.failed && (v.state === "finished" || v.errors) && v.kind !== "verify" && v.kind !== "link") {
     const rb = el("button", "", v.failed === 1 ? "Try the failed file again" : "Try the " + v.failed + " failed files again"); rb.type = "button";
     rb.onclick = () => { rb.disabled = true; post("/api/jobs/" + v.id + "/retry").catch(e => { rb.disabled = false; alert(e.message); }); };
     head.push(el("p", "mute", "Puts them back at the end of the queue, copied with the same proof. Files already proven are not touched, and nothing at the destination is overwritten."), rb);
@@ -1873,6 +1873,13 @@ document.addEventListener("keydown", e => {
 const problemShort = v => [v.failed && v.failed + " failed", v.gone && v.gone + " deleted", v.changed && v.changed + " changed",
   v.added && v.added + " added", v.s2_warnings && v.s2_warnings + " source warnings"].filter(Boolean).join(" · ");
 // The State column: a few words, a tone, and a small second line.
+// v0.2.99: a copy that finished with failed files waits for the owner's answer.
+const nFailed = n => n === 1 ? "1 failed file" : n + " failed files";
+function errorsLine(e, v) {
+  const one = e.failed === 1, most = e.reason ? (e.same >= e.failed ? (one ? " The reason: " : " All of them: ") : " Most of them (" + e.same + "): ") + e.reason + "." : "";
+  return nFailed(e.failed).replace(/^./, c => c.toUpperCase()) + "." + most + (one ? " Try it again (it goes" : " Try them again (they go") + " to the end of the queue, with the same proof), or leave " + (one ? "it" : "them") + " failed. Files already proven are not touched" +
+    (v.verify_job ? ", and this copy's Verify waits for your answer." : ".");
+}
 function stateShort(v, problems, pc, ver, scanning) {
   const k = v.checks, t = v.work_ms ? clock(v.work_ms) : "", fin = v.finished ? when(v.finished) : "";
   const done2 = [t, fin].filter(Boolean).join(" · ");
@@ -1880,16 +1887,16 @@ function stateShort(v, problems, pc, ver, scanning) {
   if (v.state === "running" && scanning) return [ver ? "Reading hashes" : "Listing files", "run", v.scanned + " files so far"];
   if (v.state === "running") return [(ver ? "Checking " : "") + pc, "run", [rate(ver ? v.rate : v.copy_rate), v.eta_seconds ? clock(v.eta_seconds * 1000) + " left" : ""].filter(Boolean).join(" · ")];
   if (v.state === "waiting") return ["Waiting", "warn", v.reason || ""];
-  if (v.state === "paused") return v.space ? ["Needs your answer", "warn", "may not fit"] : ["Paused", "", pc];
+  if (v.state === "paused") return v.space ? ["Needs your answer", "warn", "may not fit"] : v.errors ? ["Needs your answer", "warn", v.errors.failed + " failed"] : ["Paused", "", pc];
   if (v.state === "queued") return [v.id === queueNext ? "Next" : "Waiting its turn", "", v.after ? "after its copy" : ""];
   if (v.state === "stopped") return ["Stopped", "", done2];
   if (v.error) return ["Failed", "bad", fin];
   if (problems) return [problemShort(v), v.failed ? "bad" : "warn", done2];
   if (ver) return [(v.s2 === "only" ? v.strong : v.verified) + (v.files === 1 ? " file matches" : " files match"), "ok", done2];
   if (v.files > 0 && v.identical === v.files) return ["Already there", "ok", done2];
-  if (k && k.of > 0 && k.source >= k.of) return ["Verified", "ok", done2];
+  if (k && k.of > 0 && k.source >= k.of) return ["Fully verified", "ok", done2];
   if (v.kind === "link" && (v.link_hash || v.files > 1 && v.verified === v.files)) return ["Downloaded · checked", "ok", done2];
-  if (k && k.of > 0 && k.dest >= k.of) return ["Safe · read back", "ok", done2];
+  if (k && k.of > 0 && k.dest >= k.of) return ["Safe · source not re-read yet", "ok", done2];
   return ["Copied, not checked", "", done2];
 }
 function card(v) {
@@ -1964,6 +1971,7 @@ function card(v) {
   let sub = "", subCls = "sub";
   if (v.state === "waiting") { sub = v.reason; subCls += v.missing ? " bad" : " warn"; }
   else if (v.state === "paused" && v.space) { sub = "Paused · may not fit on " + v.space.disk + " — your answer is needed"; subCls += " warn"; }
+  else if (v.state === "paused" && v.errors) { sub = "Finished with " + nFailed(v.errors.failed) + " — your answer is needed · the rest of the queue carries on"; subCls += " warn"; }
   else if (v.state === "running" && scanning && ver) sub = "Reading the stored hashes — " + v.scanned + " files so far";
   else if (v.state === "running" && scanning) sub = "Scanning the source — " + v.scanned + " files, " + size(v.scanned_bytes) + " so far";
   else if (v.state === "running") sub = [ver && verNow(v), pc, size((v.progress || 0) * v.bytes) + " of " + size(v.bytes), v.eta_seconds ? left(v.eta_seconds) : "working out the time left", ].filter(Boolean).join(" · ");
@@ -2005,6 +2013,7 @@ function card(v) {
       (v.verify_next ? " The check is its own item in the queue." : " Not proof enough to erase a card.");
   else if (v.state === "finished") line = problems ? "Finished with problems — see the files marked Error." : "Finished. Every file is verified" + (v.s2 === "now" || (v.checks && v.checks.source >= v.checks.of) ? " twice (source read again" + (v.s2 === "now" ? ")." : " by a later Verify).") : " (the copy read back; the source was not read again).");
   else if (v.state === "paused" && v.space) line = v.space.message + " Continue anyway, or cancel the job.";
+  else if (v.state === "paused" && v.errors) line = errorsLine(v.errors, v);
   else if (v.state === "paused") line = "Paused by you. Resume continues exactly where it stopped.";
   else if (!old && v.state !== "running") line = "Added " + when(v.created);
   if (srcOnly && !old) line += (line ? " · " : "") + "The source read in full and compared with the hashes stored when it was copied; the copies are not read. Nothing is changed.";
@@ -2057,18 +2066,23 @@ function card(v) {
   const acts = [], btns = [];
   const btn = (list, t, f, cls, label) => { const b = document.createElement("button"); b.type = "button"; b.textContent = t; b.onclick = f; if (cls) b.className = cls; if (label) { b.title = label; b.setAttribute("aria-label", label); } list.push(b); };
   if (v.state === "running" || v.state === "waiting" || v.state === "queued") btn(acts, "❚❚", () => post("/api/jobs/" + v.id + "/pause").catch(e => alert(e.message)), "", "Pause");
-  if (v.state === "paused") btn(acts, "▶", () => post("/api/jobs/" + v.id + "/" + (v.space ? "continue" : "resume")).catch(e => alert(e.message)), "primary", v.space ? "Continue anyway" : "Resume");
+  if (v.state === "paused" && v.errors) {
+    // v0.2.99: finished with failed files; only this job waits for the answer.
+    btn(acts, "↻", () => post("/api/jobs/" + v.id + "/retry").catch(e => alert(e.message)), "primary", "Try the failed files again");
+    btn(btns, v.errors.failed === 1 ? "Try the failed file again" : "Try the " + v.errors.failed + " failed files again", () => post("/api/jobs/" + v.id + "/retry").catch(e => alert(e.message)));
+    btn(btns, v.errors.failed === 1 ? "Leave it failed" : "Leave them failed", () => post("/api/jobs/" + v.id + "/keep-failed").catch(e => alert(e.message)));
+  } else if (v.state === "paused") btn(acts, "▶", () => post("/api/jobs/" + v.id + "/" + (v.space ? "continue" : "resume")).catch(e => alert(e.message)), "primary", v.space ? "Continue anyway" : "Resume");
   if (v.space) {
     btn(btns, "Continue anyway", () => post("/api/jobs/" + v.id + "/continue").catch(e => alert(e.message)));
     btn(btns, "Cancel job", () => post("/api/jobs/" + v.id + "/stop").catch(e => alert(e.message)));
     if (!spaceAsked.has(v.id) && !document.querySelector("dialog[open]")) { spaceAsked.add(v.id); spaceAnswer(v); }
   }
-  if (!old && v.state !== "running" && queueNext && queueNext !== v.id && qf.sort === "queue:1" && !(ver && v.after))
+  if (!old && !v.errors && v.state !== "running" && queueNext && queueNext !== v.id && qf.sort === "queue:1" && !(ver && v.after))
     btn(acts, "Run next", () => moveJob(v.id, queueNext), "next", "Run next: start this one as soon as the running one finishes");
-  if (!old) btn(acts, "✕", () => stopJob(v), "", "Stop…");
+  if (!old && !v.errors) btn(acts, "✕", () => stopJob(v), "", "Stop…");
   if (v.state === "running" || v.state === "waiting" || v.state === "queued") btn(btns, "Pause", () => post("/api/jobs/" + v.id + "/pause").catch(e => alert(e.message)));
-  if (v.state === "paused" && !v.space) btn(btns, "Resume", () => post("/api/jobs/" + v.id + "/resume").catch(e => alert(e.message)));
-  if (!old && !v.space) btn(btns, "Stop…", () => stopJob(v));
+  if (v.state === "paused" && !v.space && !v.errors) btn(btns, "Resume", () => post("/api/jobs/" + v.id + "/resume").catch(e => alert(e.message)));
+  if (!old && !v.space && !v.errors) btn(btns, "Stop…", () => stopJob(v));
   if (problems) btn(btns, "Show problems", () => { if (selId === v.id) setInspTab("problems"); else showProblems(v.id); });
   const lnk = v.kind === "link";
   if (!ver && !lnk && !scanning && v.files > 0 && (v.state === "finished" || v.state === "running" || v.state === "paused")) btn(btns, "Hash list…", () => openExport(v));
@@ -2514,7 +2528,7 @@ function markMovable(list) {
   const on = qf.sort === "queue:1";
   list.forEach(v => {
     const c = cards[v.id]; if (!c) return;
-    const mv = on && v.state !== "running" && !c.classList.contains("nested");
+    const mv = on && v.state !== "running" && !v.errors && !c.classList.contains("nested");
     c.dataset.mv = mv ? "1" : ""; c.querySelector(".grip").hidden = !mv;
     if (mv) c.tabIndex = 0; else c.removeAttribute("tabindex");
   });
@@ -2579,8 +2593,8 @@ function drawPicked() {
   const n = f => vs.filter(f).length, label = (b, t, k) => { b.textContent = t + (k && k < vs.length ? " " + k : ""); b.disabled = !k; };
   $("pickN").textContent = picked.size + " selected";
   label($("pkPause"), "Pause", n(v => ["running", "waiting", "queued"].includes(v.state)));
-  label($("pkResume"), "Resume", n(v => v.state === "paused" && !v.space));
-  label($("pkStop"), "Stop…", n(v => v.state !== "finished" && v.state !== "stopped"));
+  label($("pkResume"), "Resume", n(v => v.state === "paused" && !v.space && !v.errors));
+  label($("pkStop"), "Stop…", n(v => v.state !== "finished" && v.state !== "stopped" && !v.errors));
   const inOrder = qf.sort === "queue:1", mv = movableRows().some(r => picked.has(r._v.id));
   $("pkMoves").querySelectorAll("button").forEach(b => { b.disabled = !inOrder || !mv; });
   $("pkMoves").title = !inOrder ? "Moving works in the queue order: click the sorted heading until its arrow goes, or choose Queue order" : !mv ? "The running job and Verify items under a copy keep their place" : "";
@@ -2634,13 +2648,13 @@ document.addEventListener("keydown", e => {
 const bulk = (action, ids) => post("/api/jobs/bulk", { action, ids }).then(r => { if (r.errors && r.errors.length) alert((r.done ? r.done + " done. " : "") + "Not done: " + r.errors.join(" · ")); }).catch(e => alert(e.message));
 const pickedViews = f => [...picked].map(id => cards[id] && cards[id]._v).filter(v => v && f(v));
 $("pkPause").onclick = () => bulk("pause", pickedViews(v => ["running", "waiting", "queued"].includes(v.state)).map(v => v.id));
-$("pkResume").onclick = () => bulk("resume", pickedViews(v => v.state === "paused" && !v.space).map(v => v.id));
+$("pkResume").onclick = () => bulk("resume", pickedViews(v => v.state === "paused" && !v.space && !v.errors).map(v => v.id));
 $("pkClear").onclick = () => { picked.clear(); drawPicked(); };
 ["Top", "Up", "Down", "End"].forEach(k => $("pk" + k).onclick = () => moveRows(k.toLowerCase(), [...picked]));
 // Stop the chosen jobs: asked twice, with counts only, as for one job. The
 // running job is stopped last, so the next one does not start in between.
 $("pkStop").onclick = async () => {
-  const vs = pickedViews(v => v.state !== "finished" && v.state !== "stopped");
+  const vs = pickedViews(v => v.state !== "finished" && v.state !== "stopped" && !v.errors);
   if (!vs.length) return;
   const add = f => vs.reduce((a, v) => a + (f(v) || 0), 0), what = vs.length === 1 ? "this job" : "these " + vs.length + " jobs";
   const proven = add(v => v.verified + v.identical), unchecked = add(v => v.copied), notYet = add(v => Math.max(0, v.files - v.verified - v.identical - v.failed - (v.copied || 0)));
@@ -2702,15 +2716,16 @@ function driveState(v) {
   const bars = [v.copied_part || 0, v.check === "none" ? 0 : v.proven_part || 0];
   if (v.missing) return { k: "bad", ic: "bad", t: "Disk not connected", bars };
   if (v.state === "running") return { k: "run", ic: "run", t: v.phase === "scan" ? "Listing files" : (isCheckStage(v.stage) ? "Checking " : "Copying ") + p + "%", bars };
+  if (v.errors) return { k: "bad", ic: "bad", t: "Failed files · your answer is needed", bars: [1, 0] };
   if (v.state === "paused") return { k: "wait", ic: "wait", t: "Paused", bars };
   if (v.state === "waiting") return { k: "wait", ic: "wait", t: "Waiting", bars };
   if (v.state === "queued") return { k: "wait", ic: "wait", t: "Waiting its turn", bars };
   if (v.state === "stopped") return { k: "wait", ic: "wait", t: "Stopped", bars };
   if (problems) return { k: "bad", ic: "bad", t: "Problem", bars: [1, 0] };
   const of = k ? k.of : v.files;
-  if (k && of > 0 && k.source >= of) return { k: "ok", ic: "ok", t: "Verified", lvl: 2, bars: [1, 1] };
+  if (k && of > 0 && k.source >= of) return { k: "ok", ic: "ok", t: "Fully verified", lvl: 2, bars: [1, 1] };
   if (k && of > 0 && k.dest >= of) return { k: "ok", ic: "safe", lvl: 1, bars: [1, 1],
-    t: k.checking && k.check_src && k.check_of ? "Safe · source " + Math.floor(pct(k.check_done, k.check_of)) + "%" : "Safe" };
+    t: k.checking && k.check_src && k.check_of ? "Safe · source " + Math.floor(pct(k.check_done, k.check_of)) + "%" : "Safe · card not re-read yet" };
   if (k && k.checking && k.check_of) return { k: "run", ic: "run", t: "Checking " + Math.floor(pct(k.check_done, k.check_of)) + "%", bars: [1, pct(k.check_done, k.check_of) / 100] };
   return { k: "wait", ic: "wait", t: "Copied, not read back", bars: [1, 0] };
 }
@@ -2795,8 +2810,8 @@ function renderOnset(list) {
     const ver = st.filter(x => x.lvl === 2).length, safe = st.filter(x => x.lvl >= 1).length, bad = st.some(x => x.k === "bad"), busy = st.some(x => x.k === "run");
     const need = SAFE_COPIES(), short = copies.length < need ? " · " + copies.length + (copies.length === 1 ? " destination; " : " destinations; ") + need + " are needed" : "";
     let cls, word, why, ic;
-    if (ver >= need) { cls = "verified"; word = "VERIFIED"; ic = "ok"; why = ver + " copies verified · safe to unplug" + (bad ? " · one copy has a problem" : ""); }
-    else if (safe >= need) { cls = "safe"; word = "SAFE TO UNPLUG"; ic = "safe"; why = safe + " copies read back · verified once the source is read a second time" + (bad ? " · one copy has a problem" : ""); }
+    if (ver >= need) { cls = "verified"; word = "FULLY VERIFIED"; ic = "ok"; why = ver + " copies fully verified · safe to unplug" + (bad ? " · one copy has a problem" : ""); }
+    else if (safe >= need) { cls = "safe"; word = "SAFE TO UNPLUG"; ic = "safe"; why = safe + " copies read back · the card has not been read a second time yet" + (bad ? " · one copy has a problem" : ""); }
     else if (bad) { cls = "problem"; word = "CHECK PROBLEMS"; ic = "bad"; why = "A copy has a problem · open it to see the files"; }
     else { cls = "keep"; word = "KEEP CONNECTED"; ic = "keep"; why = (safe ? safe + " of " + need + " copies read back" : busy ? "No copy read back yet" : "Waiting to start") + short; }
     if (safe >= need) nSafe++;
@@ -2957,7 +2972,7 @@ function fbLoad(p, path, keepSel) {
 function fbChip(st, label, title) {
   const c = el("span", "pc " + (fbDone(st) ? "full" : fbBad(st) ? "bad" : st ? "half" : "none"), label); c.title = title; return c;
 }
-function fbStatusWord(st) { return fbDone(st) ? (st === "strong" || st === "already2" ? "Verified" : "Safe") : fbBad(st) ? "Problem" : st === "working" ? "Copying" : st ? "Not proven yet" : "No copy"; }
+function fbStatusWord(st) { return fbDone(st) ? (st === "strong" || st === "already2" ? "Fully verified" : "Safe") : fbBad(st) ? "Problem" : st === "working" ? "Copying" : st ? "Not proven yet" : "No copy"; }
 // What each copy says about an entry: a status per place.
 function fbStates(p, f) {
   const c = p.copies; if (!c || !c.places.length) return [];

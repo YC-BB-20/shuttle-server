@@ -98,6 +98,11 @@ type retrier interface {
 	RetryFailed(id string, file int) (int, error)
 }
 
+// failKeeper answers "leave them failed" (v0.2.99).
+type failKeeper interface {
+	KeepFailed(id string) error
+}
+
 // Actions are the commands the page may send about copy jobs.
 type Actions interface {
 	Add(copyjob.Spec) (*copyjob.Job, error)

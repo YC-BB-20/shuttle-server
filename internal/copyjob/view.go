@@ -80,6 +80,7 @@ type View struct {
 	Algo        string      `json:"algo"`                  // which hashes this job makes: xxh128, xxh64 or both (v0.2.58)
 	ETA         int64       `json:"eta_seconds,omitempty"` // time left, when it can be estimated
 	Space       *SpaceShort `json:"space,omitempty"`       // paused because it may not fit: the question for the owner
+	Errors      *ErrorsAsk  `json:"errors,omitempty"`      // v0.2.99: finished with failed files, waiting for the owner's answer
 	Error       string      `json:"error,omitempty"`       // a Verify job stopped on its own: a folder is missing
 	Checks      *Checks     `json:"checks,omitempty"`      // a finished copy: what has been read back since
 	From        []string    `json:"from,omitempty"`        // a Verify job: the copies it compares with
@@ -317,6 +318,9 @@ func baseView(j *Job) (View, state, live) {
 	}
 	v.FromDisk, v.FromPath = placeOf(st.Spec.Source)
 	v.ToDisk, v.ToPath = placeOf(st.Spec.Dest)
+	if st.ErrorsAsk != nil && st.Phase == "done" && st.Choice != "stopped" {
+		v.Errors = st.ErrorsAsk // held for an answer: shown with the queue, not the history
+	}
 	if st.Phase == "done" && st.Choice == "stopped" {
 		v.Progress = 0 // a stopped copy shows what is proven, not a full bar
 		if st.Bytes > 0 {
@@ -326,6 +330,8 @@ func baseView(j *Job) (View, state, live) {
 	switch {
 	case st.Phase == "done" && st.Choice == "stopped":
 		v.State = "stopped"
+	case st.Phase == "done" && v.Errors != nil:
+		v.State = "paused" // waits for the owner's answer; the rest of the queue carries on
 	case st.Phase == "done":
 		v.State = "finished"
 	}
@@ -425,7 +431,7 @@ func (m *Manager) History(skip, limit int) []View {
 	out := []View{}
 	for i := len(jobs) - 1; i >= 0 && len(out) < limit; i-- {
 		v, _, _ := baseView(jobs[i])
-		if v.State == "" {
+		if v.State == "" || v.Errors != nil {
 			continue
 		}
 		withChecks(jobs, running, jobs[i], &v)

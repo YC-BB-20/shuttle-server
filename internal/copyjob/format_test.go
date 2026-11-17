@@ -48,7 +48,7 @@ func TestFormatCheckAsksThenTooBigFailsAtOnce(t *testing.T) {
 	if j.st.Spec.IgnoreFormat {
 		t.Fatal("the answer was saved on the job")
 	}
-	v := waitState(t, m, j.st.ID, "finished")
+	v := waitState(t, m, j.st.ID, "asking")
 	if v.Failed != 1 || v.Verified != len(files)-1 {
 		t.Fatalf("%+v", v)
 	}

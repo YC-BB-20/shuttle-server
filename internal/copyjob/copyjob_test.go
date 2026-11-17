@@ -70,7 +70,8 @@ func waitState(t *testing.T, m *Manager, id string, want ...string) View {
 		for _, v := range m.Views() {
 			if v.ID == id {
 				for _, w := range want {
-					if v.State == w {
+					// "asking": finished with failed files, waiting for the owner (v0.2.99)
+					if v.State == w || w == "asking" && v.Errors != nil {
 						return v
 					}
 				}
@@ -147,7 +148,7 @@ func TestExistingFilesAreNeverOverwritten(t *testing.T) {
 	defer cancel()
 	go m.Run(ctx)
 	j, _ := m.Add(Spec{Source: src, Dest: dst, S2: "skip"})
-	v := waitState(t, m, j.st.ID, "finished")
+	v := waitState(t, m, j.st.ID, "asking")
 	if v.Identical != 1 || v.Failed != 1 || v.Verified != len(files)-2 {
 		t.Fatalf("%+v", v)
 	}
@@ -187,7 +188,7 @@ func TestBadCopyIsRetriedThenKeptAside(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		go m.Run(ctx)
 		j, _ := m.Add(Spec{Source: src, Dest: dst, S2: "skip"})
-		v := waitState(t, m, j.st.ID, "finished")
+		v := waitState(t, m, j.st.ID, "finished", "asking")
 		cancel()
 		_, errFinal := os.Stat(filepath.Join(dst, "a.mov"))
 		_, errKept := os.Stat(filepath.Join(dst, "a.mov.shuttle-failed-copy"))
@@ -407,7 +408,7 @@ func TestBadSourceReadDuringCopyIsCaught(t *testing.T) {
 		}
 		startRun(t, m)
 		j, _ := m.Add(Spec{Source: src, Dest: dst})
-		v := waitState(t, m, j.st.ID, "finished")
+		v := waitState(t, m, j.st.ID, "finished", "asking")
 		got, errFinal := os.ReadFile(filepath.Join(dst, "a.mov"))
 		_, errKept := os.Stat(filepath.Join(dst, "a.mov.shuttle-failed-copy"))
 		if !always && (v.Strong != 1 || errFinal != nil || !bytes.Equal(got, want)) {

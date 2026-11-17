@@ -504,7 +504,7 @@ func TestPageNewLookQueueOrderOnSet(t *testing.T) {
 	for _, want := range []string{
 		`color-scheme: dark;`, `<header class="topbar">`, `<div class="side"><nav class="tabs" role="tablist"`, `<footer class="strip" id="strip">`, `id="sysBtn">System</button>`,
 		`id="styleSw"`, `data-style="onset"`, `id="onset"`, `id="onLayout"`, `data-l="table"`,
-		`function SAFE_COPIES()`, `"SAFE TO UNPLUG"`, `"VERIFIED"`, `"KEEP CONNECTED"`, `function driveState(v)`, `k.source >= of`, `k.dest >= of`,
+		`function SAFE_COPIES()`, `"SAFE TO UNPLUG"`, `"FULLY VERIFIED"`, `card not re-read yet`, `"Leave them failed"`, `"/keep-failed"`, `"KEEP CONNECTED"`, `function driveState(v)`, `k.source >= of`, `k.dest >= of`,
 		`"/api/jobs/" + id + "/move"`, `"Run next"`, `function markMovable(list)`, `e.altKey`, `(a.order ?? 0) - (b.order ?? 0)`,
 		`$("stripHead").textContent = s.headline;`,
 	} {

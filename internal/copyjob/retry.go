@@ -76,6 +76,7 @@ func (m *Manager) RetryFailed(id string, file int) (int, error) {
 	j.st.CheckEnd, j.st.S2JournalEnd, j.st.Checkpoints = 0, 0, nil
 	j.st.Order = last + 1e9 // the end of the queue: the owner's order stays as it was
 	j.st.Retries++
+	j.st.ErrorsAsk = nil // answered
 	j.st.Hidden = false
 	j.mu.Unlock()
 	if err := j.save(); err != nil {

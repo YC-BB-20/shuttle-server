@@ -147,6 +147,12 @@ func (s *Server) jobAction(w http.ResponseWriter, r *http.Request) (any, error) 
 			return nil, err
 		}
 		return map[string]any{"ok": true, "files": n}, nil
+	case "keep-failed": // v0.2.99: the answer "leave them failed" to a copy that ended with failed files
+		kf, ok := s.Jobs.(failKeeper)
+		if !ok {
+			return nil, errors.New("not available")
+		}
+		err = kf.KeepFailed(id)
 	case "hide", "unhide": // a history entry, page view only
 		err = s.Jobs.SetHidden(id, r.PathValue("action") == "hide")
 	default:

@@ -81,7 +81,7 @@ func TestVerifyJobFolderAndFile(t *testing.T) {
 	if c2, err := m.Add(Spec{Source: src, Dest: dst}); err != nil {
 		t.Fatal(err)
 	} else {
-		waitState(t, m, c2.st.ID, "finished")
+		waitState(t, m, c2.st.ID, "finished", "asking")
 	}
 	v4, _ := m.Add(Spec{Kind: KindVerify, Source: filepath.Join(dst, "card/CLIP02")})
 	v = waitState(t, m, v4.st.ID, "finished")

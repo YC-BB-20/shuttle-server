@@ -27,14 +27,14 @@ func TestRetryFailedCopiesOnlyThem(t *testing.T) {
 				t.Fatal(err)
 			}
 			id := j.st.ID
-			v := waitState(t, m, id, "finished")
-			if v.Failed != 1 {
-				t.Fatalf("want one failure: %+v", v)
+			v := waitState(t, m, id, "asking")
+			if v.Failed != 1 || v.State != "paused" || v.Errors.Failed != 1 || v.Errors.Same != 1 || v.Errors.Reason == "" {
+				t.Fatalf("want one failure, and the question: %+v %+v", v, v.Errors)
 			}
 			if _, err := m.RetryFailed(id, -1); err != nil {
 				t.Fatalf("retry: %v", err) // still in the way: fails again, untouched
 			}
-			v = waitState(t, m, id, "finished")
+			v = waitState(t, m, id, "asking") // failed again: asks again
 			if b, _ := os.ReadFile(filepath.Join(dst, inWay)); string(b) != "someone else's file" || v.Failed != 1 {
 				t.Fatalf("file in the way overwritten, or failure lost: %+v", v)
 			}

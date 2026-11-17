@@ -417,13 +417,15 @@ func (m *Manager) choose(id, choice string, cause error) error {
 	return nil
 }
 
-// unfinishedLocked: the job id exists and has not finished. m.mu is held.
+// unfinishedLocked: the job id exists and has not finished, or finished
+// with failed files and waits for the owner's answer (v0.2.99), so its
+// Verify item waits with it. m.mu is held.
 func (m *Manager) unfinishedLocked(id string) bool {
 	for _, o := range m.jobs {
 		if o.st.ID == id {
 			o.mu.Lock()
 			defer o.mu.Unlock()
-			return o.st.Phase != "done"
+			return o.st.Phase != "done" || o.st.ErrorsAsk != nil
 		}
 	}
 	return false
@@ -578,6 +580,7 @@ func (m *Manager) runOne(ctx context.Context, j *Job) {
 		m.Log.Info("copy job finished", "job", j.st.ID, "verified", c.Verified, "already_there", c.Identical,
 			"failed", c.Failed, "s2_ok", c.Strong, "s2_warnings", c.S2Warn, "copied_only", c.Hashed,
 			"took", took.String())
+		m.askAboutErrors(j)
 		m.queueVerify(j)
 	case errors.Is(cause, errOwnerPause), ctx.Err() != nil:
 		j.setLive(func(l *live) { l.reason, l.missing = "", "" })
