@@ -170,8 +170,8 @@ func (s *Server) copySize(w http.ResponseWriter, r *http.Request) {
 	case !ok:
 		writeJSON(w, http.StatusOK, SizeCount{Path: p, Error: "This folder cannot be found."})
 		return
-	case v.Network:
-		writeJSON(w, http.StatusOK, SizeCount{Path: p, Error: "Files on a network server are not counted."})
+	case !v.CopyOK():
+		writeJSON(w, http.StatusOK, SizeCount{Path: p, Error: "Files on this network server are not counted."})
 		return
 	}
 	set := copyjob.DefaultSettings

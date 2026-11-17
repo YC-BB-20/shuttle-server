@@ -24,24 +24,29 @@ func volumeOf(p string) (Volume, error) {
 	if err := syscall.Statfs(p, &st); err != nil {
 		return Volume{}, err
 	}
-	mount, typ := mountPoint(p)
+	mount, typ, from := mountPoint(p)
+	from = shareFrom(from)
 	const stRdonly = 0x1
-	return Volume{ID: fmt.Sprintf("%x:%x:%s", st.Fsid.X__val[0], st.Fsid.X__val[1], mount), Mount: mount,
+	v := Volume{ID: fmt.Sprintf("%x:%x:%s", st.Fsid.X__val[0], st.Fsid.X__val[1], mount), Mount: mount,
 		Name: filepath.Base(mount), Free: uint64(st.Bavail) * uint64(st.Bsize), Total: uint64(st.Blocks) * uint64(st.Bsize),
-		Type: typ, ReadOnly: st.Flags&stRdonly != 0, Network: networkTypes[typ]}, nil
+		Type: typ, ReadOnly: st.Flags&stRdonly != 0, Network: networkTypes[typ], Share: shareKind(typ, from, mount), From: from}
+	if v.Share != "" && mount != "/" {
+		v.ID = shareID(from, mount)
+	}
+	return v, nil
 }
 
-// mountPoint is the longest mount in /proc/self/mounts that contains p, and
-// its file system type.
-func mountPoint(p string) (string, string) {
+// mountPoint is the longest mount in /proc/self/mounts that contains p, its
+// file system type and its source.
+func mountPoint(p string) (string, string, string) {
 	abs, _ := filepath.Abs(p)
 	if r, err := filepath.EvalSymlinks(abs); err == nil {
 		abs = r
 	}
-	best, typ := "/", ""
+	best, typ, from := "/", "", ""
 	f, err := os.Open("/proc/self/mounts")
 	if err != nil {
-		return best, typ
+		return best, typ, from
 	}
 	defer f.Close()
 	sc := bufio.NewScanner(f)
@@ -52,8 +57,8 @@ func mountPoint(p string) (string, string) {
 		}
 		m := strings.ReplaceAll(fs[1], `\040`, " ")
 		if (abs == m || strings.HasPrefix(abs, strings.TrimSuffix(m, "/")+"/")) && len(m) >= len(best) {
-			best, typ = m, fs[2]
+			best, typ, from = m, fs[2], strings.ReplaceAll(fs[0], `\040`, " ")
 		}
 	}
-	return best, typ
+	return best, typ, from
 }

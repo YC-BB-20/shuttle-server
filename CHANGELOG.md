@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.97 — 17 November 2026
+
+- **Copies with network shares.** An SMB share mounted in Finder (Go → Connect to Server, `smb://…`), such as a CTERA Edge Filer, can now be a copy's source or destination, and so can the LucidLink mount as a source. The copy works as between disks: hashed as it is read, flushed, read back from the share and the source read a second time, a cut-off copy continues where it stopped, nothing is ever overwritten.
+- What the check proves is said plainly in the copy's Proof tab: the copy was read back from the share. A CTERA Edge Filer uploads to the CTERA cloud by itself afterwards, which Shuttle cannot see, so check the filer's sync status before deleting the source. A second read of a LucidLink source may come from LucidLink's cache on this Mac.
+- Names an SMB server may refuse (`: * ? " < > |`) and names that differ only by case are counted and asked about before the copy starts, as for exFAT.
+- A share that macOS reconnects is still recognised as the same place, so a copy waiting for it carries on. Other network servers (NFS, AFP, WebDAV mounts) are still not used for copies.
+- Copies to LucidLink come in the next version.
+
 ## 0.2.96 — 17 November 2026
 
 - **Servers, the first step toward copies between LucidLink and CTERA.** Settings → Servers adds a cloud server such as CTERA, reached with S3 keys (a file cut off part-way continues where it stopped) or with WebDAV and your user name and password (a cut-off file starts again). Test looks at the top folder without changing anything and says, in plain words, whether it connected and what it found, or why not: wrong login, unknown bucket, an address that is not https, a certificate this Mac does not trust, no answer.

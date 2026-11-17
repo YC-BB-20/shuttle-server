@@ -29,7 +29,8 @@ type Folder struct {
 type Place struct {
 	Name     string `json:"name"`
 	Path     string `json:"path"`
-	Kind     string `json:"kind"` // home, internal, disk, server
+	Kind     string `json:"kind"`            // home, internal, disk, share (used for copies), server (not used)
+	Share    string `json:"share,omitempty"` // for a share: smb or lucidlink
 	Free     uint64 `json:"free,omitempty"`
 	Total    uint64 `json:"total,omitempty"`
 	ReadOnly bool   `json:"read_only,omitempty"`
@@ -134,8 +135,11 @@ func places() []Place {
 			}
 			seen[v.Mount] = true
 			pl := Place{Name: e.Name(), Path: p, Kind: "disk", Free: v.Free, Total: v.Total, ReadOnly: v.ReadOnly}
-			if v.Network {
-				pl.Kind, pl.Note = "server", "Network servers come later: copies need a disk connected by cable for now"
+			switch {
+			case v.Share != "":
+				pl.Kind, pl.Share = "share", v.Share // an SMB share or the LucidLink mount: copies use it (v0.2.97–98)
+			case v.Network:
+				pl.Kind, pl.Note = "server", "Shuttle copies only with SMB network shares and the LucidLink mount"
 			}
 			out = append(out, pl)
 		}
@@ -149,7 +153,7 @@ func crumbs(p string, pl []Place) []Folder {
 	home, _ := os.UserHomeDir()
 	root := Folder{Name: rootName(), Path: home}
 	for _, x := range pl {
-		if (x.Kind == "disk" || x.Kind == "server") && (p == x.Path || strings.HasPrefix(p, x.Path+"/")) && len(x.Path) > len(root.Path) {
+		if (x.Kind == "disk" || x.Kind == "server" || x.Kind == "share") && (p == x.Path || strings.HasPrefix(p, x.Path+"/")) && len(x.Path) > len(root.Path) {
 			root = Folder{Name: x.Name, Path: x.Path}
 		}
 	}
@@ -181,7 +185,7 @@ func (s *Server) browse(w http.ResponseWriter, r *http.Request) {
 	}
 	onDisk, top := false, p == home
 	for _, x := range pl {
-		if x.Kind == "disk" || x.Kind == "server" {
+		if x.Kind == "disk" || x.Kind == "server" || x.Kind == "share" {
 			onDisk = onDisk || p == x.Path || strings.HasPrefix(p, x.Path+"/")
 			top = top || p == x.Path
 		}
@@ -195,8 +199,8 @@ func (s *Server) browse(w http.ResponseWriter, r *http.Request) {
 	}
 	withFiles := r.URL.Query().Get("files") == "1"
 	out := map[string]any{"path": p, "parent": parent, "top": top, "places": pl, "crumbs": crumbs(p, pl), "folders": []Folder{}}
-	if v, ok, _ := volume(p, 2*time.Second); ok && v.Network {
-		out["note"] = "This is a network server. Copies to or from network servers come later."
+	if v, ok, _ := volume(p, 2*time.Second); ok && v.Network && v.Share == "" {
+		out["note"] = "This network server is not used for copies: Shuttle copies only with SMB network shares and the LucidLink mount."
 	}
 	ents, err := os.ReadDir(p)
 	if err != nil {

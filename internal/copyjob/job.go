@@ -76,7 +76,12 @@ type Spec struct {
 	// Algo (added in 0.2.58) is which hashes every read of this job makes:
 	// "xxh128" (also "", every job before it), "xxh64" or "both". Copied from
 	// Settings when the job is added.
-	Algo            string   `json:"algo,omitempty"`
+	Algo string `json:"algo,omitempty"`
+	// SourceShare and DestShare (v0.2.97): diskio.ShareSMB or ShareLucid
+	// when that side is a network share, so the page can say what the
+	// read-back proves there.
+	SourceShare     string   `json:"source_share,omitempty"`
+	DestShare       string   `json:"dest_share,omitempty"`
 	SkipAppleDouble bool     `json:"skip_appledouble,omitempty"`
 	Kind            string   `json:"kind,omitempty"`
 	File            string   `json:"file,omitempty"`

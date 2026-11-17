@@ -1108,7 +1108,7 @@ function diskUse(path) {
 }
 function diskCard(d) {
   const c = el("section", "card disk");
-  const h = el("h3"); h.append(el("b", "", d.name), el("span", "mute", d.kind === "internal" ? "this Mac's own disk" : d.kind === "server" ? "network server" : d.ejectable === false ? "" : "external"));
+  const h = el("h3"); h.append(el("b", "", d.name), el("span", "mute", d.kind === "internal" ? "this Mac's own disk" : d.kind === "server" ? "network server" : d.kind === "share" ? (d.share === "lucidlink" ? "LucidLink" : "network share") : d.ejectable === false ? "" : "external"));
   c.append(h, el("p", "path mute", d.path));
   if (d.note) { c.append(el("p", "warn", d.note)); return c; }
   const conn = el("p", "conn");
@@ -1135,7 +1135,7 @@ function diskCard(d) {
   const b = (t, f, cls) => { const x = el("button", cls || "", t); x.type = "button"; x.onclick = f; btns.append(x); };
   const last = ((stoSpeed && stoSpeed.results) || []).find(r => r.path === d.path || (d.kind === "internal" && r.path === "/"));
   if (last) c.append(el("p", "mute", "Speed test " + when(last.at) + ": " + (last.write ? "write " + mbs(last.write) + " · " : "") + "read " + mbs(last.read) + (last.read_only ? " (read test)" : "")));
-  if (d.kind !== "server") {
+  if (d.kind !== "server" && d.kind !== "share") {
     b("Test speed", () => openSpeed(d));
     b("Copy from here", () => { showTab("status"); $("src").value = d.path; $("newBtn").onclick(); });
     if (!d.read_only && !d.camera) b("Copy to here", () => { showTab("status"); $("dst").value = d.path; $("newBtn").onclick(); });
@@ -1537,7 +1537,7 @@ function openPicker() {
   chosen = new Set(pickFor === "src" && start === srcOnlyAt ? srcOnly : []);
   browse(start, true); $("pickDlg").showModal();
 }
-const kindIcon = { home: "🏠", internal: "💻", disk: "💽", server: "🌐" };
+const kindIcon = { home: "🏠", internal: "💻", disk: "💽", server: "🌐", share: "🌐" };
 function useLabel() {
   $("pickUse").textContent = chosen.size ? "Use " + chosen.size + " chosen" : "Use this folder";
   $("pickHint").textContent = pickFor === "ver" ? "Open a folder Shuttle copied to and press Use this folder, or tap one file to verify only that file." :
@@ -1799,6 +1799,13 @@ function openFullLog() {
   fetch("/api/log").then(r => r.json()).then(lines => { $("logList").replaceChildren(...logRows(lines)); $("logList").scrollTop = 1e9; })
     .catch(() => $("logList").replaceChildren(el("p", "mute", "The log could not be read.")));
 }
+// v0.2.97–98: what a read-back proves when one side is a network share.
+function shareNotes(v) {
+  const n = [];
+  if (v.dest_share === "smb") n.push("The destination is a network share: each copy is read back from the share over the network. If the share is a CTERA Edge Filer, the filer uploads to the CTERA cloud by itself afterwards. Shuttle cannot see that upload, so check the filer's sync status before deleting the source.");
+  if (v.source_share === "lucidlink" && v.s2 === "now") n.push("The source is LucidLink: its second read may come from LucidLink's cache on this Mac rather than its storage.");
+  return n;
+}
 // Overview: the two numbers, the facts, and the speed of each disk.
 function proofScheme(v) {
   if (v.kind === "verify") return verKind(v);
@@ -1836,6 +1843,7 @@ function fillOverview(v, q, o) {
   // Proof tab: what is read for this copy, and how far each read is.
   const lines = [el("p", "", v.kind === "link" ? "The file is downloaded into a temporary file next to its place, its size is checked against what the site said, it is flushed to the disk, read back in full and hashed with XXH128. Only then does it get its name, never over a file already there." : o.ver ? verKindHelp(v) : "Every file is hashed with " + (algoName[v.algo] || "XXH128") + " as it is read from the source" +
     (v.check === "none" ? ". This copy does not read its files back; a Verify does." : v.s2 === "now" ? "; the copy is then read back, and the source read a second time, and all three must match." : "; the copy is then read back and must match."))];
+  lines.push(...shareNotes(v).map(t => el("p", "mute", t)));
   if (!o.ver && !fin && !o.scanning) lines.push(el("p", "mute", "So far: " + fileCounts(v) + (v.s2 === "now" ? " · source read twice: " + (v.strong || 0) : "")));
   const pk = lines.map(x => x.textContent).join("|");
   if (q(".pf").dataset.k !== pk) { q(".pf").dataset.k = pk; q(".pf").replaceChildren(...lines); }

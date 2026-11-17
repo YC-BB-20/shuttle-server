@@ -23,70 +23,72 @@ type View struct {
 	// Where the source and destination are, for the queue (v0.2.59): the
 	// disk's name ("This computer" for the computer's own disk) and the
 	// path on it (inside the home folder, from there).
-	FromDisk   string      `json:"from_disk"`
-	FromPath   string      `json:"from_path"`
-	ToDisk     string      `json:"to_disk"`
-	ToPath     string      `json:"to_path"`
-	Kind       string      `json:"kind,omitempty"` // "verify" for a Verify job
-	VerifyFile string      `json:"verify_file,omitempty"`
-	Created    time.Time   `json:"created"`
-	Finished   time.Time   `json:"finished,omitzero"`
-	State      string      `json:"state"` // running, waiting, paused, queued, finished, stopped
-	Reason     string      `json:"reason,omitempty"`
-	Missing    string      `json:"missing,omitempty"` // source, destination or both: a disk is not connected
-	Phase      string      `json:"phase"`
-	Stage      string      `json:"stage,omitempty"`
-	File       string      `json:"file,omitempty"`
-	FileDone   int64       `json:"file_done"`
-	FileSize   int64       `json:"file_size"`
-	Files      int         `json:"files"`
-	Bytes      int64       `json:"bytes"`
-	EstBytes   int64       `json:"est_bytes,omitempty"` // what the picker counted when the copy was added; used until the scan has the real size (v0.2.71)
-	Scanned    int         `json:"scanned"`
-	ScannedB   int64       `json:"scanned_bytes"`
-	Verified   int         `json:"verified"`
-	Identical  int         `json:"identical"`
-	Failed     int         `json:"failed"`
-	Strong     int         `json:"strong"`
-	S2Warn     int         `json:"s2_warnings"`
-	Gone       int         `json:"gone,omitempty"`    // v0.2.82: deleted from the source before its turn; not copied
-	Changed    int         `json:"changed,omitempty"` // v0.2.82: changed since listed; copied as found and flagged
-	Added      int         `json:"added,omitempty"`   // v0.2.82: in the source now, not in the copy's list; not copied
-	AddedBytes int64       `json:"added_bytes,omitempty"`
-	CheckedAt  time.Time   `json:"checked_at,omitzero"`  // when the source was last looked at after the copy
-	CheckNote  string      `json:"check_note,omitempty"` // why it could not be
-	Checking   bool        `json:"checking,omitempty"`   // "Check source again" is running
-	Proven     int64       `json:"bytes_proven"`
-	Copied     int         `json:"copied,omitempty"`      // copy-then-check: copied, waiting for the check pass
-	Hashed     int         `json:"hashed"`                // copy only: copied and hashed, not read back
-	Check      string      `json:"check,omitempty"`       // "none": copy only in this job
-	VerifyNext string      `json:"verify_next,omitempty"` // "run" or "paused": a Verify job follows this copy
-	After      string      `json:"after,omitempty"`       // a Verify job that starts when this copy has finished
-	VerifyJob  string      `json:"verify_job,omitempty"`
-	Skipped    int         `json:"skipped"`
-	System     int         `json:"system_skipped"`
-	SameVolume bool        `json:"same_volume"`
-	SrcRate    int64       `json:"source_rate"`
-	DstRate    int64       `json:"dest_rate"`
-	Progress   float64     `json:"progress"`              // 0 to 1, all reads and writes the job needs
-	CopiedPart float64     `json:"copied_part"`           // a copy: 0 to 1 of its bytes written so far (the purple layer)
-	ProvenPart float64     `json:"proven_part"`           // a copy: 0 to 1 of its bytes read back and matching (the pink layer)
-	Rate       int64       `json:"rate,omitempty"`        // overall bytes of the job finished per second, smoothed
-	AvgRate    int64       `json:"avg_rate,omitempty"`    // overall bytes of the job finished per second, averaged over the whole run (v0.2.70)
-	CopyRate   int64       `json:"copy_rate,omitempty"`   // average speed of all copying in this run, 0 until measured
-	WorkMs     int64       `json:"work_ms,omitempty"`     // time spent running so far, all runs; 0 in jobs finished before v0.2.56
-	Algo       string      `json:"algo"`                  // which hashes this job makes: xxh128, xxh64 or both (v0.2.58)
-	ETA        int64       `json:"eta_seconds,omitempty"` // time left, when it can be estimated
-	Space      *SpaceShort `json:"space,omitempty"`       // paused because it may not fit: the question for the owner
-	Error      string      `json:"error,omitempty"`       // a Verify job stopped on its own: a folder is missing
-	Checks     *Checks     `json:"checks,omitempty"`      // a finished copy: what has been read back since
-	From       []string    `json:"from,omitempty"`        // a Verify job: the copies it compares with
-	Hidden     bool        `json:"hidden,omitempty"`      // hidden from the history by the owner
-	LinkName   string      `json:"link_name,omitempty"`   // a link download: the file's name (v0.2.90)
-	LinkSite   string      `json:"link_site,omitempty"`   // where it comes from: Frame.io, Vimeo, SoundCloud or the site's name (v0.2.95)
-	LinkHash   string      `json:"link_hash,omitempty"`   // its XXH128, read back
-	LinkFile   string      `json:"link_file,omitempty"`   // where it went
-	Order      int         `json:"order"`                 // place in the queue, 0 runs first (v0.2.85)
+	FromDisk    string      `json:"from_disk"`
+	FromPath    string      `json:"from_path"`
+	ToDisk      string      `json:"to_disk"`
+	ToPath      string      `json:"to_path"`
+	Kind        string      `json:"kind,omitempty"` // "verify" for a Verify job
+	VerifyFile  string      `json:"verify_file,omitempty"`
+	Created     time.Time   `json:"created"`
+	Finished    time.Time   `json:"finished,omitzero"`
+	State       string      `json:"state"` // running, waiting, paused, queued, finished, stopped
+	Reason      string      `json:"reason,omitempty"`
+	Missing     string      `json:"missing,omitempty"` // source, destination or both: a disk is not connected
+	Phase       string      `json:"phase"`
+	Stage       string      `json:"stage,omitempty"`
+	File        string      `json:"file,omitempty"`
+	FileDone    int64       `json:"file_done"`
+	FileSize    int64       `json:"file_size"`
+	Files       int         `json:"files"`
+	Bytes       int64       `json:"bytes"`
+	EstBytes    int64       `json:"est_bytes,omitempty"` // what the picker counted when the copy was added; used until the scan has the real size (v0.2.71)
+	Scanned     int         `json:"scanned"`
+	ScannedB    int64       `json:"scanned_bytes"`
+	Verified    int         `json:"verified"`
+	Identical   int         `json:"identical"`
+	Failed      int         `json:"failed"`
+	Strong      int         `json:"strong"`
+	S2Warn      int         `json:"s2_warnings"`
+	Gone        int         `json:"gone,omitempty"`    // v0.2.82: deleted from the source before its turn; not copied
+	Changed     int         `json:"changed,omitempty"` // v0.2.82: changed since listed; copied as found and flagged
+	Added       int         `json:"added,omitempty"`   // v0.2.82: in the source now, not in the copy's list; not copied
+	AddedBytes  int64       `json:"added_bytes,omitempty"`
+	CheckedAt   time.Time   `json:"checked_at,omitzero"`  // when the source was last looked at after the copy
+	CheckNote   string      `json:"check_note,omitempty"` // why it could not be
+	Checking    bool        `json:"checking,omitempty"`   // "Check source again" is running
+	Proven      int64       `json:"bytes_proven"`
+	Copied      int         `json:"copied,omitempty"`       // copy-then-check: copied, waiting for the check pass
+	Hashed      int         `json:"hashed"`                 // copy only: copied and hashed, not read back
+	Check       string      `json:"check,omitempty"`        // "none": copy only in this job
+	SourceShare string      `json:"source_share,omitempty"` // smb or lucidlink (v0.2.97)
+	DestShare   string      `json:"dest_share,omitempty"`
+	VerifyNext  string      `json:"verify_next,omitempty"` // "run" or "paused": a Verify job follows this copy
+	After       string      `json:"after,omitempty"`       // a Verify job that starts when this copy has finished
+	VerifyJob   string      `json:"verify_job,omitempty"`
+	Skipped     int         `json:"skipped"`
+	System      int         `json:"system_skipped"`
+	SameVolume  bool        `json:"same_volume"`
+	SrcRate     int64       `json:"source_rate"`
+	DstRate     int64       `json:"dest_rate"`
+	Progress    float64     `json:"progress"`              // 0 to 1, all reads and writes the job needs
+	CopiedPart  float64     `json:"copied_part"`           // a copy: 0 to 1 of its bytes written so far (the purple layer)
+	ProvenPart  float64     `json:"proven_part"`           // a copy: 0 to 1 of its bytes read back and matching (the pink layer)
+	Rate        int64       `json:"rate,omitempty"`        // overall bytes of the job finished per second, smoothed
+	AvgRate     int64       `json:"avg_rate,omitempty"`    // overall bytes of the job finished per second, averaged over the whole run (v0.2.70)
+	CopyRate    int64       `json:"copy_rate,omitempty"`   // average speed of all copying in this run, 0 until measured
+	WorkMs      int64       `json:"work_ms,omitempty"`     // time spent running so far, all runs; 0 in jobs finished before v0.2.56
+	Algo        string      `json:"algo"`                  // which hashes this job makes: xxh128, xxh64 or both (v0.2.58)
+	ETA         int64       `json:"eta_seconds,omitempty"` // time left, when it can be estimated
+	Space       *SpaceShort `json:"space,omitempty"`       // paused because it may not fit: the question for the owner
+	Error       string      `json:"error,omitempty"`       // a Verify job stopped on its own: a folder is missing
+	Checks      *Checks     `json:"checks,omitempty"`      // a finished copy: what has been read back since
+	From        []string    `json:"from,omitempty"`        // a Verify job: the copies it compares with
+	Hidden      bool        `json:"hidden,omitempty"`      // hidden from the history by the owner
+	LinkName    string      `json:"link_name,omitempty"`   // a link download: the file's name (v0.2.90)
+	LinkSite    string      `json:"link_site,omitempty"`   // where it comes from: Frame.io, Vimeo, SoundCloud or the site's name (v0.2.95)
+	LinkHash    string      `json:"link_hash,omitempty"`   // its XXH128, read back
+	LinkFile    string      `json:"link_file,omitempty"`   // where it went
+	Order       int         `json:"order"`                 // place in the queue, 0 runs first (v0.2.85)
 }
 
 type rateMemo struct {
@@ -273,6 +275,9 @@ func (m *Manager) Views() []View {
 			if er := cmpRate(v.AvgRate, r.rate); er > 0 && st.Phase != "scan" {
 				v.ETA = int64((1 - v.Progress) * float64(st.Bytes) / er)
 			}
+			if l.reason != "" { // v0.2.98: running but held, for example by LucidLink's upload
+				v.State, v.Reason, v.ETA = "waiting", l.reason, 0
+			}
 			m.mu.Unlock()
 		case l.reason != "":
 			v.State, v.Reason, v.Missing = "waiting", l.reason, l.missing
@@ -300,7 +305,7 @@ func baseView(j *Job) (View, state, live) {
 		Kind: st.Spec.Kind, VerifyFile: st.Spec.File,
 		Created: st.Created, Finished: st.Finished, CopyRate: st.CopyRate, Phase: st.Phase, Files: st.Files, Bytes: st.Bytes, EstBytes: st.Spec.EstBytes, Skipped: st.Skipped, System: st.SystemSkipped,
 		Verified: c.Verified, Identical: c.Identical, Failed: c.Failed, Strong: c.Strong, S2Warn: c.S2Warn, Gone: c.Gone, Changed: c.Changed, Added: st.Added, AddedBytes: st.AddedBytes, CheckedAt: st.CheckedAt, CheckNote: st.CheckNote, Checking: j.checking.Load(), Copied: c.Copied, Hashed: c.Hashed,
-		Check: st.Spec.Check, VerifyNext: st.Spec.Verify, VerifyJob: st.VerifyJob, After: st.After,
+		Check: st.Spec.Check, SourceShare: st.Spec.SourceShare, DestShare: st.Spec.DestShare, VerifyNext: st.Spec.Verify, VerifyJob: st.VerifyJob, After: st.After,
 		Proven: c.BytesProven, SameVolume: st.SameVolume, Scanned: l.scanned, ScannedB: l.scannedBytes,
 		Progress: progress(st, c, l), Space: st.SpaceAsk, Error: st.Error, From: st.Spec.From, Hidden: st.Hidden}
 	v.CopiedPart, v.ProvenPart = layers(st, c, l)

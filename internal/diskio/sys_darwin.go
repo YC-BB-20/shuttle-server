@@ -31,9 +31,15 @@ func volumeOf(p string) (Volume, error) {
 	}
 	typ := cstr(st.Fstypename[:])
 	const mntRdonly, mntLocal = 0x1, 0x1000
-	return Volume{ID: fmt.Sprintf("%x:%x:%s", st.Fsid.Val[0], st.Fsid.Val[1], mount), Mount: mount, Name: name,
+	from := shareFrom(cstr(st.Mntfromname[:]))
+	v := Volume{ID: fmt.Sprintf("%x:%x:%s", st.Fsid.Val[0], st.Fsid.Val[1], mount), Mount: mount, Name: name,
 		Free: uint64(st.Bavail) * uint64(st.Bsize), Total: uint64(st.Blocks) * uint64(st.Bsize), Type: typ,
-		ReadOnly: st.Flags&mntRdonly != 0, Network: networkTypes[typ] || st.Flags&mntLocal == 0}, nil
+		ReadOnly: st.Flags&mntRdonly != 0, Network: networkTypes[typ] || st.Flags&mntLocal == 0,
+		Share: shareKind(typ, from, mount), From: from}
+	if v.Share != "" && mount != "/" {
+		v.ID = shareID(from, mount)
+	}
+	return v, nil
 }
 
 func cstr(b []int8) string {

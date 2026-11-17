@@ -28,7 +28,8 @@ type destFormat struct {
 }
 
 var formatNames = map[string]string{"msdos": "FAT32", "vfat": "FAT32", "fat32": "FAT32", "exfat": "exFAT",
-	"ntfs": "NTFS", "ntfs3": "NTFS", "apfs": "APFS", "hfs": "Mac OS Extended", "ext4": "ext4", "btrfs": "Btrfs", "xfs": "XFS"}
+	"ntfs": "NTFS", "ntfs3": "NTFS", "apfs": "APFS", "hfs": "Mac OS Extended", "ext4": "ext4", "btrfs": "Btrfs", "xfs": "XFS",
+	"smbfs": "network share (SMB)", "cifs": "network share (SMB)", "smb3": "network share (SMB)"}
 
 // formatOf reads the format of the disk that holds dir (an existing folder).
 func formatOf(dir string) destFormat {
@@ -44,13 +45,13 @@ func formatOf(dir string) destFormat {
 	switch t {
 	case "msdos", "vfat", "fat32":
 		f.MaxFile, f.Strict = fat32Max, true
-	case "exfat", "ntfs", "ntfs3":
-		f.Strict = true
+	case "exfat", "ntfs", "ntfs3", "smbfs", "cifs", "smb3":
+		f.Strict = true // an SMB server usually keeps Windows' name rules (v0.2.97)
 	}
 	folds, known := foldsCase(dir, v.Mount)
 	if !known {
 		switch t { // the usual setting for the format
-		case "msdos", "vfat", "fat32", "exfat", "ntfs", "ntfs3", "apfs", "hfs":
+		case "msdos", "vfat", "fat32", "exfat", "ntfs", "ntfs3", "apfs", "hfs", "smbfs", "cifs", "smb3":
 			folds = true
 		}
 	}

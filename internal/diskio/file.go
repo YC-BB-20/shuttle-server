@@ -140,11 +140,65 @@ type Volume struct {
 	Free  uint64
 	Total uint64
 	Type  string // file system, for example apfs, hfs, exfat, smbfs
-	// ReadOnly and Network come from the mount; a network share is listed in
-	// the picker but not used for copies yet (DESIGN.md section 15).
+	// ReadOnly and Network come from the mount. Of the network mounts only
+	// an SMB share and the LucidLink mount are used for copies (Share set,
+	// v0.2.97–98); the others are listed in the picker only.
 	ReadOnly bool
 	Network  bool
+	Share    string // ShareSMB, ShareLucid or ""
+	From     string // the mount's source, without a user name
 }
+
+// Network mounts copies may use (DESIGN.md section 19).
+const (
+	ShareSMB   = "smb"       // an SMB share, for example a CTERA Edge Filer
+	ShareLucid = "lucidlink" // the LucidLink desktop client's mount
+)
+
+// CopyOK says whether copies may read from and write to the volume.
+func (v Volume) CopyOK() bool { return !v.Network || v.Share != "" }
+
+// shareKind tells an SMB share or the LucidLink mount from the file system
+// type, the mount's source and its mount point.
+// A disk the owner merely named "Lucid…" is not LucidLink: the mount
+// point's name counts only on a file system that is not a disk's own.
+func shareKind(typ, from, mount string) string {
+	t := strings.ToLower(typ)
+	if strings.Contains(strings.ToLower(typ+" "+from), "lucid") {
+		return ShareLucid
+	}
+	switch t {
+	case "smbfs", "cifs", "smb3":
+		return ShareSMB
+	case "apfs", "hfs", "exfat", "msdos", "vfat", "fat32", "ntfs", "ntfs3", "ext2", "ext3", "ext4", "btrfs", "xfs", "udf", "cd9660", "tmpfs":
+		return ""
+	}
+	if strings.Contains(strings.ToLower(mount), "lucid") {
+		return ShareLucid
+	}
+	return ""
+}
+
+// shareFrom drops the user name from a mount's source:
+// "//ana@filer.local/Media" becomes "//filer.local/Media".
+func shareFrom(from string) string {
+	pre, s := "", from
+	if strings.HasPrefix(s, "//") {
+		pre, s = "//", s[2:]
+	}
+	host, rest := s, ""
+	if i := strings.IndexByte(s, '/'); i >= 0 {
+		host, rest = s[:i], s[i:]
+	}
+	if i := strings.LastIndexByte(host, '@'); i >= 0 {
+		host = host[i+1:]
+	}
+	return pre + strings.ToLower(host) + rest
+}
+
+// shareID identifies a share by its source and mount point rather than by
+// the file-system id, which changes when macOS reconnects a share.
+func shareID(from, mount string) string { return "share:" + from + ":" + mount }
 
 // networkTypes are file systems reached over the network.
 var networkTypes = map[string]bool{"smbfs": true, "afpfs": true, "nfs": true, "nfs4": true, "webdav": true,

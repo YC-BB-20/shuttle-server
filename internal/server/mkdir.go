@@ -48,8 +48,8 @@ func (s *Server) mkdir(w http.ResponseWriter, r *http.Request) (any, error) {
 		return nil, errors.New("this disk is not responding")
 	case !ok:
 		return nil, errors.New("could not tell which disk this is")
-	case v.Network:
-		return nil, errors.New("copies to network servers come later, so no folder is made there")
+	case !v.CopyOK():
+		return nil, errors.New("Shuttle copies only with SMB network shares and the LucidLink mount, so no folder is made here")
 	case v.ReadOnly:
 		return nil, errors.New("this disk is read-only")
 	}
@@ -90,7 +90,7 @@ func pickable(p string) bool {
 		return true
 	}
 	for _, x := range places() {
-		if x.Kind == "disk" && x.Note == "" && (p == x.Path || strings.HasPrefix(p, x.Path+"/")) {
+		if (x.Kind == "disk" || x.Kind == "share") && x.Note == "" && (p == x.Path || strings.HasPrefix(p, x.Path+"/")) {
 			return true
 		}
 	}

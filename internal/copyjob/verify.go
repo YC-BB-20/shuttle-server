@@ -71,8 +71,8 @@ func (m *Manager) addVerify(s Spec) (*Job, error) {
 	if err != nil {
 		return nil, err
 	}
-	if v.Network {
-		return nil, errors.New("verifying on a network server is not supported yet")
+	if !v.CopyOK() {
+		return nil, errors.New("Shuttle verifies only on SMB network shares and the LucidLink mount among network servers")
 	}
 	src, srcVol := root, v.ID
 	if s.S2 == S2After || s.S2 == S2Only { // the source read again, after the copies or alone
@@ -86,8 +86,8 @@ func (m *Manager) addVerify(s Spec) (*Job, error) {
 		if err != nil {
 			return nil, err
 		}
-		if sv.Network {
-			return nil, errors.New("reading a source on a network server is not supported yet")
+		if !sv.CopyOK() {
+			return nil, errors.New("Shuttle reads sources only from SMB network shares and the LucidLink mount among network servers")
 		}
 		srcVol = sv.ID
 	}
@@ -106,7 +106,7 @@ func (m *Manager) addVerify(s Spec) (*Job, error) {
 		return nil, err
 	}
 	j := &Job{dir: filepath.Join(m.Dir, id), st: state{FormatVersion: FormatVersion, ID: id, Created: now, Choice: choice, Phase: "scan",
-		Spec:      Spec{Kind: KindVerify, Source: src, Dest: root, S2: s2, File: file, From: from, SkipSystem: cs.SkipSystem, SkipAppleDouble: cs.SkipSystem && cs.SkipAppleDouble, Algo: normAlgo(cs.Hash)},
+		Spec:      Spec{Kind: KindVerify, Source: src, Dest: root, S2: s2, File: file, From: from, SkipSystem: cs.SkipSystem, SkipAppleDouble: cs.SkipSystem && cs.SkipAppleDouble, Algo: normAlgo(cs.Hash), DestShare: v.Share},
 		SourceVol: srcVol, DestVol: v.ID, SameVolume: srcVol == v.ID && src != root}}
 	if err := j.save(); err != nil {
 		return nil, err
@@ -152,7 +152,7 @@ func (m *Manager) queueVerify(cj *Job) {
 			after = st.ID
 		}
 		j := &Job{dir: filepath.Join(m.Dir, id), st: state{FormatVersion: FormatVersion, ID: id, Created: time.Now(), Choice: choice, Phase: "scan", After: after,
-			Spec:      Spec{Kind: KindVerify, Source: src, Dest: st.Spec.Dest, S2: st.Spec.S2, From: []string{st.ID}, SkipSystem: st.Spec.SkipSystem, SkipAppleDouble: st.Spec.SkipAppleDouble, Algo: st.Spec.Algo},
+			Spec:      Spec{Kind: KindVerify, Source: src, Dest: st.Spec.Dest, S2: st.Spec.S2, From: []string{st.ID}, SkipSystem: st.Spec.SkipSystem, SkipAppleDouble: st.Spec.SkipAppleDouble, Algo: st.Spec.Algo, DestShare: st.Spec.DestShare, SourceShare: st.Spec.SourceShare},
 			SourceVol: srcVol, DestVol: st.DestVol, SameVolume: srcVol == st.DestVol}}
 		if err := os.MkdirAll(j.dir, 0o700); err != nil {
 			m.Log.Error("could not queue the Verify job for a copy", "job", st.ID, "err", err)

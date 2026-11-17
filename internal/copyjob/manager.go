@@ -38,6 +38,8 @@ type Manager struct {
 	FreeHook func(dst string) uint64 // test hook: free space on dst's disk
 	// formatHook (tests): the format of the disk holding a folder.
 	formatHook func(dir string) destFormat
+	// shareHook (tests): the share kind of a new copy's destination.
+	shareHook func(dir string) string
 	// Secrets is the folder for link downloads' links (secrets/links, 0700).
 	Secrets string
 
@@ -197,8 +199,8 @@ func (m *Manager) add(s Spec, d *Draft) (*Job, error) {
 	if err != nil {
 		return nil, err
 	}
-	if sv.Network || dv.Network {
-		return nil, errors.New("copies to or from a network server are not supported yet; connect the disk by cable")
+	if !sv.CopyOK() || !dv.CopyOK() {
+		return nil, errors.New("Shuttle copies only with SMB network shares and the LucidLink mount; connect other disks by cable")
 	}
 	// Free space: this copy plus the copies ahead of it to the same disk.
 	ignoreSpace, ignoreFormat := s.IgnoreSpace, s.IgnoreFormat
@@ -256,6 +258,13 @@ func (m *Manager) add(s Spec, d *Draft) (*Job, error) {
 		s.Hash, s.Verify = HashDuringCopy, "" // copy only, nothing read back
 	default:
 		s.Hash = HashDuringCopy // copied now, checked by its own Verify job
+	}
+	if m.shareHook != nil {
+		dv.Share = m.shareHook(dst)
+	}
+	s.SourceShare, s.DestShare = sv.Share, dv.Share
+	if dv.Share == diskio.ShareLucid {
+		return nil, errors.New("copies to LucidLink come in the next version; LucidLink can be a source now")
 	}
 	s.Source, s.Dest = src, dst
 	now := time.Now()
