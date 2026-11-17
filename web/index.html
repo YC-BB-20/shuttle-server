@@ -1803,6 +1803,7 @@ function openFullLog() {
 function shareNotes(v) {
   const n = [];
   if (v.dest_share === "smb") n.push("The destination is a network share: each copy is read back from the share over the network. If the share is a CTERA Edge Filer, the filer uploads to the CTERA cloud by itself afterwards. Shuttle cannot see that upload, so check the filer's sync status before deleting the source.");
+  if (v.dest_share === "lucidlink") n.push("The destination is LucidLink: every file is copied first. The copies are read back only once LucidLink says nothing is left to upload and its cache on this Mac is cleared, so what is read comes from LucidLink's storage. Until then they count as written, not proven.");
   if (v.source_share === "lucidlink" && v.s2 === "now") n.push("The source is LucidLink: its second read may come from LucidLink's cache on this Mac rather than its storage.");
   return n;
 }
@@ -1811,6 +1812,7 @@ function proofScheme(v) {
   if (v.kind === "verify") return verKind(v);
   if (v.kind === "link") return (v.files > 1 ? "Each file downloaded" : "Downloaded") + ", size checked, read back from the disk and hashed";
   if (v.check === "none") return "Copied and hashed; read back by " + (v.verify_next ? "its own Verify item" : "a later Verify");
+  if (v.dest_share === "lucidlink") return "Copied first; read back once LucidLink has uploaded everything" + (v.s2 === "now" ? ", source read a second time" : "");
   return v.s2 === "now" ? "Copy read back, source read a second time" : "Copy read back";
 }
 function fillOverview(v, q, o) {

@@ -77,6 +77,10 @@ type Spec struct {
 	// "xxh128" (also "", every job before it), "xxh64" or "both". Copied from
 	// Settings when the job is added.
 	Algo string `json:"algo,omitempty"`
+	// Lucid (v0.2.98): the copy's destination, or the verified place, is on
+	// LucidLink's mount. It is read back only once LucidLink says nothing is
+	// left to upload and its cache is cleared (DESIGN.md section 19).
+	Lucid bool `json:"lucid,omitempty"`
 	// SourceShare and DestShare (v0.2.97): diskio.ShareSMB or ShareLucid
 	// when that side is a network share, so the page can say what the
 	// read-back proves there.

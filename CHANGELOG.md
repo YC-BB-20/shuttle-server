@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.98 — 17 November 2026
+
+- **Copies to LucidLink.** The LucidLink mount can now be a copy's destination, for example from a CTERA share. Every file is copied and hashed first. The copies are read back only once LucidLink says nothing written on this Mac is still waiting to upload, and after its cache is cleared, so the read-back comes from LucidLink's storage and not from this Mac. Until then they count as written, not proven; a read-back from this Mac's cache would prove nothing about the upload.
+- While copying, Shuttle asks LucidLink how much is waiting to upload and pauses between files when it passes 4 GB (setting `lucid_max_waiting_gb`), saying "Waiting for LucidLink to upload".
+- If Shuttle cannot find LucidLink's command, or cannot read its answer, the copying goes on but the check waits and says why; it never guesses that the upload is done. The command is looked for as `lucid3` or `lucid`, in the usual places and inside the LucidLink app; `lucid_command` in the config can name it.
+- A Verify of a place on LucidLink waits the same way.
+- A running job that is held now shows as waiting, with the reason.
+- Releases: signing the Mac builds tries again when Apple's time-stamp server does not answer.
+
 ## 0.2.97 — 17 November 2026
 
 - **Copies with network shares.** An SMB share mounted in Finder (Go → Connect to Server, `smb://…`), such as a CTERA Edge Filer, can now be a copy's source or destination, and so can the LucidLink mount as a source. The copy works as between disks: hashed as it is read, flushed, read back from the share and the source read a second time, a cut-off copy continues where it stopped, nothing is ever overwritten.

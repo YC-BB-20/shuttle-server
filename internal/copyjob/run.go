@@ -183,9 +183,15 @@ func (j *Job) copyPhase(ctx context.Context, e env, jr *Journal, accepting func(
 	}
 
 	if j.st.Spec.checkLater() || j.st.Spec.copyOnly() {
+		var room lucidRoom
 		for cur := nextPending(); cur != nil; cur = nextPending() {
 			if !accepting() {
 				return waitErr{"Waiting for memory to free up"}
+			}
+			if j.st.Spec.Lucid {
+				if err := room.wait(ctx, j, e); err != nil {
+					return err
+				}
 			}
 			skip, ch := j.turnCheck(e, cur, src.Path(cur.P), jr)
 			if skip {
@@ -769,6 +775,11 @@ func (j *Job) run(ctx context.Context, e env, accepting func() bool) error {
 		}
 		j.mu.Unlock()
 		j.save()
+	}
+	if j.st.Phase == "check" && j.st.Spec.Lucid {
+		if err := j.lucidReady(ctx, e); err != nil {
+			return err
+		}
 	}
 	if j.st.Phase == "check" {
 		if err := j.checkPhase(ctx, e, jr, accepting); err != nil {

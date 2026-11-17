@@ -42,6 +42,11 @@ type Manager struct {
 	shareHook func(dir string) string
 	// Secrets is the folder for link downloads' links (secrets/links, 0700).
 	Secrets string
+	// Lucid asks LucidLink's client what is left to upload (v0.2.98); nil:
+	// a check on LucidLink waits and says why. LucidMax is how much may wait
+	// to upload before copying to LucidLink pauses (0: no limit).
+	Lucid    LucidClient
+	LucidMax int64
 
 	mu      sync.Mutex
 	jobs    []*Job
@@ -263,8 +268,13 @@ func (m *Manager) add(s Spec, d *Draft) (*Job, error) {
 		dv.Share = m.shareHook(dst)
 	}
 	s.SourceShare, s.DestShare = sv.Share, dv.Share
-	if dv.Share == diskio.ShareLucid {
-		return nil, errors.New("copies to LucidLink come in the next version; LucidLink can be a source now")
+	s.Lucid = dv.Share == diskio.ShareLucid
+	if s.Lucid {
+		// v0.2.98: a copy on LucidLink is read back only after everything is
+		// uploaded, so the whole folder is copied first and checked after.
+		if s.Check == "" {
+			s.Hash = HashCheckLater
+		}
 	}
 	s.Source, s.Dest = src, dst
 	now := time.Now()
@@ -538,7 +548,8 @@ func (m *Manager) runOne(ctx context.Context, j *Job) {
 	}()
 	j.startWork(time.Now())
 	err := j.run(jctx, env{format: m.formatFor(j.st.Spec.Dest), budget: m.Budget, src: sd, dst: dd, afterCopy: m.AfterCopy, copyRead: m.CopyRead,
-		space: func() error { return m.checkSpaceAtStart(j) }, wrapHash: func() { m.writeWrapperHashFile(j) }}, m.Accepting)
+		space: func() error { return m.checkSpaceAtStart(j) }, wrapHash: func() { m.writeWrapperHashFile(j) },
+		lucid: m.Lucid, lucidMax: m.LucidMax, log: m.Log}, m.Accepting)
 	cancel(nil)
 	m.mu.Lock()
 	m.running = nil

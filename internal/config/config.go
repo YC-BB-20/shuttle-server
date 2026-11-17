@@ -40,6 +40,10 @@ type Config struct {
 	HomebrewPrefix   string  `json:"homebrew_prefix"`
 	MenuBarIcon      bool    `json:"menu_bar_icon"`
 	UpdateRepo       string  `json:"update_repo"`
+	// LucidLink (v0.2.98): the client's command ("" finds it), and how much
+	// written data may wait to upload before a copy to LucidLink pauses.
+	LucidCommand      string  `json:"lucid_command"`
+	LucidMaxWaitingGB float64 `json:"lucid_max_waiting_gb"`
 }
 
 // Defaults returns the starting config for this machine (DESIGN.md section 18).
@@ -52,16 +56,17 @@ func Defaults() Config {
 		prefix = "/usr/local"
 	}
 	return Config{
-		FormatVersion:    FormatVersion,
-		Listen:           "127.0.0.1:8470",
-		FreeSpaceFloorGB: 50,
-		CPUShare:         0.5,
-		Nice:             10,
-		PageUpdatesPerS:  4,
-		MaxOpenPages:     8,
-		HomebrewPrefix:   prefix,
-		MenuBarIcon:      runtime.GOOS == "darwin",
-		UpdateRepo:       "YC-BB-20/shuttle-server",
+		FormatVersion:     FormatVersion,
+		Listen:            "127.0.0.1:8470",
+		FreeSpaceFloorGB:  50,
+		CPUShare:          0.5,
+		Nice:              10,
+		PageUpdatesPerS:   4,
+		MaxOpenPages:      8,
+		HomebrewPrefix:    prefix,
+		MenuBarIcon:       runtime.GOOS == "darwin",
+		UpdateRepo:        "YC-BB-20/shuttle-server",
+		LucidMaxWaitingGB: 4,
 	}
 }
 

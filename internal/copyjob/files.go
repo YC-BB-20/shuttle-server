@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -144,6 +145,9 @@ type env struct {
 	copyRead  func(b []byte)   // test hook
 	space     func() error     // free-space check before the copy pass (nil: none)
 	wrapHash  func()           // v0.2.81: writes the hash list beside the media folder when the copy asked for it (nil: none)
+	lucid     LucidClient      // v0.2.98: LucidLink's client (nil: not reachable)
+	lucidMax  int64            // bytes allowed to wait for LucidLink's upload before copying pauses (0: no limit)
+	log       *slog.Logger     // nil: not logged
 }
 
 func statSM(p string) (int64, int64, error) {

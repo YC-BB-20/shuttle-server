@@ -25,6 +25,7 @@ import (
 	"github.com/YC-BB-20/shuttle-server/internal/launcher"
 	"github.com/YC-BB-20/shuttle-server/internal/limits"
 	"github.com/YC-BB-20/shuttle-server/internal/logx"
+	"github.com/YC-BB-20/shuttle-server/internal/lucid"
 	"github.com/YC-BB-20/shuttle-server/internal/menubar"
 	"github.com/YC-BB-20/shuttle-server/internal/remote"
 	"github.com/YC-BB-20/shuttle-server/internal/safemode"
@@ -206,7 +207,8 @@ func Run(opts Options) (code int) {
 	disks := diskio.NewRegistry(1, 60*time.Second)
 	if !safe {
 		jobs = &copyjob.Manager{Dir: filepath.Join(stateDir, "jobs"), Budget: budget, Disks: disks,
-			Accepting: wd.AcceptingNewWork, Log: log, Floor: cfg.FloorBytes(), Secrets: filepath.Join(data, "secrets", "links")}
+			Accepting: wd.AcceptingNewWork, Log: log, Floor: cfg.FloorBytes(), Secrets: filepath.Join(data, "secrets", "links"),
+			Lucid: lucid.New(cfg.LucidCommand), LucidMax: int64(cfg.LucidMaxWaitingGB * 1e9)}
 		if v, err := diskio.VolumeOf(data); err == nil {
 			jobs.FloorVol = v.ID // the free-space floor is kept on the internal disk
 		}

@@ -92,11 +92,19 @@ jobs:
           cd "$RUNNER_TEMP/empty-cwd"
           export HOME="$RUNNER_TEMP/empty-home" XDG_CONFIG_HOME="$RUNNER_TEMP/empty-home"
           BIN="$GITHUB_WORKSPACE/dist/shuttle-server"
-          "$RUNNER_TEMP/sign/rcodesign" sign \
-            --p12-file "$RUNNER_TEMP/sign/cert.p12" \
-            --p12-password-file "$RUNNER_TEMP/sign/pass.txt" \
-            --binary-identifier com.yc-bb-20.shuttle-server \
-            "$BIN"
+          # Apple's time-stamp server sometimes does not answer: try up to five times.
+          for try in 1 2 3 4 5; do
+            if "$RUNNER_TEMP/sign/rcodesign" sign \
+              --p12-file "$RUNNER_TEMP/sign/cert.p12" \
+              --p12-password-file "$RUNNER_TEMP/sign/pass.txt" \
+              --binary-identifier com.yc-bb-20.shuttle-server \
+              "$BIN"; then
+              break
+            fi
+            if [ "$try" = 5 ]; then exit 1; fi
+            echo "::warning::Signing failed (try $try); trying again in $((try * 20)) s."
+            sleep $((try * 20))
+          done
           # The line below must be identical on every release: it is what macOS remembers.
           "$RUNNER_TEMP/sign/rcodesign" print-signature-info "$BIN" | grep -E "Identifier|SHA-256|Subject CN|designated" || true
           rm -rf "$RUNNER_TEMP/sign" "$RUNNER_TEMP/empty-cwd" "$RUNNER_TEMP/empty-home"
