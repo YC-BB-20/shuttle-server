@@ -46,10 +46,15 @@ type Spec struct {
 	// name after the copy. Verify, only with "none": "run" or "paused" queues
 	// a Verify job for the copied files when this job finishes.
 	// Link (v0.2.90): a link download; Source then holds only "https://<site>".
-	Link   *LinkSpec `json:"link,omitempty"`
-	Check  string    `json:"check,omitempty"`
-	Verify string    `json:"verify,omitempty"`
-	Hash   string    `json:"hash,omitempty"` // "copy" (hash while copying), "later" (hash while copying, check everything in a second pass) or "first" (own read before); empty in jobs from before 0.2.3 means "first"
+	Link *LinkSpec `json:"link,omitempty"`
+	// Items (v0.2.92): several links added together are one job; Items holds
+	// every file in the order they are downloaded, and Link is the one being
+	// downloaded now (Items[LinkAt]). LinkName names the job.
+	Items    []LinkSpec `json:"items,omitempty"`
+	LinkName string     `json:"link_name,omitempty"`
+	Check    string     `json:"check,omitempty"`
+	Verify   string     `json:"verify,omitempty"`
+	Hash     string     `json:"hash,omitempty"` // "copy" (hash while copying), "later" (hash while copying, check everything in a second pass) or "first" (own read before); empty in jobs from before 0.2.3 means "first"
 	// Only lists the chosen files and folders inside Source, by name; empty
 	// means the whole folder.
 	Only []string `json:"only,omitempty"`
@@ -182,6 +187,10 @@ type state struct {
 	// A link download (v0.2.90): the file's XXH128 as read back, and where it went.
 	LinkHash string `json:"link_hash,omitempty"`
 	LinkFile string `json:"link_file,omitempty"`
+	// v0.2.92: in a job of several links, the file being downloaded now and
+	// what became of each one before it.
+	LinkAt   int          `json:"link_at,omitempty"`
+	LinkDone []LinkResult `json:"link_done,omitempty"`
 }
 
 // Job is one copy job.

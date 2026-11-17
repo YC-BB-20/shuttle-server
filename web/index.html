@@ -424,6 +424,9 @@ dialog .head, .foot { border-color:var(--line); }
 .jh, .job .r { display:grid; grid-template-columns:14px 28px minmax(0,1fr) 56px 76px minmax(80px,150px) minmax(150px,230px) var(--acts) 4px;
   grid-template-areas:"g i m k z b s a c"; column-gap:12px; align-items:center; }
 .jh { padding:8px 14px; font-size:12px; font-weight:600; color:var(--mute); border-bottom:1px solid var(--line); }
+.jh button { all:unset; box-sizing:border-box; cursor:pointer; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-radius:4px; }
+.jh button:hover { color:var(--fg); } .jh button:focus-visible { outline:2px solid var(--sel); outline-offset:2px; }
+.jh button[data-dir="up"]::after { content:" ↑"; } .jh button[data-dir="down"]::after { content:" ↓"; } .jh button[data-dir="up"], .jh button[data-dir="down"] { color:var(--fg); }
 .jh .hn { grid-area:m; } .jh .hk { grid-area:k; } .jh .hz { grid-area:z; text-align:right; } .jh .hb { grid-area:b; } .jh .hs { grid-area:s; }
 .shell > main { container-type:inline-size; }
 .jobs:not(:has(.job)), .hist:not(:has(.job)) { display:none; }
@@ -610,6 +613,9 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
 .lfound { display:flex; flex-direction:column; gap:6px; margin:6px 0 4px; max-height:30vh; overflow:auto; }
 .lf { display:flex; gap:10px; align-items:flex-start; padding:9px 12px; border-radius:9px; } .lf.ok { background:#173a27; } .lf.bad { background:#3a1717; }
 .lsite { display:flex; flex-direction:column; gap:4px; margin:4px 0; } .lsite select, .lsite input { width:100%; min-width:0; }
+.ltree { border:1px solid var(--line); border-radius:9px; padding:6px 0; max-height:320px; overflow:auto; }
+.lt { display:flex; gap:10px; align-items:baseline; padding:3px 12px; min-width:0; } .lt .n { flex:1; min-width:0; overflow-wrap:anywhere; } .lt.dir .n { font-weight:600; color:var(--mute); }
+.lt small { color:var(--mute); font-size:12px; white-space:nowrap; font-variant-numeric:tabular-nums; } .ltreeh { margin:8px 0 6px; }
 .lf svg { flex:none; margin-top:2px; } .lft { display:flex; flex-direction:column; min-width:0; } .lft b { overflow-wrap:anywhere; } .lft small { color:#d9d9df; font-size:12px; overflow-wrap:anywhere; }
 .lpos { display:flex; flex-wrap:wrap; gap:4px 20px; } .lpos .opt { margin:4px 0; }
 </style>
@@ -652,17 +658,17 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
     <button type="button" id="qfActive">Active only</button>
     <button type="button" id="qfMore" class="qfmore" aria-expanded="false" title="Show or hide each kind of entry">Filters<span class="dot" hidden></span></button>
     <select id="qfRange" title="Time range of the history"><option value="all">All time</option><option value="hour">Last hour</option><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="week">Last 7 days</option></select>
-    <select id="qfSort" title="Sort the queue and the history"><option value="queue:1">Queue order</option><option value="time:-1">Newest first</option><option value="time:1">Oldest first</option><option value="name:1">Name A–Z</option><option value="name:-1">Name Z–A</option><option value="size:-1">Largest first</option><option value="size:1">Smallest first</option><option value="status:1">Status</option><option value="left:1">Time left</option><option value="dest:1">Destination</option></select>
+    <select id="qfSort" title="Sort the queue and the history"><option value="queue:1">Queue order</option><option value="time:-1">Newest first</option><option value="time:1">Oldest first</option><option value="name:1">Name A–Z</option><option value="name:-1">Name Z–A</option><option value="size:-1">Largest first</option><option value="size:1">Smallest first</option><option value="status:1">Status</option><option value="status:-1">Status, reversed</option><option value="kind:1">Kind A–Z</option><option value="kind:-1">Kind Z–A</option><option value="prog:-1">Most done first</option><option value="prog:1">Least done first</option><option value="left:1">Time left</option><option value="dest:1">Destination</option></select>
   </div></div>
   <p class="mute qfinfo" id="qfInfo"></p>
   <p class="mute" id="noJobs">Nothing in the queue.</p>
   <p class="mute" id="noJobsF" hidden>Nothing in the queue matches the filters.</p>
-  <div class="jobs" id="jobs"><div class="jh" aria-hidden="true"><span class="hn">Name</span><span class="hk">Kind</span><span class="hz">Size</span><span class="hb">Written · proven</span><span class="hs">State</span></div></div>
+  <div class="jobs" id="jobs"><div class="jh"><button type="button" class="hn" data-sort="name">Name</button><button type="button" class="hk" data-sort="kind">Kind</button><button type="button" class="hz" data-sort="size">Size</button><button type="button" class="hb" data-sort="prog">Written · proven</button><button type="button" class="hs" data-sort="status">State</button></div></div>
   <p class="qhint" id="qHint" hidden>Drag a waiting row by its handle, press Run next, or press ⌥↑ / ⌥↓ on a row to change the order.</p>
   <div class="jobs-head"><h2>History</h2></div>
   <p class="mute" id="noDone">Finished and stopped copies appear here.</p>
   <p class="mute" id="noDoneF" hidden>No finished or stopped copies match the filters.</p>
-  <div class="hist" id="done"><div class="jh" aria-hidden="true"><span class="hn">Name</span><span class="hk">Kind</span><span class="hz">Size</span><span class="hb">Written · proven</span><span class="hs">State</span></div></div>
+  <div class="hist" id="done"><div class="jh"><button type="button" class="hn" data-sort="name">Name</button><button type="button" class="hk" data-sort="kind">Kind</button><button type="button" class="hz" data-sort="size">Size</button><button type="button" class="hb" data-sort="prog">Written · proven</button><button type="button" class="hs" data-sort="status">State</button></div></div>
   <p><button type="button" id="moreHist" hidden>Show older copies</button></p>
   </div>
   <div id="tabFiles" class="fb" hidden>
@@ -1754,7 +1760,7 @@ function openFullLog() {
 // Overview: the two numbers, the facts, and the speed of each disk.
 function proofScheme(v) {
   if (v.kind === "verify") return verKind(v);
-  if (v.kind === "link") return "Downloaded, size checked, read back from the disk and hashed";
+  if (v.kind === "link") return (v.files > 1 ? "Each file downloaded" : "Downloaded") + ", size checked, read back from the disk and hashed";
   if (v.check === "none") return "Copied and hashed; read back by " + (v.verify_next ? "its own Verify item" : "a later Verify");
   return v.s2 === "now" ? "Copy read back, source read a second time" : "Copy read back";
 }
@@ -1772,7 +1778,7 @@ function fillOverview(v, q, o) {
   const at = (d, p) => d ? d + " → " + p : "";
   const facts = [[o.ver ? "Checks" : "From", o.ver ? o.place : v.kind === "link" ? v.from_disk : at(v.from_disk, v.from_path) || v.source], o.ver ? null : ["To", v.link_file || at(v.to_disk, v.to_path) || v.dest],
     ["Files", !o.ver && !fin && !o.scanning ? fileCounts(v) : o.scanning ? v.scanned + " listed so far" : nf(v.files)],
-    ["Hash", v.link_hash ? "XXH128 " + v.link_hash : algoName[v.algo] || "XXH128"], ["Proof", proofScheme(v)],
+    ["Hash", v.link_hash ? "XXH128 " + v.link_hash : v.kind === "link" && v.files > 1 ? "XXH128 of each file" : algoName[v.algo] || "XXH128"], ["Proof", proofScheme(v)],
     ["Started", when(v.created) + (v.work_ms ? " · worked " + clock(v.work_ms) : "")], fin && v.finished ? ["Finished", when(v.finished)] : null].filter(Boolean);
   const dl = q(".facts"), key = JSON.stringify(facts);
   if (dl.dataset.k !== key) { dl.dataset.k = key; dl.replaceChildren(...facts.flatMap(([a, b]) => [el("dt", "", a), el("dd", /^(From|To|Checks)$/.test(a) ? "path" : "", b)])); }
@@ -1803,7 +1809,7 @@ function selectJob(id, keepOpen) {
   selId = prev && prev._v.id === id ? "" : id;
   const c = selId && cards[selId];
   $("insp").classList.toggle("on", !!c); $("inspEmpty").hidden = !!c; $("inspHead").hidden = !c;
-  if (c) { c.classList.add("open"); c._pn = -1; $("inspBody").replaceChildren(c._d); $("insp").scrollTop = 0; card(c._v); setInspTab(c._v.kind === "link" && inspTab === "files" ? "overview" : inspTab); }
+  if (c) { c.classList.add("open"); c._pn = -1; $("inspBody").replaceChildren(c._d); $("insp").scrollTop = 0; card(c._v); setInspTab(inspTab); }
   else $("inspBody").replaceChildren();
 }
 $("inspClose").onclick = () => { if (selId) selectJob(selId); else if (selCard) closeCard(); else if (fbSel) fbCloseFile(); };
@@ -1829,7 +1835,7 @@ function stateShort(v, problems, pc, ver, scanning) {
   if (ver) return [(v.s2 === "only" ? v.strong : v.verified) + (v.files === 1 ? " file matches" : " files match"), "ok", done2];
   if (v.files > 0 && v.identical === v.files) return ["Already there", "ok", done2];
   if (k && k.of > 0 && k.source >= k.of) return ["Verified", "ok", done2];
-  if (v.kind === "link" && v.link_hash) return ["Downloaded · checked", "ok", done2];
+  if (v.kind === "link" && (v.link_hash || v.files > 1 && v.verified === v.files)) return ["Downloaded · checked", "ok", done2];
   if (k && k.of > 0 && k.dest >= k.of) return ["Safe · read back", "ok", done2];
   return ["Copied, not checked", "", done2];
 }
@@ -1924,7 +1930,7 @@ function card(v) {
   if (selId === v.id) {
     $("inspTitle").textContent = ver ? verKind(v) : jobName(v); $("inspTitle").title = ver ? place : v.source;
     $("inspState").textContent = [stT, stSmall].filter(Boolean).join(" · "); $("inspState").className = "ist " + stTone;
-    if (!fv[v.id] && !scanning && v.kind !== "link") toggleFiles(v, c);
+    if (!fv[v.id] && !scanning) toggleFiles(v, c);
   }
   // Details, shown when the row is open.
   let line = "";
@@ -1957,7 +1963,7 @@ function card(v) {
   if (selId === v.id) {
     const np = (v.failed || 0) + (v.gone || 0) + (v.changed || 0) + (v.added || 0) + (v.s2_warnings || 0) + (v.error ? 1 : 0);
     tabLabel("files", "Files", v.files ? nf(v.files) : ""); tabLabel("problems", "Problems", String(np));
-    $("inspTabs").querySelector('[data-tab="files"]').hidden = scanning || !v.files || v.kind === "link";
+    $("inspTabs").querySelector('[data-tab="files"]').hidden = scanning || !v.files;
     if (c._pn !== np || c._pst !== v.state) { c._pn = np; c._pst = v.state; if (inspTab === "problems") loadProblems(c); }
   }
   c.classList.toggle("going", live);
@@ -2249,7 +2255,9 @@ function sortJobs(list, hist) {
     (a.order ?? 0) - (b.order ?? 0) || (a.created < b.created ? -1 : 1));
   const val = v => {
     switch (key) {
-      case "name": return (v.kind === "verify" ? base(v.dest) : base(v.source)).toLowerCase();
+      case "name": return (v.kind === "verify" ? base(v.dest) : jobName(v)).toLowerCase();
+      case "kind": return v.kind === "verify" ? "verify" : v.kind === "link" ? "link" : "copy";
+      case "prog": return v.state === "finished" ? 1 + (v.progress || 0) : v.progress || 0;
       case "dest": return (v.dest || "").toLowerCase();
       case "size": return v.bytes || 0;
       case "status": return statusRank(v);
@@ -2260,7 +2268,7 @@ function sortJobs(list, hist) {
   return list.slice().sort((a, b) => {
     const ra = a.state === "running" ? 0 : 1, rb = b.state === "running" ? 0 : 1;
     if (ra !== rb) return ra - rb;
-    const va = val(a), vb = val(b), c = typeof va === "string" ? va.localeCompare(vb) : va - vb;
+    const va = val(a), vb = val(b), c = typeof va === "string" ? va.localeCompare(vb, undefined, { numeric: true }) : va - vb;
     return c * dir || (a.created < b.created ? 1 : -1);
   });
 }
@@ -2276,6 +2284,14 @@ function syncQf(counts) {
   $("qfActive").setAttribute("aria-pressed", allOff);
   $("qfActive").title = allOff ? "Switch the filters back on (completed, skipped, stopped, failed)" : "Switch every filter off: show only what is copying, verifying, waiting or paused";
   $("qfRange").value = qf.range; $("qfSort").value = qf.sort;
+  // The column headings show the sort; a click sorts by that column (v0.2.92).
+  const [sk, sd] = qf.sort.split(":");
+  document.querySelectorAll(".jh button[data-sort]").forEach(b => {
+    const on = b.dataset.sort === sk;
+    b.dataset.dir = on ? (Number(sd) > 0 ? "up" : "down") : "";
+    b.setAttribute("aria-sort", on ? (Number(sd) > 0 ? "ascending" : "descending") : "none");
+    b.title = on ? "Sorted by " + b.textContent.toLowerCase() + (Number(sd) > 0 ? ", A–Z / smallest first" : ", Z–A / largest first") + ". Click to " + (Number(sd) === headFirst(b.dataset.sort) ? "reverse" : "go back to the queue order") : "Sort by " + b.textContent.toLowerCase();
+  });
   const nh = counts ? counts.hidden || 0 : 0;
   $("qfHidden").hidden = !nh && !qf.showHidden; $("qfHidden").setAttribute("aria-pressed", !!qf.showHidden);
   $("qfHidden").querySelector(".n").textContent = nh || "";
@@ -2300,6 +2316,14 @@ function setHidden(v, hide) {
 }
 $("qfRange").onchange = () => { qf.range = $("qfRange").value; qfChanged(); };
 $("qfSort").onchange = () => { qf.sort = $("qfSort").value; qfChanged(); };
+// A column heading: the first click sorts by it, the second reverses, the
+// third goes back to the queue order (the only order rows can be dragged in).
+const headFirst = k => k === "size" || k === "prog" ? -1 : 1;
+document.querySelectorAll(".jh button[data-sort]").forEach(b => b.onclick = () => {
+  const [k, d] = qf.sort.split(":"), key = b.dataset.sort, first = headFirst(key);
+  qf.sort = k !== key ? key + ":" + first : Number(d) === first ? key + ":" + (-first) : "queue:1";
+  qfChanged();
+});
 syncQf();
 // Each Verify sits right under the one copy it checks, set in with the pink
 // edge. A Verify whose copy is not in the same list (filtered out, in the
@@ -2879,13 +2903,21 @@ function lookUpLinks() {
     if (seq !== linkSeq) return;
     const raws = text.split(/\s+/).filter(Boolean);
     linkOK = [];
-    $("linkFound").replaceChildren(...r.links.map(x => {
-      const d = el("div", "lf " + (x.error ? "bad" : "ok")), ic = icon(x.error ? "bad" : "ok", 18), t = el("div", "lft");
-      if (x.error) t.append(el("b", "", x.host ? x.host : "Link " + x.n), el("small", "", x.error));
-      else if (x.site) { linkOK.push(raws[x.n - 1]); t.append(el("b", "", (x.sub ? x.sub + "/" : "") + x.name), el("small", "", [x.site === "vimeo" ? "Vimeo video" : "SoundCloud track", x.duration > 0 ? linkDur(x.duration) : "", x.qualities && x.qualities.length ? "about " + size(x.qualities[0].bytes || 0) + " at the best quality" : "", "continues after a break"].filter(Boolean).join(" · "))); }
-      else { linkOK.push(raws[x.n - 1]); t.append(el("b", "", (x.sub ? x.sub + "/" : "") + x.name), el("small", "", [x.host, x.size >= 0 ? size(x.size) : "size not given", x.resumable ? "can continue after a break" : "starts again after a break", x.share ? "from " + x.share : ""].filter(Boolean).join(" · "))); }
-      d.append(ic, t); return d;
-    }));
+    const good = r.links.filter(x => !x.error);
+    good.forEach(x => linkOK.push(raws[x.n - 1]));
+    const rows = r.links.filter(x => x.error).map(x => {
+      const d = el("div", "lf bad"), t = el("div", "lft");
+      t.append(el("b", "", x.host ? x.host : "Link " + x.n), el("small", "", x.error)); d.append(icon("bad", 18), t); return d;
+    });
+    if (good.length === 1) {
+      const x = good[0], d = el("div", "lf ok"), t = el("div", "lft");
+      t.append(el("b", "", linkRel(x)), el("small", "", linkFacts(x))); d.append(icon("ok", 18), t); rows.push(d);
+    } else if (good.length > 1) {
+      // v0.2.92: several links are one download; the folders they will make are shown as they will be on the disk.
+      rows.push(el("p", "mute ltreeh", "One download of " + good.length + " files, saved like this inside the folder chosen below:"));
+      const tree = el("div", "ltree"); tree.append(...linkTreeRows(good)); rows.push(tree);
+    }
+    $("linkFound").replaceChildren(...rows);
     // A Vimeo link gets a password field; a single site link gets its qualities.
     $("linkPwRow").hidden = !r.links.some(x => x.site === "vimeo") && !$("linkPw").value;
     const sites = r.links.filter(x => !x.error && x.site && x.qualities && x.qualities.length), q = $("linkQ"), had = q.value;
@@ -2893,8 +2925,43 @@ function lookUpLinks() {
     q.replaceChildren(...(sites.length === 1 ? sites[0].qualities : []).map((o, i) => { const e = el("option", "", o.label + (o.bytes > 0 ? " · about " + size(o.bytes) : "") + (i === 0 ? " (best)" : "")); e.value = o.id; e.dataset.b = o.bytes || 0; return e; }));
     if ([...q.options].some(o => o.value === had)) q.value = had;
     linkSpaceText(r.links);
-    $("linkGo").disabled = !linkOK.length; $("linkGo").textContent = linkOK.length > 1 ? "Add " + linkOK.length + " downloads" : "Add to queue";
+    $("linkGo").disabled = !linkOK.length; $("linkGo").textContent = linkOK.length > 1 ? "Add " + linkOK.length + " files as one download" : "Add to queue";
   }).catch(e => { if (seq === linkSeq) $("linkFound").replaceChildren(el("p", "err", e.message)); });
+}
+const linkRel = x => (x.sub ? x.sub + "/" : "") + x.name;
+function linkFacts(x) {
+  if (x.site) return [x.site === "vimeo" ? "Vimeo video" : "SoundCloud track", x.duration > 0 ? linkDur(x.duration) : "", x.qualities && x.qualities.length ? "about " + size(x.qualities[0].bytes || 0) + " at the best quality" : "", "continues after a break"].filter(Boolean).join(" · ");
+  return [x.host, x.size >= 0 ? size(x.size) : "size not given", x.resumable ? "can continue after a break" : "starts again after a break", x.share ? "from " + x.share : ""].filter(Boolean).join(" · ");
+}
+// The order of the Files tab, which is also the order the files download in:
+// inside each folder, its folders first, then its own files, names A–Z
+// (the same order as the server).
+function cmpLinkPath(a, b) {
+  const pa = linkRel(a).split("/"), pb = linkRel(b).split("/");
+  for (let k = 0; k < pa.length && k < pb.length; k++) {
+    const la = k === pa.length - 1, lb = k === pb.length - 1;
+    if (la !== lb) return la ? 1 : -1;
+    const c = pa[k].toLowerCase() < pb[k].toLowerCase() ? -1 : pa[k].toLowerCase() > pb[k].toLowerCase() ? 1 : pa[k] < pb[k] ? -1 : pa[k] > pb[k] ? 1 : 0;
+    if (c) return c;
+  }
+  return pa.length - pb.length;
+}
+// The files of several links as the folders they go into, each folder once.
+function linkTreeRows(list) {
+  const out = []; let prev = [];
+  list.slice().sort(cmpLinkPath).forEach(x => {
+    const parts = (x.sub || "").split("/").filter(Boolean);
+    let k = 0; while (k < parts.length && k < prev.length && parts[k] === prev[k]) k++;
+    for (let i = k; i < parts.length; i++) {
+      const d = el("div", "lt dir"); d.style.paddingLeft = (12 + i * 18) + "px";
+      d.append(el("span", "n", "▾ " + parts[i] + "/")); out.push(d);
+    }
+    prev = parts;
+    const f = el("div", "lt"); f.style.paddingLeft = (12 + parts.length * 18) + "px";
+    f.append(el("span", "n", x.name), el("small", "", x.site ? (x.qualities && x.qualities[0] ? "about " + size(x.qualities[0].bytes || 0) : "") : x.size >= 0 ? size(x.size) : "size not given"));
+    f.title = linkFacts(x); out.push(f);
+  });
+  return out;
 }
 let linkLast = [];
 function linkSpaceText(links) {
@@ -2947,6 +3014,13 @@ function workChip(r) {
   const checking = isCheckStage(r.stage);
   return el("span", "chip " + (checking ? "verifying" : "copying"), (checking ? "Verifying" : /^Reading the source/.test(r.stage || "") ? "Reading" : "Copying") + (r.size ? " " + Math.floor(pct(r.done, r.size)) + "%" : ""));
 }
+// A link job's file (v0.2.92): waiting, downloading, reading back, downloaded and checked, or failed.
+function linkChip(r) {
+  if (r.status === "working") return el("span", "chip " + (isCheckStage(r.stage) ? "verifying" : "copying"), (isCheckStage(r.stage) ? "Reading back" : r.stage === "Joining" ? "Joining" : "Downloading") + (r.size ? " " + Math.floor(pct(r.done, r.size)) + "%" : ""));
+  if (r.status === "proven") return el("span", "chip ok", "Downloaded · checked");
+  if (r.status === "failed") return el("span", "chip bad", "Could not download");
+  return el("span", "chip", "Waiting");
+}
 const fileChip = { checkwait: "waiting", already: "ok", already2: "ok", proven: "ok", strong: "ok", failed: "bad", gone: "bad", warning: "waiting", working: "copying", copied: "copying", hashed: "waiting", source: "ok" };
 // The file list. With more than treeMin files it is shown as folders, closed
 // until clicked, each with how many files it holds and how they stand; a
@@ -2958,7 +3032,7 @@ function toggleFiles(v, c) {
   const box = el("div", "files"); box.dataset.t = "files";
   // One file: no filters, the one row says it all.
   const one = v.files <= 1;
-  const f = fv[v.id] = { v, box, card: c, filter: !one && (v.failed || v.s2_warnings) ? "problems" : "all", rows: [], next: -1, busy: false,
+  const f = fv[v.id] = { v, box, card: c, filter: !one && v.kind !== "link" && (v.failed || v.s2_warnings) ? "problems" : "all", rows: [], next: -1, busy: false,
     tree: true, nodes: {}, open: new Set() };
   const bar = el("div", "filters"); bar.hidden = one;
   [["all", "All"], ["todo", "In progress"], ["done", "Verified"], ["unverified", "Not verified"], ["problems", "Error"]].forEach(([k, t]) => {
@@ -2969,7 +3043,10 @@ function toggleFiles(v, c) {
   // files, beside the filters or the heading (v0.2.50).
   const top = el("div", "ftop"); top.append(c._d.querySelector(".fpage"), bar, el("p", "fhead"));
   box.append(top, el("div", "frows"), el("p", "mute note"));
-  c._d.insertBefore(box, c._d.querySelector(".tail")); loadFiles(f, false); // the Now line stays below the files (v0.2.59)
+  c._d.insertBefore(box, c._d.querySelector(".tail")); // the Now line stays below the files (v0.2.59)
+  // A link job (v0.2.92) opens with every folder open: the folders its files go into, as they will be on the disk.
+  if (v.kind === "link") { f.busy = true; openAll(f, "").then(() => drawFiles(f)).catch(() => {}).finally(() => { f.busy = false; }); }
+  else loadFiles(f, false);
 }
 const filesURL = (f, dir, from, limit) => "/api/jobs/" + f.v.id + "/files?filter=" + f.filter + "&from=" + from + "&limit=" + limit + (f.tree ? "&tree=1&dir=" + encodeURIComponent(dir) : "");
 // One folder's files and folders; append adds its next page.
@@ -2992,6 +3069,13 @@ function loadFiles(f, append, refresh, fewer) {
     return open.reduce((pr, d) => pr.then(() => getDir(f, d, false, Math.min(200, Math.max(filePage, (f.nodes[d] || { rows: [] }).rows.length)))), Promise.resolve());
   }).then(() => drawFiles(f)).catch(() => {}).finally(() => { f.busy = false; });
 }
+// Opens dir and every folder inside it (a link job holds at most a few hundred files).
+function openAll(f, dir) {
+  return getDir(f, dir, false, 200).then(p => {
+    if (dir === "") { f.counts = p.counts; f.note = p.note; }
+    return (p.folders || []).reduce((pr, fr) => pr.then(() => { f.open.add(fr.path); return openAll(f, fr.path); }), Promise.resolve());
+  });
+}
 // Every file sits under its folder's name, in a row that closes and opens
 // again (v0.2.49). v0.2.73: every folder starts closed, whatever the size of
 // the job; the owner opens what they want to see, and it stays as left.
@@ -3012,14 +3096,19 @@ function folderChip(fr) {
   if (fr.source === fr.files) return el("span", "chip ok", "Source verified");
   return el("span", "chip ok", fr.source ? "Verified" : "Destination verified");
 }
+function linkFolderChip(fr) {
+  if (fr.problems) return el("span", "chip bad", fr.problems + " could not download");
+  if (fr.todo) return el("span", "chip " + (fr.todo < fr.files ? "copying" : ""), fr.todo < fr.files ? (fr.files - fr.todo) + " of " + fr.files + " done" : "Waiting");
+  return el("span", "chip ok", "Downloaded · checked");
+}
 const fileHeads = { done: "Files verified:", todo: "Files in progress:", unverified: "Files not verified:", problems: "Files with problems:" };
 function fileRow(f, r, depth) {
   const row = el("div", "frow"), t = el("div", "t");
   row.dataset.p = r.path;
-  row.tabIndex = 0; row.onclick = () => fileInfo(f.v.id, r.i); row.onkeydown = e => { if (e.key === "Enter") row.onclick(); };
+  if (f.v.kind !== "link") { row.tabIndex = 0; row.onclick = () => fileInfo(f.v.id, r.i); row.onkeydown = e => { if (e.key === "Enter") row.onclick(); }; }
   if (depth) row.style.paddingLeft = (depth * 18 + 12) + "px";
   const name = el("span", "", f.tree ? r.path.split("/").pop() : r.path); name.title = r.path;
-  t.append(name, el("span", "sz", size(r.size)), workChip(r));
+  t.append(name, el("span", "sz", size(r.size)), f.v.kind === "link" ? linkChip(r) : workChip(r));
   row.append(t);
   if (r.status === "working") {
     row.title = r.stage + (r.size ? " — " + size(r.done) + " of " + size(r.size) : "");
@@ -3054,8 +3143,8 @@ function dirRows(f, dir, depth) {
     if (depth) row.style.paddingLeft = (depth * 18 + 12) + "px";
     const name = el("span", "", (open ? "▾ " : "▸ ") + fr.name); name.title = fr.path;
     const cnt = f.filter === "all" || fr.match === fr.files ? fr.files : fr.match + " of " + fr.files;
-    t.append(name, el("span", "sz", cnt + (fr.files === 1 ? " file" : " files")), folderChip(fr));
-    if (!f.v.kind || f.v.kind !== "verify") { const hb = el("button", "mini", "Hash list"); hb.type = "button"; hb.onclick = e => { e.stopPropagation(); openExport(f.v, fr.path); }; t.append(hb); }
+    t.append(name, el("span", "sz", cnt + (fr.files === 1 ? " file" : " files")), f.v.kind === "link" ? linkFolderChip(fr) : folderChip(fr));
+    if (f.v.kind !== "verify" && f.v.kind !== "link") { const hb = el("button", "mini", "Hash list"); hb.type = "button"; hb.onclick = e => { e.stopPropagation(); openExport(f.v, fr.path); }; t.append(hb); }
     row.append(t); out.push(row);
     if (open) out.push(...dirRows(f, fr.path, depth + 1));
   });

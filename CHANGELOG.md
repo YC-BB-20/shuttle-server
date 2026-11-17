@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.93 — 17 November 2026
+
+- **Several links are one download.** Pasting a Frame.io folder's links (or any several links) now adds one job to the queue instead of one per file. Before adding, Add link shows the files as the folders they will go into inside the chosen folder. The job downloads them one after another in that order, each checked for size, read back and hashed before it gets its name, exactly as before.
+- One file that cannot be downloaded (an expired link, say) no longer stops the others: the job carries on and ends saying how many failed and why.
+- **A link job has a Files tab,** with its folders open: each file shows Waiting, Downloading, Reading back, Downloaded · checked, or Could not download with the reason.
+- **Sort by clicking a column heading** in the queue and the history: Name, Kind, Size, Written · proven or State. A second click reverses the order, a third goes back to the queue order (the only order rows can be dragged in). The same choices are in the sort list.
+- Add link takes up to 200 links at once and looks them up a few at a time, so a long list is ready sooner; a look-up that takes longer than 15 seconds no longer loses its answer.
+
 ## 0.2.92 — 17 November 2026
 
 - **Try failed files again.** A finished copy with failed files has a button under Problems, and a failed file has one in its own panel. The files go back to the end of the queue in the same copy and are copied with the same proof. Files already proven are not touched, and nothing at the destination is overwritten: a file in the way still fails without being touched. Each file's story keeps the failure and the retry.

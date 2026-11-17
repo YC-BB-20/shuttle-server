@@ -101,3 +101,79 @@ func TestLinkDownload(t *testing.T) {
 		}
 	}
 }
+
+// v0.2.92: links added together are one job. Its files keep the folders
+// their links name, download one after another in folder order, one that
+// fails does not stop the others, and the Files tab lists them as folders.
+func TestLinkGroup(t *testing.T) {
+	linkdl.AllowLocal = true
+	defer func() { linkdl.AllowLocal = false }()
+	files := map[string][]byte{}
+	for i, n := range []string{"a.mov", "b.mov", "c.mov", "gone.mov"} {
+		b := make([]byte, 200<<10+i)
+		rand.New(rand.NewSource(int64(i))).Read(b)
+		files[n] = b
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := strings.TrimPrefix(r.URL.Path, "/")
+		if n == "gone.mov" && r.Header.Get("Range") != "bytes=0-0" {
+			http.Error(w, "gone", http.StatusForbidden)
+			return
+		}
+		w.Header().Set("Content-Disposition", `attachment; filename="`+n+`"`)
+		http.ServeContent(w, r, n, time.Unix(1700000000, 0), bytes.NewReader(files[n]))
+	}))
+	defer srv.Close()
+	links := []string{
+		srv.URL + "/c.mov?sig=SECRET9#rq-path=Shoot/Day%202&rq-share=Shoot",
+		srv.URL + "/gone.mov?sig=SECRET9#rq-path=Shoot/Day%202&rq-share=Shoot",
+		srv.URL + "/b.mov?sig=SECRET9#rq-path=Shoot/Day%201/Cam%20A&rq-share=Shoot",
+		srv.URL + "/a.mov?sig=SECRET9#rq-path=Shoot&rq-share=Shoot",
+		"ftp://not/a/link",
+	}
+	dest, st := t.TempDir(), t.TempDir()
+	m := newManager(t, st)
+	m.Secrets = filepath.Join(t.TempDir(), "links")
+	j, errs, err := m.AddLinks(context.Background(), links, dest, LinkOpts{})
+	if err != nil || j == nil || len(errs) != 1 {
+		t.Fatalf("add: %v %v %v", j, errs, err)
+	}
+	var order []string
+	for _, it := range j.st.Spec.Items {
+		order = append(order, linkRel(it))
+	}
+	if want := "Shoot/Day 1/Cam A/b.mov Shoot/Day 2/c.mov Shoot/Day 2/gone.mov Shoot/a.mov"; strings.Join(order, " ") != want {
+		t.Fatalf("order %q", order)
+	}
+	if j.st.Files != 4 || j.st.Spec.LinkName != "Shoot" {
+		t.Fatalf("job %d files, name %q", j.st.Files, j.st.Spec.LinkName)
+	}
+	// Before it starts, the Files tab shows the folders that will be made.
+	p, err := m.FilesIn(j.st.ID, "all", true, "Shoot", 0, 50)
+	if err != nil || len(p.Rows) != 1 || p.Rows[0].Path != "Shoot/a.mov" || len(p.Folders) != 2 || p.Folders[1].Files != 2 {
+		t.Fatalf("files before: %+v %v", p, err)
+	}
+	startRun(t, m)
+	v := waitState(t, m, j.st.ID, "finished")
+	if !strings.Contains(v.Error, "1 of 4 files") || !strings.Contains(v.Error, "gone.mov") || v.Verified != 3 || v.Failed != 1 {
+		t.Fatalf("finished: %q, %d verified, %d failed", v.Error, v.Verified, v.Failed)
+	}
+	for rel, n := range map[string]string{"Shoot/a.mov": "a.mov", "Shoot/Day 1/Cam A/b.mov": "b.mov", "Shoot/Day 2/c.mov": "c.mov"} {
+		if b, err := os.ReadFile(filepath.Join(dest, filepath.FromSlash(rel))); err != nil || !bytes.Equal(b, files[n]) {
+			t.Fatalf("%s: %v", rel, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dest, "Shoot", "Day 2", "gone.mov")); err == nil {
+		t.Fatal("the failed file has a name")
+	}
+	if _, err := os.Stat(m.linkPath(j.st.ID)); err == nil {
+		t.Fatal("the saved links were not removed")
+	}
+	if jb, _ := os.ReadFile(filepath.Join(st, j.st.ID, "job.json")); strings.Contains(string(jb), "SECRET9") {
+		t.Fatal("a link reached the job file")
+	}
+	p, _ = m.FilesIn(j.st.ID, "problems", false, "", 0, 50)
+	if len(p.Rows) != 1 || p.Rows[0].Path != "Shoot/Day 2/gone.mov" || p.Rows[0].Why == "" || p.Counts["done"] != 3 {
+		t.Fatalf("files after: %+v", p)
+	}
+}

@@ -22,7 +22,7 @@ import (
 )
 
 // MaxLinks is how many links one Add takes.
-const MaxLinks = 50
+const MaxLinks = 200
 
 // UA is the browser name sent: some sites refuse unknown programs.
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"

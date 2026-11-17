@@ -8,7 +8,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/YC-BB-20/shuttle-server/internal/diskio"
@@ -70,10 +72,34 @@ func SplitLinks(text string) []string {
 	return f
 }
 
-// LookUpLinks probes each link, one after another.
+// linkWorkers is how many links are looked up at once.
+const linkWorkers = 4
+
+// eachLink runs fn for i in [0, n) on a fixed pool of linkWorkers.
+func eachLink(n int, fn func(i int)) {
+	next := make(chan int)
+	var wg sync.WaitGroup
+	for w := 0; w < min(linkWorkers, n); w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range next {
+				fn(i)
+			}
+		}()
+	}
+	for i := 0; i < n; i++ {
+		next <- i
+	}
+	close(next)
+	wg.Wait()
+}
+
+// LookUpLinks probes the links, a few at a time; the answer keeps their order.
 func (m *Manager) LookUpLinks(ctx context.Context, raws []string, password string) []LinkInfo {
-	out := make([]LinkInfo, 0, len(raws))
-	for i, raw := range raws {
+	out := make([]LinkInfo, len(raws))
+	eachLink(len(raws), func(i int) {
+		raw := raws[i]
 		r := LinkInfo{N: i + 1}
 		if site := siteOf(raw); site != "" {
 			r.Site = site
@@ -82,8 +108,8 @@ func (m *Manager) LookUpLinks(ctx context.Context, raws []string, password strin
 			} else {
 				r.Info, r.Title, r.Duration, r.Qualities = in.Info, in.Title, in.Duration, in.Qualities
 			}
-			out = append(out, r)
-			continue
+			out[i] = r
+			return
 		}
 		link, why := linkdl.Parse(raw)
 		if link == "" {
@@ -93,81 +119,200 @@ func (m *Manager) LookUpLinks(ctx context.Context, raws []string, password strin
 		} else {
 			r.Info = in
 		}
-		out = append(out, r)
-	}
+		out[i] = r
+	})
 	return out
 }
 
 // AddLink checks a link again and queues its download into folder dest.
 func (m *Manager) AddLink(ctx context.Context, raw, dest string, o LinkOpts) (*Job, error) {
+	j, errs, err := m.AddLinks(ctx, []string{raw}, dest, o)
+	if err == nil && j == nil && len(errs) > 0 {
+		err = errors.New(errs[0])
+	}
+	return j, err
+}
+
+// linkSpecOf checks one link again and says what its download is.
+func (m *Manager) linkSpecOf(ctx context.Context, raw string, o LinkOpts) (link string, ls *LinkSpec, err error) {
 	site := siteOf(raw)
 	link, why := strings.TrimSpace(raw), ""
 	if site == "" {
 		link, why = linkdl.Parse(raw)
 	}
 	if link == "" {
-		return nil, errors.New(linkdl.Why(why))
+		return "", nil, errors.New(linkdl.Why(why))
+	}
+	if site != "" {
+		ls, err = m.siteSpec(ctx, site, raw, o)
+		return link, ls, err
+	}
+	in, err := linkdl.Probe(ctx, linkClient, raw, link)
+	if err != nil {
+		return "", nil, err
+	}
+	return link, &LinkSpec{Name: in.Name, Sub: in.Sub, Size: in.Size, Resumable: in.Resumable, Share: in.Share, Host: in.Host}, nil
+}
+
+// linkRel is where an item goes inside the destination, with "/".
+func linkRel(ls LinkSpec) string {
+	if ls.Sub == "" {
+		return ls.Name
+	}
+	return ls.Sub + "/" + ls.Name
+}
+
+// cmpLinkPath orders items as the Files tab lists them: inside each folder,
+// its folders first, then its own files, names A–Z.
+func cmpLinkPath(a, b LinkSpec) int {
+	pa, pb := strings.Split(linkRel(a), "/"), strings.Split(linkRel(b), "/")
+	for k := 0; k < len(pa) && k < len(pb); k++ {
+		la, lb := k == len(pa)-1, k == len(pb)-1 // the name itself, not a folder
+		if la != lb {
+			if la {
+				return 1
+			}
+			return -1
+		}
+		if c := strings.Compare(strings.ToLower(pa[k]), strings.ToLower(pb[k])); c != 0 {
+			return c
+		}
+		if c := strings.Compare(pa[k], pb[k]); c != 0 {
+			return c
+		}
+	}
+	return len(pa) - len(pb)
+}
+
+// groupName names a job of several links: their share, else the one folder
+// they all sit in, else how many files.
+func groupName(items []LinkSpec) string {
+	share, top := items[0].Share, strings.SplitN(items[0].Sub, "/", 2)[0]
+	for _, it := range items[1:] {
+		if it.Share != share {
+			share = ""
+		}
+		if strings.SplitN(it.Sub, "/", 2)[0] != top {
+			top = ""
+		}
+	}
+	switch {
+	case share != "":
+		return share
+	case top != "":
+		return top
+	}
+	return fmt.Sprintf("%d files", len(items))
+}
+
+// AddLinks checks pasted links again and queues them into folder dest as one
+// job (v0.2.92): one link as before; several as one job whose files keep the
+// folders their links name (#rq-path), downloaded one after another in the
+// order of a folder listing. A link that fails is reported in errs and left
+// out; err is for the destination, or when no link could be added.
+func (m *Manager) AddLinks(ctx context.Context, raws []string, dest string, o LinkOpts) (*Job, []string, error) {
+	if len(raws) == 0 {
+		return nil, nil, errors.New("paste one or more download links")
+	}
+	if len(raws) > linkdl.MaxLinks {
+		raws = raws[:linkdl.MaxLinks]
 	}
 	dest, err := filepath.Abs(strings.TrimSpace(dest))
 	if err != nil || dest == "" {
-		return nil, errors.New("choose a folder to save to")
+		return nil, nil, errors.New("choose a folder to save to")
 	}
 	if fi, err := os.Stat(dest); err != nil || !fi.IsDir() {
-		return nil, errors.New("choose a folder that exists to save to")
+		return nil, nil, errors.New("choose a folder that exists to save to")
 	}
 	if !diskio.VolumeMounted(dest) {
-		return nil, errors.New("the disk of that folder is not connected")
+		return nil, nil, errors.New("the disk of that folder is not connected")
 	}
-	var ls *LinkSpec
-	if site != "" {
-		if ls, err = m.siteSpec(ctx, site, raw, o); err != nil {
-			return nil, err
-		}
-	} else {
-		in, err := linkdl.Probe(ctx, linkClient, raw, link)
-		if err != nil {
-			return nil, err
-		}
-		ls = &LinkSpec{Name: in.Name, Sub: in.Sub, Size: in.Size, Resumable: in.Resumable, Share: in.Share, Host: in.Host}
+	type found struct {
+		link string
+		ls   *LinkSpec
+		err  error
 	}
+	got := make([]found, len(raws))
+	eachLink(len(raws), func(i int) {
+		link, ls, err := m.linkSpecOf(ctx, raws[i], o)
+		got[i] = found{link, ls, err}
+	})
+	var errs []string
+	type item struct {
+		link string
+		ls   LinkSpec
+	}
+	var ok []item
+	for _, f := range got {
+		if f.err != nil {
+			errs = append(errs, f.err.Error())
+			continue
+		}
+		ok = append(ok, item{f.link, *f.ls})
+	}
+	if len(ok) == 0 {
+		return nil, errs, nil
+	}
+	slices.SortStableFunc(ok, func(a, b item) int { return cmpLinkPath(a.ls, b.ls) })
 	dv, err := diskio.VolumeOf(dest)
 	if err != nil {
-		return nil, err
+		return nil, errs, err
 	}
 	now := time.Now()
 	id, err := m.newJobDir(now.Format("20060102-150405.000"))
 	if err != nil {
-		return nil, err
+		return nil, errs, err
+	}
+	first := ok[0].ls
+	spec := Spec{Kind: KindLink, Source: "https://" + first.Host, Dest: dest, Link: &first, Algo: "xxh128"}
+	var bytes int64
+	links := make([]string, len(ok))
+	for i, it := range ok {
+		links[i] = it.link
+		bytes += max(0, it.ls.Size, it.ls.Est)
+	}
+	if len(ok) > 1 {
+		spec.Items = make([]LinkSpec, len(ok))
+		for i, it := range ok {
+			spec.Items[i] = it.ls
+		}
+		spec.LinkName = groupName(spec.Items)
 	}
 	j := &Job{dir: filepath.Join(m.Dir, id), st: state{FormatVersion: FormatVersion, ID: id, Created: now, Choice: "run", Phase: "copy",
-		Spec:  Spec{Kind: KindLink, Source: "https://" + ls.Host, Dest: dest, Link: ls, Algo: "xxh128"},
-		Files: 1, Bytes: max(0, ls.Size, ls.Est), DestVol: dv.ID}}
-	if err := m.saveLink(id, link, o.Password); err != nil {
+		Spec: spec, Files: len(ok), Bytes: bytes, DestVol: dv.ID}}
+	if err := m.saveLink(id, links, o.Password); err != nil {
 		os.RemoveAll(j.dir) // our own empty job folder
-		return nil, errors.New("the link could not be kept on this computer")
+		return nil, errs, errors.New("the links could not be kept on this computer")
 	}
 	if err := j.save(); err != nil {
 		m.dropLink(id)
-		return nil, err
+		return nil, errs, err
 	}
 	m.mu.Lock()
 	m.jobs = append(m.jobs, j)
 	m.mu.Unlock()
-	m.Log.Info("link download added", "job", id, "site", ls.Host, "name", ls.Name, "size", max(ls.Size, ls.Est), "destination", dest)
+	if len(ok) == 1 {
+		m.Log.Info("link download added", "job", id, "site", first.Host, "name", first.Name, "size", max(first.Size, first.Est), "destination", dest)
+	} else {
+		m.Log.Info("link downloads added as one job", "job", id, "name", spec.LinkName, "files", len(ok), "size", bytes, "destination", dest)
+	}
 	m.poke()
-	return j, nil
+	return j, errs, nil
 }
 
 func (m *Manager) linkPath(id string) string { return filepath.Join(m.Secrets, id+".json") }
 
-func (m *Manager) saveLink(id, link, password string) error {
+func (m *Manager) saveLink(id string, links []string, password string) error {
 	if m.Secrets == "" {
 		return errors.New("no secrets folder")
 	}
 	if err := os.MkdirAll(m.Secrets, 0o700); err != nil {
 		return err
 	}
-	sec := map[string]string{"url": link}
+	sec := map[string]any{"url": links[0]}
+	if len(links) > 1 {
+		sec["urls"] = links // a job of several links, in the order of its items
+	}
 	if password != "" {
 		sec["password"] = password // a Vimeo video's password, kept like the link
 	}
@@ -175,13 +320,26 @@ func (m *Manager) saveLink(id, link, password string) error {
 	return fsx.WriteFileAtomic(m.linkPath(id), b, 0o600)
 }
 
-func (m *Manager) readLink(id string) (link, password string) {
+// readLink is the link of item at (0 for a job of one link).
+func (m *Manager) readLink(id string, at int) (link, password string) {
 	b, err := os.ReadFile(m.linkPath(id))
 	if err != nil {
 		return "", ""
 	}
-	var x struct{ URL, Password string }
+	var x struct {
+		URL, Password string
+		URLs          []string
+	}
 	json.Unmarshal(b, &x)
+	if len(x.URLs) > 0 {
+		if at < 0 || at >= len(x.URLs) {
+			return "", x.Password
+		}
+		return x.URLs[at], x.Password
+	}
+	if at != 0 {
+		return "", x.Password
+	}
 	return x.URL, x.Password
 }
 
@@ -238,13 +396,13 @@ func (m *Manager) runLink(ctx context.Context, j *Job) {
 		m.wait(ctx, j, "A disk is not responding; waiting for it")
 		return
 	}
-	link, password := m.readLink(st.ID)
+	link, password := m.readLink(st.ID, st.LinkAt)
 	if link == "" {
 		m.linkFailed(j, "The link is no longer kept on this computer; add the download again")
 		return
 	}
 	final, part := linkTarget(st)
-	if need := max(st.Spec.Link.Size, st.Spec.Link.Est); need > 0 && !st.SpaceOK {
+	if need := linkNeed(st); need > 0 && !st.SpaceOK {
 		have := int64(0)
 		if fi, err := os.Stat(part); err == nil {
 			have = fi.Size()
@@ -267,7 +425,7 @@ func (m *Manager) runLink(ctx context.Context, j *Job) {
 	}
 	j.mu.Unlock()
 	j.setLive(func(l *live) {
-		*l = live{file: st.Spec.Link.Name, stage: "Downloading", size: max(0, st.Spec.Link.Size, st.Spec.Link.Est)}
+		*l = live{file: linkRel(*st.Spec.Link), stage: "Downloading", size: max(0, st.Spec.Link.Size, st.Spec.Link.Est)}
 	})
 	j.startWork(time.Now())
 	var got int64
@@ -315,6 +473,10 @@ func (m *Manager) runLink(ctx context.Context, j *Job) {
 		} else {
 			os.Remove(part)
 		}
+		m.Log.Info("link download finished", "job", st.ID, "site", st.Spec.Link.Host, "name", filepath.Base(dst), "bytes", got, "hash", hash)
+		if m.itemDone(j, LinkResult{File: dst, Hash: hash, Bytes: got}) {
+			return
+		}
 		j.mu.Lock()
 		j.st.Phase, j.st.Finished, j.st.Bytes, j.st.LinkHash, j.st.LinkFile = "done", time.Now(), got, hash, dst
 		j.c.Verified, j.c.BytesProven = 1, got
@@ -324,12 +486,16 @@ func (m *Manager) runLink(ctx context.Context, j *Job) {
 		m.dropLink(st.ID) // the file has its name: the link and the progress are no longer needed
 		m.dropSiteState(j)
 		j.save()
-		m.Log.Info("link download finished", "job", st.ID, "site", st.Spec.Link.Host, "name", filepath.Base(dst), "bytes", got, "hash", hash, "took", took.String())
+		m.Log.Info("link download job finished", "job", st.ID, "took", took.String())
 	case errors.Is(cause, errOwnerPause), ctx.Err() != nil:
 		j.setLive(func(l *live) { l.reason, l.missing, l.stage = "", "", "" })
 	case errors.As(err, &gone):
 		os.Remove(part)
 		m.dropSiteState(j)
+		if m.itemDone(j, LinkResult{Err: gone.Msg}) {
+			m.Log.Warn("one file of a link download job failed; going on with the next", "job", st.ID, "why", gone.Msg)
+			return
+		}
 		m.linkFailed(j, gone.Msg)
 	case errors.Is(err, diskio.ErrGone), errors.Is(cause, diskio.ErrGone):
 		m.waitMissing(ctx, j, "destination")
@@ -339,6 +505,79 @@ func (m *Manager) runLink(ctx context.Context, j *Job) {
 		m.Log.Warn("link download stopped; it will continue from where it was", "job", st.ID, "site", st.Spec.Link.Host, "err", err)
 		m.wait(ctx, j, err.Error()+" — continuing from where it stopped shortly")
 	}
+}
+
+// LinkResult is what became of one file of a job of several links.
+type LinkResult struct {
+	File  string `json:"file,omitempty"` // where it went
+	Hash  string `json:"hash,omitempty"` // its XXH128, read back
+	Bytes int64  `json:"bytes,omitempty"`
+	Err   string `json:"error,omitempty"` // why it could not be downloaded
+}
+
+// linkNeed is the room a link job still needs: the files not yet
+// downloaded, as far as the sites said.
+func linkNeed(st state) int64 {
+	if len(st.Spec.Items) == 0 {
+		return max(st.Spec.Link.Size, st.Spec.Link.Est)
+	}
+	var n int64
+	for _, it := range st.Spec.Items[min(st.LinkAt, len(st.Spec.Items)):] {
+		n += max(0, it.Size, it.Est)
+	}
+	return n
+}
+
+// itemDone records what became of the file just finished in a job of
+// several links and moves on to the next one. It says false for a job of
+// one link; for the last file it ends the job and says true.
+func (m *Manager) itemDone(j *Job, r LinkResult) bool {
+	j.mu.Lock()
+	if len(j.st.Spec.Items) == 0 {
+		j.mu.Unlock()
+		return false
+	}
+	j.st.LinkDone = append(j.st.LinkDone, r)
+	j.st.LinkAt++
+	more := j.st.LinkAt < len(j.st.Spec.Items)
+	if more {
+		next := j.st.Spec.Items[j.st.LinkAt]
+		j.st.Spec.Link = &next
+		j.st.SpaceOK = false // the room is checked again for what is left
+	}
+	j.live = live{}
+	id, n := j.st.ID, len(j.st.Spec.Items)
+	j.mu.Unlock()
+	m.dropSiteState(j)
+	if more {
+		j.save()
+		return true
+	}
+	// The last file: the job is done, failed when any file could not be had.
+	j.mu.Lock()
+	bad, why := 0, ""
+	var bytes, est int64
+	for i, x := range j.st.LinkDone {
+		if x.Err == "" {
+			bytes += x.Bytes
+			continue
+		}
+		bad++
+		est += max(0, j.st.Spec.Items[i].Size, j.st.Spec.Items[i].Est)
+		if why == "" {
+			why = linkRel(j.st.Spec.Items[i]) + ": " + x.Err
+		}
+	}
+	j.st.Phase, j.st.Finished, j.st.Bytes = "done", time.Now(), bytes+est
+	if bad > 0 {
+		j.st.Error = fmt.Sprintf("%d of %d files could not be downloaded. %s", bad, n, why)
+	}
+	took := time.Duration(j.st.WorkNs).Round(time.Second)
+	j.mu.Unlock()
+	m.dropLink(id)
+	j.save()
+	m.Log.Info("link download job finished", "job", id, "files", n, "failed", bad, "bytes", bytes, "took", took.String())
+	return true
 }
 
 // linkFailed ends a link job that cannot go on.
@@ -506,6 +745,10 @@ func humanBytes(n int64) string {
 
 // linkView fills a link job's view: its name, site, bar and proof.
 func linkView(v *View, st state, l live) {
+	if len(st.Spec.Items) > 0 {
+		groupView(v, st, l)
+		return
+	}
 	ls := st.Spec.Link
 	v.LinkName, v.LinkHash, v.LinkFile = ls.Name, st.LinkHash, st.LinkFile
 	v.FromDisk, v.FromPath = ls.Host, ls.Name
@@ -539,4 +782,83 @@ func linkView(v *View, st state, l live) {
 		v.CopiedPart, v.ProvenPart = min(1, float64(l.done)/size), 0
 	}
 	v.Progress = (v.CopiedPart + v.ProvenPart) / 2
+}
+
+// groupView fills the view of a job of several links: its name, the bar
+// over all its files, and how many are downloaded and checked or failed.
+func groupView(v *View, st state, l live) {
+	v.LinkName = st.Spec.LinkName
+	v.FromDisk, v.FromPath = st.Spec.Link.Host, st.Spec.LinkName
+	v.Algo = "xxh128"
+	var total, done int64
+	ok, bad := 0, 0
+	for i, it := range st.Spec.Items {
+		est := max(0, it.Size, it.Est)
+		if i < len(st.LinkDone) {
+			if r := st.LinkDone[i]; r.Err == "" {
+				ok++
+				done += r.Bytes
+				total += r.Bytes
+				continue
+			}
+			bad++
+		}
+		total += est
+	}
+	v.Verified, v.Failed, v.Proven, v.Bytes = ok, bad, done, total
+	if total <= 0 {
+		total = 1
+	}
+	if st.Phase == "done" {
+		v.CopiedPart, v.ProvenPart = 1, float64(done)/float64(total)
+		v.Progress = v.ProvenPart
+		v.Checks = &Checks{Of: len(st.Spec.Items), Dest: ok, DestAt: st.Finished}
+		return
+	}
+	var w, r int64 // the file now: written and read back
+	switch l.stage {
+	case "Joining":
+		w = max(0, st.Spec.Link.Size, st.Spec.Link.Est)
+	case "Reading back":
+		w, r = l.size, l.done
+	case "Downloading":
+		w = l.done
+	}
+	v.CopiedPart = min(1, float64(done+w)/float64(total))
+	v.ProvenPart = min(1, float64(done+r)/float64(total))
+	v.Progress = (v.CopiedPart + v.ProvenPart) / 2
+}
+
+// linkRows lists a link job's files for the Files tab, in download order:
+// done (downloaded and checked), failed, the one downloading now, waiting.
+func linkRows(st state, l live) []FileRow {
+	items := st.Spec.Items
+	if len(items) == 0 && st.Spec.Link != nil {
+		items = []LinkSpec{*st.Spec.Link}
+	}
+	rows := make([]FileRow, len(items))
+	for i, it := range items {
+		r := FileRow{I: i, Path: linkRel(it), Size: max(0, it.Size, it.Est), Status: "waiting"}
+		switch {
+		case len(st.Spec.Items) == 0 && st.Phase == "done":
+			if st.Error != "" {
+				r.Status, r.Why = "failed", st.Error
+			} else if st.LinkHash != "" {
+				r.Status, r.Size = "proven", st.Bytes
+			}
+		case i < len(st.LinkDone):
+			if x := st.LinkDone[i]; x.Err != "" {
+				r.Status, r.Why = "failed", x.Err
+			} else {
+				r.Status, r.Size = "proven", x.Bytes
+			}
+		case i == st.LinkAt && st.Phase != "done" && l.stage != "":
+			r.Status, r.Stage, r.Done = "working", l.stage, l.done
+			if l.size > 0 {
+				r.Size = l.size
+			}
+		}
+		rows[i] = r
+	}
+	return rows
 }

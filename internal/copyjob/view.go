@@ -618,6 +618,74 @@ func (m *Manager) FilesIn(id, filter string, tree bool, dir string, from, limit 
 	}
 	listMu.Lock()
 	defer listMu.Unlock()
+	// take puts one file in the page: in its folder's counts when the list
+	// is shown as folders and it sits deeper, else as a row when the filter
+	// shows it. It says false once the page is full and nothing more is
+	// needed.
+	take := func(r FileRow) bool {
+		if tree {
+			if !strings.HasPrefix(r.Path, prefix) {
+				return true
+			}
+			if k := strings.IndexByte(r.Path[len(prefix):], '/'); k >= 0 {
+				if folders != nil {
+					name := r.Path[len(prefix) : len(prefix)+k]
+					fr := folders[name]
+					if fr == nil && len(folders) < MaxFolders {
+						fr = &FolderRow{Name: name, Path: prefix + name}
+						folders[name] = fr
+					} else if fr == nil {
+						page.MoreFolders = true
+					}
+					if fr != nil {
+						fr.add(r.Status, filterOK(filter, r.Status))
+					}
+				}
+				return true
+			}
+		}
+		if !filterOK(filter, r.Status) {
+			return true
+		}
+		if len(page.Rows) == limit && folders != nil {
+			if page.Next < 0 {
+				page.Next = r.I
+			}
+			return true // keep counting the folders
+		}
+		if len(page.Rows) == limit {
+			page.Next = r.I
+			return false
+		}
+		page.Rows = append(page.Rows, r)
+		return true
+	}
+	endFolders := func() {
+		for _, fr := range folders {
+			page.Folders = append(page.Folders, *fr)
+		}
+		slices.SortFunc(page.Folders, func(a, b FolderRow) int { return strings.Compare(a.Name, b.Name) })
+	}
+	if j.st.Spec.isLink() { // v0.2.92: a link job's files are its links, listed in its own record
+		j.mu.Lock()
+		rows := linkRows(j.st, j.live)
+		j.mu.Unlock()
+		page.Counts = map[string]int{"all": len(rows), "todo": 0, "done": 0, "unverified": 0, "problems": 0}
+		for _, r := range rows {
+			for _, f := range []string{"todo", "done", "unverified", "problems"} {
+				if filterOK(f, r.Status) {
+					page.Counts[f]++
+				}
+			}
+		}
+		for _, r := range rows {
+			if r.I >= from && !take(r) {
+				break
+			}
+		}
+		endFolders()
+		return page, nil
+	}
 	table, _ := m.mergedStatus(j)
 	vfile, vstage, vdone := m.verifyLive(j)
 	j.mu.Lock()
@@ -656,49 +724,14 @@ func (m *Manager) FilesIn(id, filter string, tree bool, dir string, from, limit 
 		} else if vfile == e.P && vstage != "" {
 			r.Status, r.Stage, r.Done = "working", vstage, vdone // a Verify of this copy is reading it now
 		}
-		if tree {
-			if !strings.HasPrefix(e.P, prefix) {
-				continue
-			}
-			if k := strings.IndexByte(e.P[len(prefix):], '/'); k >= 0 {
-				if folders != nil {
-					name := e.P[len(prefix) : len(prefix)+k]
-					fr := folders[name]
-					if fr == nil && len(folders) < MaxFolders {
-						fr = &FolderRow{Name: name, Path: prefix + name}
-						folders[name] = fr
-					} else if fr == nil {
-						page.MoreFolders = true
-					}
-					if fr != nil {
-						fr.add(r.Status, filterOK(filter, r.Status))
-					}
-				}
-				continue
-			}
-		}
-		if !filterOK(filter, r.Status) {
-			continue
-		}
-		if len(page.Rows) == limit && folders != nil {
-			if page.Next < 0 {
-				page.Next = e.I
-			}
-			continue // keep counting the folders
-		}
-		if len(page.Rows) == limit {
-			page.Next = e.I
+		if !take(r) {
 			break
 		}
-		if r.Status == "failed" || r.Status == "warning" {
-			need[e.I] = len(page.Rows)
+		if n := len(page.Rows); n > 0 && page.Rows[n-1].I == e.I && (r.Status == "failed" || r.Status == "warning") {
+			need[e.I] = n - 1
 		}
-		page.Rows = append(page.Rows, r)
 	}
-	for _, fr := range folders {
-		page.Folders = append(page.Folders, *fr)
-	}
-	slices.SortFunc(page.Folders, func(a, b FolderRow) int { return strings.Compare(a.Name, b.Name) })
+	endFolders()
 	if len(need) > 0 {
 		ReadJournal(j.path("journal.log"), 0, func(rec Rec) bool {
 			if k, ok := need[rec.I]; ok && rec.Err != "" {

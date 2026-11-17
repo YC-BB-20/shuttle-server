@@ -523,7 +523,7 @@ func TestPageTableRowsAndDetailsPanel(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
 		`<aside class="insp" id="insp" aria-label="Details">`, `function selectJob(id, keepOpen)`, `function stateShort(v, problems, pc, ver, scanning)`,
-		`<span class="hn">Name</span>`, `c._d = c.querySelector(".detail");`, `c._d.querySelector(sel.replace(`, `c._d.insertBefore(box, c._d.querySelector(".tail"))`,
+		`class="hn" data-sort="name">Name</button>`, `c._d = c.querySelector(".detail");`, `c._d.querySelector(sel.replace(`, `c._d.insertBefore(box, c._d.querySelector(".tail"))`,
 		`place($("jobs"), withVerifies(qShow), 1);`, `.jobs { --acts:170px; } .hist { --acts:34px; }`, `e.key !== "Escape"`,
 	} {
 		if !strings.Contains(s, want) {
@@ -619,5 +619,25 @@ func TestPageRetryAndFormat(t *testing.T) {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
 		}
+	}
+}
+
+// v0.2.93: several links are one download, shown as the folders they make;
+// a link job lists its files; the column headings sort the lists.
+func TestPageLinkGroupAndSortHeads(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`function linkTreeRows(list)`, `function cmpLinkPath(a, b)`, `" files as one download"`, `el("div", "ltree")`, `.ltree {`,
+		`function linkChip(r)`, `function linkFolderChip(fr)`, `if (f.v.kind !== "link") { row.tabIndex = 0;`,
+		`$("inspTabs").querySelector('[data-tab="files"]').hidden = scanning || !v.files;`,
+		`data-sort="kind">Kind</button>`, `data-sort="size">Size</button>`, `data-sort="prog">Written · proven</button>`, `data-sort="status">State</button>`,
+		`document.querySelectorAll(".jh button[data-sort]").forEach(b => b.onclick`, `case "kind":`, `case "prog":`, `aria-sort`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	if strings.Contains(s, `<div class="jh" aria-hidden="true">`) {
+		t.Error("the column headings are still hidden from use")
 	}
 }
