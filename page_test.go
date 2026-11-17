@@ -660,3 +660,16 @@ func TestPageSelectAndBatchMove(t *testing.T) {
 		t.Error("⌥↑ still works only while the row itself has the focus")
 	}
 }
+
+// v0.2.95: a download's row names the site it comes from.
+func TestPageLinkSite(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`const kindName = v => v.kind === "verify" ? "Verify" : v.kind === "link" ? v.link_site || "Link" : "Copy";`, `q(".k").textContent = kindName(v);`,
+		`v.kind === "link" ? v.link_site || "web" : diskOf(v.source)`, `case "kind": return kindName(v).toLowerCase();`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}

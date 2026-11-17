@@ -145,7 +145,7 @@ func TestLinkGroup(t *testing.T) {
 	if want := "Shoot/Day 1/Cam A/b.mov Shoot/Day 2/c.mov Shoot/Day 2/gone.mov Shoot/a.mov"; strings.Join(order, " ") != want {
 		t.Fatalf("order %q", order)
 	}
-	if j.st.Files != 4 || j.st.Spec.LinkName != "Shoot" {
+	if j.st.Files != 4 || j.st.Spec.LinkName != "Shoot" || linkSite(j.st.Spec) != "Frame.io" {
 		t.Fatalf("job %d files, name %q", j.st.Files, j.st.Spec.LinkName)
 	}
 	// Before it starts, the Files tab shows the folders that will be made.
@@ -175,5 +175,26 @@ func TestLinkGroup(t *testing.T) {
 	p, _ = m.FilesIn(j.st.ID, "problems", false, "", 0, 50)
 	if len(p.Rows) != 1 || p.Rows[0].Path != "Shoot/Day 2/gone.mov" || p.Rows[0].Why == "" || p.Counts["done"] != 3 {
 		t.Fatalf("files after: %+v", p)
+	}
+}
+
+// v0.2.95: a download says where it comes from; the destination folder's
+// name (say "Vimeo") has nothing to do with it.
+func TestLinkSiteNames(t *testing.T) {
+	for want, ls := range map[string]LinkSpec{
+		"Frame.io":    {Host: "app.frame.io"},
+		"Frame.io ":   {Host: "frameio-assets.s3.amazonaws.com"},
+		"Frame.io  ":  {Host: "d1.cloudfront.net", Share: "Shoot"},
+		"Vimeo":       {Host: "vimeo.com", Site: "vimeo"},
+		"SoundCloud":  {Host: "soundcloud.com", Site: "soundcloud"},
+		"example.com": {Host: "www.example.com"},
+	} {
+		if got := siteName(ls); got != strings.TrimSpace(want) {
+			t.Errorf("%+v: %q", ls, got)
+		}
+	}
+	a, b := LinkSpec{Host: "app.frame.io"}, LinkSpec{Host: "example.com"}
+	if linkSite(Spec{Link: &a, Items: []LinkSpec{a, a}}) != "Frame.io" || linkSite(Spec{Link: &a, Items: []LinkSpec{a, b}}) != "Links" {
+		t.Error("a job of several links is named wrongly")
 	}
 }

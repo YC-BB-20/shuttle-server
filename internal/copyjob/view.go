@@ -83,6 +83,7 @@ type View struct {
 	From       []string    `json:"from,omitempty"`        // a Verify job: the copies it compares with
 	Hidden     bool        `json:"hidden,omitempty"`      // hidden from the history by the owner
 	LinkName   string      `json:"link_name,omitempty"`   // a link download: the file's name (v0.2.90)
+	LinkSite   string      `json:"link_site,omitempty"`   // where it comes from: Frame.io, Vimeo, SoundCloud or the site's name (v0.2.95)
 	LinkHash   string      `json:"link_hash,omitempty"`   // its XXH128, read back
 	LinkFile   string      `json:"link_file,omitempty"`   // where it went
 	Order      int         `json:"order"`                 // place in the queue, 0 runs first (v0.2.85)
@@ -325,7 +326,11 @@ func baseView(j *Job) (View, state, live) {
 	}
 	if st.Spec.isLink() && st.Choice != "stopped" {
 		linkView(&v, st, l)
-	} else if st.Spec.isLink() && st.Spec.Link != nil { // a stopped download keeps its name in the history
+	}
+	if st.Spec.isLink() && st.Spec.Link != nil {
+		v.LinkSite = linkSite(st.Spec)
+	}
+	if st.Spec.isLink() && st.Choice == "stopped" && st.Spec.Link != nil { // a stopped download keeps its name in the history
 		v.LinkName = st.Spec.Link.Name
 		if len(st.Spec.Items) > 0 {
 			v.LinkName = st.Spec.LinkName

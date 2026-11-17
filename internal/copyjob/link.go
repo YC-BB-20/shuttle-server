@@ -862,3 +862,33 @@ func linkRows(st state, l live) []FileRow {
 	}
 	return rows
 }
+
+// siteName says where one link's file comes from, in the owner's words.
+func siteName(ls LinkSpec) string {
+	switch ls.Site {
+	case "vimeo":
+		return "Vimeo"
+	case "soundcloud":
+		return "SoundCloud"
+	}
+	h := strings.TrimPrefix(strings.ToLower(ls.Host), "www.")
+	if h == "frame.io" || strings.HasSuffix(h, ".frame.io") || strings.Contains(h, "frameio") || ls.Share != "" { // #rq-share comes from the Frame.io links bookmark
+		return "Frame.io"
+	}
+	return h
+}
+
+// linkSite says where a link job's files come from: one site, or "Links"
+// when they come from several.
+func linkSite(sp Spec) string {
+	if len(sp.Items) == 0 {
+		return siteName(*sp.Link)
+	}
+	name := siteName(sp.Items[0])
+	for _, it := range sp.Items[1:] {
+		if siteName(it) != name {
+			return "Links"
+		}
+	}
+	return name
+}

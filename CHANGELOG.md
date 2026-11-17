@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.95 — 17 November 2026
+
+- **A download says where it comes from.** The Kind column shows Frame.io, Vimeo, SoundCloud or the site's name instead of just "Link", and so does the small text after the name (it wrongly said "this Mac"). The panel's From line names it too. The part after the arrow is, as for copies, the folder the file is saved into and its disk: a folder called "Vimeo" shows as "→ Vimeo" whatever the download is.
+
 ## 0.2.94 — 17 November 2026
 
 - **Select several jobs in the queue.** ⇧-click selects every row from the last one clicked to this one; ⌘-click adds or removes one row. A bar above the queue then pauses, resumes or stops them all, or moves them: up or down one place, to the top or to the end. Esc or Clear ends the selection. Stop asks twice, with counts only, as for one job.

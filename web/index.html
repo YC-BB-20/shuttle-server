@@ -424,7 +424,7 @@ dialog .head, .foot { border-color:var(--line); }
 /* ===== v0.2.86: rows are table rows (name, kind, size, written · proven, state), and the details of
    the selected row live in the panel on the right. ===== */
 .shell > main { max-width:none; }
-.jh, .job .r { display:grid; grid-template-columns:14px 28px minmax(0,1fr) 56px 76px minmax(80px,150px) minmax(150px,230px) var(--acts) 4px;
+.jh, .job .r { display:grid; grid-template-columns:14px 28px minmax(0,1fr) 78px 76px minmax(80px,150px) minmax(150px,230px) var(--acts) 4px;
   grid-template-areas:"g i m k z b s a c"; column-gap:12px; align-items:center; }
 .jh { padding:8px 14px; font-size:12px; font-weight:600; color:var(--mute); border-bottom:1px solid var(--line); }
 .jh button { all:unset; box-sizing:border-box; cursor:pointer; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-radius:4px; }
@@ -433,7 +433,7 @@ dialog .head, .foot { border-color:var(--line); }
 .jh .hn { grid-area:m; } .jh .hk { grid-area:k; } .jh .hz { grid-area:z; text-align:right; } .jh .hb { grid-area:b; } .jh .hs { grid-area:s; }
 .shell > main { container-type:inline-size; }
 .jobs:not(:has(.job)), .hist:not(:has(.job)) { display:none; }
-.job .grip { grid-area:g; } .job .ico { grid-area:i; } .job .m { grid-area:m; } .job .k { grid-area:k; color:var(--mute); font-size:13px; }
+.job .grip { grid-area:g; } .job .ico { grid-area:i; } .job .m { grid-area:m; } .job .k { grid-area:k; color:var(--mute); font-size:13px; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .job .szc { grid-area:z; text-align:right; color:var(--mute); font-size:13px; white-space:nowrap; }
 .job .r > .bar { grid-area:b; margin:0; } .job .st { grid-area:s; min-width:0; display:flex; flex-direction:column; line-height:1.3; }
 .job .acts { grid-area:a; } .job .r::after { grid-area:c; }
@@ -1691,6 +1691,7 @@ const cards = {};
 const stateText = { running: "Running", waiting: "Waiting", paused: "Paused", queued: "Queued", finished: "Finished", stopped: "Stopped" };
 const base = p => { const parts = (p || "").split("/").filter(Boolean); return parts.length ? parts[parts.length - 1] : p; };
 const passRate = v => Math.max(v.source_rate || 0, v.dest_rate || 0);
+const kindName = v => v.kind === "verify" ? "Verify" : v.kind === "link" ? v.link_site || "Link" : "Copy";
 // A copy's name (v0.2.59): the folder's name for a whole folder; the one
 // thing picked; else how many folders and files were picked.
 function jobName(v) {
@@ -1783,7 +1784,7 @@ function fillOverview(v, q, o) {
   q(".nwb").hidden = wrote == null;
   if (wrote != null) { q(".nw").textContent = P(wrote); q(".nwl").textContent = "written · " + size(wrote * tot) + " of " + size(tot); }
   const at = (d, p) => d ? d + " → " + p : "";
-  const facts = [[o.ver ? "Checks" : "From", o.ver ? o.place : v.kind === "link" ? v.from_disk : at(v.from_disk, v.from_path) || v.source], o.ver ? null : ["To", v.link_file || at(v.to_disk, v.to_path) || v.dest],
+  const facts = [[o.ver ? "Checks" : "From", o.ver ? o.place : v.kind === "link" ? (v.link_site && v.link_site !== v.from_disk ? v.link_site + " · " + v.from_disk : v.from_disk) : at(v.from_disk, v.from_path) || v.source], o.ver ? null : ["To", v.link_file || at(v.to_disk, v.to_path) || v.dest],
     ["Files", !o.ver && !fin && !o.scanning ? fileCounts(v) : o.scanning ? v.scanned + " listed so far" : nf(v.files)],
     ["Hash", v.link_hash ? "XXH128 " + v.link_hash : v.kind === "link" && v.files > 1 ? "XXH128 of each file" : algoName[v.algo] || "XXH128"], ["Proof", proofScheme(v)],
     ["Started", when(v.created) + (v.work_ms ? " · worked " + clock(v.work_ms) : "")], fin && v.finished ? ["Finished", when(v.finished)] : null].filter(Boolean);
@@ -1890,7 +1891,7 @@ function card(v) {
     v.from && v.from.length > 1 ? "of " + v.from.length + " copies" : "made earlier");
   const place = ver && v.verify_file ? v.dest + "/" + v.verify_file : v.dest;
   // Folder names with their disk beside them; a Verify says which kind it is.
-  q(".s").replaceChildren(ver ? verKind(v) : jobName(v), ...(ver ? [] : [el("span", "dk", " · " + diskOf(v.source))]));
+  q(".s").replaceChildren(ver ? verKind(v) : jobName(v), ...(ver ? [] : [el("span", "dk", " · " + (v.kind === "link" ? v.link_site || "web" : diskOf(v.source)))]));
   q(".s").title = ver ? verKindHelp(v) : v.source;
   q(".d").replaceChildren(base(place), el("span", "dk", " · " + diskOf(place))); q(".d").title = place;
   // v0.2.59: each place as its disk → the path on it.
@@ -1937,7 +1938,8 @@ function card(v) {
   // v0.2.86: the row shows a short state; the full sentence heads the panel.
   const [stT, stTone, stSmall] = stateShort(v, problems, pc, ver, scanning);
   q(".st b").textContent = stT; q(".st b").className = stTone; q(".st small").textContent = stSmall;
-  q(".k").textContent = ver ? "Verify" : v.kind === "link" ? "Link" : "Copy";
+  q(".k").textContent = kindName(v); // v0.2.95: a download says where it comes from (Frame.io, Vimeo, SoundCloud…)
+  q(".k").title = v.kind === "link" ? "Downloaded from " + (v.link_site || "a link") + "; saved into " + (v.dest || "") : "";
   q(".szc").textContent = v.bytes && !scanning ? size(v.bytes) : v.est_bytes ? size(v.est_bytes) : "—";
   q(".dsub").textContent = sub; q(".dsub").className = "dsub " + subCls.replace("sub", "").trim();
   if (selId === v.id) {
@@ -2278,7 +2280,7 @@ function sortJobs(list, hist) {
   const val = v => {
     switch (key) {
       case "name": return (v.kind === "verify" ? base(v.dest) : jobName(v)).toLowerCase();
-      case "kind": return v.kind === "verify" ? "verify" : v.kind === "link" ? "link" : "copy";
+      case "kind": return kindName(v).toLowerCase();
       case "prog": return v.state === "finished" ? 1 + (v.progress || 0) : v.progress || 0;
       case "dest": return (v.dest || "").toLowerCase();
       case "size": return v.bytes || 0;
