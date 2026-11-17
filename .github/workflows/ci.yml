@@ -74,7 +74,7 @@ jobs:
         env:
           P12_BASE64: ${{ secrets.MAC_SIGN_P12_BASE64 }}
           P12_PASSWORD: ${{ secrets.MAC_SIGN_P12_PASSWORD }}
-          RCODESIGN_VERSION: "0.29.0"
+          SIGNER_TOOL_VERSION: "0.29.0"
         run: |
           if [ -z "$P12_BASE64" ] || [ -z "$P12_PASSWORD" ]; then
             echo "::notice::No signing certificate in this run: binary keeps its ad-hoc signature (macOS will ask for drive permission again after an update)."
@@ -84,7 +84,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/sign"
           printf %s "$P12_BASE64" | base64 -d > "$RUNNER_TEMP/sign/cert.p12"
           printf %s "$P12_PASSWORD" > "$RUNNER_TEMP/sign/pass.txt"
-          curl -fsSL "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${RCODESIGN_VERSION}/apple-codesign-${RCODESIGN_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar -xz -C "$RUNNER_TEMP/sign" --strip-components=1
+          curl -fsSL "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${SIGNER_TOOL_VERSION}/apple-codesign-${SIGNER_TOOL_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar -xz -C "$RUNNER_TEMP/sign" --strip-components=1
           ls -A "$RUNNER_TEMP/sign"
           # rcodesign reads a settings file from the folder it runs in and from the home folder;
           # run it from empty ones so nothing else can change how it signs.
