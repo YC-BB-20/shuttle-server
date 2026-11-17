@@ -321,9 +321,9 @@ func (m *Manager) runLink(ctx context.Context, j *Job) {
 		j.live = live{}
 		took := time.Duration(j.st.WorkNs).Round(time.Second)
 		j.mu.Unlock()
-		j.save()
-		m.dropLink(st.ID)
+		m.dropLink(st.ID) // the file has its name: the link and the progress are no longer needed
 		m.dropSiteState(j)
+		j.save()
 		m.Log.Info("link download finished", "job", st.ID, "site", st.Spec.Link.Host, "name", filepath.Base(dst), "bytes", got, "hash", hash, "took", took.String())
 	case errors.Is(cause, errOwnerPause), ctx.Err() != nil:
 		j.setLive(func(l *live) { l.reason, l.missing, l.stage = "", "", "" })
@@ -348,8 +348,9 @@ func (m *Manager) linkFailed(j *Job, msg string) {
 	j.live = live{}
 	id := j.st.ID
 	j.mu.Unlock()
-	j.save()
 	m.dropLink(id)
+	m.dropSiteState(j)
+	j.save()
 	m.Log.Warn("link download failed", "job", id, "why", msg)
 }
 
