@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.101 — 17 November 2026
+
+- **Files: a Kind column** (Folder, MOV file, …) that sorts like the others.
+- **Right-click a column heading to choose the columns** (hold a heading on a phone). The Columns button is gone.
+- **Columns resize** by dragging a heading's right edge; double-click the edge, or "Usual widths" in the menu, to go back. Widths are remembered.
+- **Folder sizes.** Worked out by themselves where it costs little: on a solid-state disk that no copy is using, up to 100,000 entries or 4 seconds. On a spinning disk, a network share or the cloud, or while a copy runs on that disk, press **Calculate sizes** (up to 12 seconds). One count at a time, never onto another disk, links not followed; a count cut short shows "≥". Sort by size includes folders once their sizes are known.
+- **The All / Missing on a chosen drive filter is gone.** "Copy only what is missing" in the tick tray still copies only what a drive lacks.
+- **Settings → System** (was Updates): Updates, then Stop or restart in its own card, Start at login and the Data folder.
+- **"On set: copies needed" is hidden** until the On set view is redesigned; the number already saved (2 unless changed) still applies.
+
 ## 0.2.100 — 17 November 2026
 
 - **A card above the queue, always shown.** How many items are in the queue, the job running now with its percent and time left, and the time left for the whole queue. Under it, one line for each disk the queued jobs use: its read or write speed and what it is doing (copying, reading back, waiting, not connected…).

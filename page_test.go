@@ -570,7 +570,7 @@ func TestPageFiles(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
 		`id="tabFilesBtn"`, `id="tabFiles"`, `fetch("/api/copies?path="`, `function fbDraw(p)`, `function fbTray()`, `async function fbCopy(onlyMissing)`,
-		`"Copy only what is missing · "`, `data-s="missing"`, `id="fbTwo"`, `function fbOpenFile(p, f)`, `"Read this file again"`, `Copy to another place…</button>`,
+		`"Copy only what is missing · "`, `id="fbTwo"`, `function fbOpenFile(p, f)`, `"Read this file again"`, `Copy to another place…</button>`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
@@ -686,7 +686,7 @@ func TestPageV0_2_100(t *testing.T) {
 		`id="qcard"`, `function renderQcard(active)`, `.qhead .qf::before { content:""; margin-left:auto; }`,
 		`.job.verify.nested::before`, `subCls += " lines";`, `.dsub.lines, .sub.lines { white-space:pre-line; }`,
 		`data-tab="proof">Status</button>`, `["Status", proofScheme(v)]`, `return "Copied, hash generated";`,
-		`const FB_COLS = [["size", "Size", "r"], ["changed", "Changed", ""], ["created", "Created", ""]];`, `const fbSorted = list =>`,
+		`["created", "Created", ""]];`, `const fbSorted = (list, p) =>`,
 		`"Backups (" + have.length + ")"`, `el("h4", "fsec", "Source")`, `.shell:has(#tabFiles:not([hidden])) .insp:not(.on) { display:none; }`,
 		`post("/api/disks/eject", { path: d.path })`, `"slowname"`, `function setPage(pg)`, `id="verLog"`,
 	} {
@@ -701,5 +701,30 @@ func TestPageV0_2_100(t *testing.T) {
 	}
 	if strings.Index(s, `id="styleSw"`) < strings.Index(s, `id="live"`) {
 		t.Error("the General / On set switch is not at the far right of the top bar")
+	}
+}
+
+// v0.2.101: a Kind column (sortable), the column chooser on a right-click
+// (or a held heading on a phone), columns resized by dragging a heading's
+// edge, folder sizes (automatic where cheap, or Calculate sizes), and the
+// All / Missing filter gone.
+func TestPageV0_2_101(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`const FB_COLS = [["kind", "Kind", ""], ["size", "Size", "r"], ["changed", "Changed", ""], ["created", "Created", ""]];`,
+		`k === "kind" ? (f.file ? "1" : "0") + fbKind(f).toLowerCase()`, `head.oncontextmenu = e => { e.preventDefault(); fbColMenu(e.clientX, e.clientY); };`,
+		`function fbResizer(k, cell)`, `keep("shuttle.fbw", JSON.stringify(fbW))`, `id="fbCalc"`, `function fbSizes(p, ask)`,
+		`fetch("/api/browse/sizes?path=" + encodeURIComponent(path) + (ask ? "" : "&auto=1"), { signal: ac.signal })`, `fbDraw(p); fbSizes(p, false);`,
+		`data-p="updates" aria-pressed="false">System</button>`, `<section class="card" id="runSet" data-page="updates">`, `$("runBtns").replaceChildren(...rbtns);`,
+		`<section class="card" id="loginSet" data-page="updates" hidden>`, `<section class="card" data-page="updates"><h2>Data folder</h2>`, `<section class="card" id="safeSet" hidden>`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	for _, gone := range []string{`id="fbShow"`, `Missing on a chosen drive`, `fbShowMode`, `<details class="fbcols"`} {
+		if strings.Contains(s, gone) {
+			t.Errorf("page still has %q", gone)
+		}
 	}
 }

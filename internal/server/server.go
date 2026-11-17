@@ -130,6 +130,7 @@ func (s *Server) HTTP() *http.Server {
 	mux.HandleFunc("GET /api/about", s.json(s.About))
 	mux.HandleFunc("GET /api/events", s.events)
 	mux.HandleFunc("GET /api/browse", s.browse)
+	mux.HandleFunc("GET /api/browse/sizes", s.folderSizes)
 	mux.HandleFunc("GET /api/copies", s.copies)
 	mux.HandleFunc("POST /api/links/info", s.command(s.linksInfo))
 	mux.HandleFunc("POST /api/links/add", s.command(s.linksAdd))

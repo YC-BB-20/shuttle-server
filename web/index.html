@@ -601,13 +601,18 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
 /* v0.2.89: Files. */
 .fb { display:flex; flex-direction:column; gap:12px; min-height:calc(100vh - 160px); }
 .fbhead { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; }
-.fbhead input { width:200px; padding:6px 10px; } .fbhead .fbcols { margin-left:auto; }
+.fbhead input { width:200px; padding:6px 10px; margin-left:auto; } .fbcalcmsg { font-size:13px; order:9; flex-basis:100%; } .fbcalcmsg:empty { display:none; }
 /* v0.2.100: columns to show, and headings that sort. */
-.fbcols { position:relative; } .fbcols summary { list-style:none; cursor:pointer; padding:6px 12px; border:1px solid var(--line2); border-radius:8px; font-size:14px; }
-.fbcols summary::-webkit-details-marker { display:none; } .fbcols[open] summary { border-color:var(--sel); }
-.fbcolm { position:absolute; right:0; top:calc(100% + 6px); z-index:6; background:var(--side); border:1px solid var(--line2); border-radius:10px; padding:8px 12px; display:flex; flex-direction:column; gap:6px; min-width:150px; box-shadow:0 10px 30px rgba(0,0,0,.4); }
+/* v0.2.101: the column chooser opens where a heading is right-clicked (or held on a phone). */
+.fbcolm[hidden] { display:none; }
+.fbcolm { position:fixed; z-index:30; background:var(--side); border:1px solid var(--line2); border-radius:10px; padding:8px 12px; display:flex; flex-direction:column; gap:6px; min-width:150px; box-shadow:0 10px 30px rgba(0,0,0,.4); }
 .fbcolm label { display:flex; gap:8px; align-items:center; justify-content:flex-start; font-size:14px; font-weight:400; white-space:nowrap; margin:0; } .fbcolm input { width:auto; flex:none; margin:0; }
-.fbhd button { all:unset; cursor:pointer; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-radius:4px; }
+.fbhd button { all:unset; cursor:pointer; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-radius:4px; position:relative; padding-right:10px; }
+/* v0.2.101: drag a heading's right edge to resize the column; double-click it for the usual width. */
+.fbhd .rz { position:absolute; top:-7px; bottom:-7px; right:-2px; width:9px; cursor:col-resize; touch-action:none; }
+.fbhd .rz::after { content:""; position:absolute; top:7px; bottom:7px; left:4px; width:1px; background:var(--line2); }
+.fbhd .rz:hover::after, .fbhd .rz.drag::after { background:var(--sel); width:2px; }
+.fbr .kind { color:var(--mute); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .fbhd button:hover, .fbhd button[data-dir] { color:var(--fg); } .fbhd button:focus-visible { outline:2px solid var(--sel); outline-offset:2px; }
 .fbhd button[data-dir="1"]::after { content:" ↑"; } .fbhd button[data-dir="-1"]::after { content:" ↓"; }
 .fbhd .r { justify-self:end; }
@@ -751,9 +756,10 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
     <div class="fbhead">
       <h1 class="vh">Files</h1>
       <div class="seg" id="fbTwo" role="group" aria-label="Panes"><button type="button" data-n="1" aria-pressed="true">One pane</button><button type="button" data-n="2" aria-pressed="false">Two panes</button></div>
-      <details class="fbcols" id="fbCols"><summary>Columns</summary><div class="fbcolm" id="fbColList"></div></details>
+      <button type="button" id="fbCalc" title="Work out the size of every folder shown">Calculate sizes</button>
+      <span class="mute fbcalcmsg" id="fbCalcMsg"></span>
       <label for="fbFilter" class="vh">Filter by name</label><input type="text" id="fbFilter" placeholder="Filter by name" autocomplete="off">
-      <div class="seg" id="fbShow" role="group" aria-label="Show"><button type="button" data-s="all" aria-pressed="true">All</button><button type="button" data-s="missing" aria-pressed="false">Missing on a chosen drive</button></div>
+      <div class="fbcolm" id="fbColList" role="menu" aria-label="Columns to show" hidden></div>
     </div>
     <div class="fbpanes" id="fbPanes"></div>
     <footer class="fbtray" id="fbTray" hidden>
@@ -769,19 +775,13 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
     <div class="disks" id="disks"></div>
   </div>
   <div id="tabSettings" class="settings" data-show="copy" hidden>
-  <div class="seg setnav" id="setNav" role="group" aria-label="Settings pages"><button type="button" data-p="copy" aria-pressed="true">Copy settings</button><button type="button" data-p="updates" aria-pressed="false">Updates</button><button type="button" data-p="versions" aria-pressed="false">Versions</button></div>
+  <div class="seg setnav" id="setNav" role="group" aria-label="Settings pages"><button type="button" data-p="copy" aria-pressed="true">Copy settings</button><button type="button" data-p="updates" aria-pressed="false">System</button><button type="button" data-p="versions" aria-pressed="false">Versions</button></div>
   <section class="card" id="sysFiles">
     <h2>System files</h2>
     <label class="opt"><input type="checkbox" id="skipSys"><span>Don't copy system files: .DS_Store, .Spotlight-V100, .Trashes, .fseventsd, .TemporaryItems, Thumbs.db, desktop.ini</span></label>
     <label class="opt in"><input type="checkbox" id="skipDot"><span>Also leave out "._" files (Mac information such as Finder tags on non-Mac disks like exFAT)</span></label>
     <p class="mute">Finder rewrites .DS_Store whenever a folder is opened, so a copy of one can never stay verified. Left-out files are counted on the copy, not hidden. Applies to new copies and verifies.</p>
     <p class="err" id="sysErr"></p>
-  </section>
-  <section class="card" id="loginSet" hidden>
-    <h2>Start at login</h2>
-    <label class="opt"><input type="checkbox" id="loginOn"><span>Open Shuttle Server when I log in to this Mac</span></label>
-    <p class="mute">Starts Shuttle in the background, with its menu bar icon, each time you log in. It does not start a second copy now, and Stop Shuttle in the menu bar keeps it stopped until the next login. The menu bar icon has the same switch.</p>
-    <p class="err" id="loginErr"></p>
   </section>
   <section class="card" id="hashSet">
     <h2>Hash for copies</h2>
@@ -791,7 +791,7 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
     <p class="mute">The hash every read of a copy makes: the source as it is copied, the copy read back, and the source read again. With both, each read makes both and both must match. Applies to new copies; a copy keeps the hash it started with, and a Verify reads each file with the hash its copy made. Each file's info shows the hashes.</p>
     <p class="err" id="hashErr"></p>
   </section>
-  <section class="card" id="safeSet">
+  <section class="card" id="safeSet" hidden><!-- v0.2.101: hidden until the On set view is redesigned; the saved number still applies -->
     <h2>On set: copies needed</h2>
     <div class="lpos"><label class="opt"><input type="radio" name="safeN" value="1"><span>1 copy</span></label><label class="opt"><input type="radio" name="safeN" value="2"><span>2 copies (recommended)</span></label><label class="opt"><input type="radio" name="safeN" value="3"><span>3 copies</span></label><label class="opt"><input type="radio" name="safeN" value="4"><span>4 copies</span></label></div>
     <p class="mute">A camera card shows SAFE TO UNPLUG once this many of its copies are read back and match, and FULLY VERIFIED once the card has also been read a second time and matched for that many copies. Changes only what the On set view shows; the copies themselves are not touched.</p>
@@ -835,7 +835,6 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
       <p class="err" id="srvErr"></p>
     </div>
   </section>
-  <section class="card"><h2>Data folder</h2><p class="path" id="data"></p><p class="mute">Temp: <span class="path" id="temp"></span></p></section>
   <h2 class="sechead">How Shuttle is using this computer</h2>
   <div class="grid resources" style="margin-bottom:12px">
     <section class="card"><h2>Memory</h2><p id="mem"></p><div class="bar"><i id="memBar"></i></div><p class="mute" id="memNote"></p></section>
@@ -857,6 +856,18 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
     </div>
     <p class="mute path" id="undo"></p>
   </section>
+  <section class="card" id="runSet" data-page="updates">
+    <h2>Stop or restart</h2>
+    <p class="mute">A running copy pauses where it is and continues when Shuttle starts again.</p>
+    <div class="btns" id="runBtns" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"></div>
+  </section>
+  <section class="card" id="loginSet" data-page="updates" hidden>
+    <h2>Start at login</h2>
+    <label class="opt"><input type="checkbox" id="loginOn"><span>Open Shuttle Server when I log in to this Mac</span></label>
+    <p class="mute">Starts Shuttle in the background, with its menu bar icon, each time you log in. It does not start a second copy now, and Stop Shuttle in the menu bar keeps it stopped until the next login. The menu bar icon has the same switch.</p>
+    <p class="err" id="loginErr"></p>
+  </section>
+  <section class="card" data-page="updates"><h2>Data folder</h2><p class="path" id="data"></p><p class="mute">Temp: <span class="path" id="temp"></span></p></section>
   <section class="card" id="verSet" data-page="versions">
     <h2>Installed version</h2>
     <p id="verNow">…</p>
@@ -1084,7 +1095,7 @@ function setPage(pg) {
     fetch("/api/about").then(r => r.json()).then(a => { $("verNow").textContent = "Shuttle Server " + a.version + " (" + a.commit + ")"; $("verLog").textContent = a.changelog; })
       .catch(() => { $("verLog").textContent = "Could not load the changelog."; });
   }
-  const h = "#" + (pg === "copy" ? "settings" : pg);
+  const h = "#" + (pg === "copy" ? "settings" : pg === "updates" ? "system" : pg);
   if (!$("tabSettings").hidden && location.hash !== h) history.replaceState(null, "", h);
 }
 $("setNav").querySelectorAll("button").forEach(b => b.onclick = () => setPage(b.dataset.p));
@@ -1247,7 +1258,7 @@ function diskCard(d) {
   c.append(btns);
   return c;
 }
-setTimeout(() => showTab({ "#settings": "settings", "#updates": "updates", "#versions": "versions", "#storage": "storage", "#files": "files" }[location.hash] || "status"));
+setTimeout(() => showTab({ "#settings": "settings", "#updates": "updates", "#system": "updates", "#versions": "versions", "#storage": "storage", "#files": "files" }[location.hash] || "status"));
 setTimeout(() => { setLayout(onLay); setStyle(viewStyle); });
 
 function loadHistory() {
@@ -2355,6 +2366,7 @@ function renderUpdate(u, s) {
   if (u.backup && !u.busy) btn("Go back to the previous version", async () => {
     if (await confirmBox("Go back?", "Shuttle restarts with the previous version. Copies pause and continue after.", "Go back")) post("/api/update/rollback").catch(e => alert(e.message));
   });
+  const rbtns = [], keep0 = btns.length; // v0.2.101: Stop and Restart have their own card
   btn("Restart Shuttle", async () => {
     if (!running || await confirmBox("Restart now?", "The running copy pauses where it is and continues after the restart.", "Restart")) post("/api/restart").catch(e => alert(e.message));
   });
@@ -2362,8 +2374,9 @@ function renderUpdate(u, s) {
     if (await confirmBox("Stop Shuttle Server?", (running ? "The running copy pauses where it is and continues next time. " : "") +
         "This page stops working until you start Shuttle again (Cmd-Space, then Shuttle Server).", "Stop")) post("/api/quit").catch(e => alert(e.message));
   });
+  rbtns.push(...btns.splice(keep0));
   const key = btns.map(b => b.textContent).join("|") + running;
-  if (updKey !== key) { updKey = key; $("updBtns").replaceChildren(...btns); }
+  if (updKey !== key) { updKey = key; $("updBtns").replaceChildren(...btns); $("runBtns").replaceChildren(...rbtns); }
 }
 async function installUpdate(u, running) {
   let now = false;
@@ -3064,7 +3077,7 @@ function cmdAll() {
     ["Settings", "Hash, folder layout, start at login, updates", () => showTab("settings")],
     ["System", "Memory, buffers, processor, open files", () => $("sysBtn").onclick()],
     ["Open the full log", "The last lines Shuttle wrote", openFullLog],
-    ["Updates", "Check for and install a new version", () => showTab("settings", "updates")],
+    ["System", "Updates, stop or restart, start at login, data folder", () => showTab("settings", "updates")],
     ["Versions", "The installed version, what changed, and older versions", () => showTab("settings", "versions")],
     ["About", "Version and what changed", () => $("aboutBtn").onclick()]];
   const jobs = ((latest && latest.jobs) || []).concat(olderViews);
@@ -3096,27 +3109,78 @@ document.addEventListener("keydown", e => { if ((e.metaKey || e.ctrlKey) && e.ke
 // drives hold a proven copy of it. Tick files, tick drives, and copy only
 // what each drive is missing. One pane by default; two panes on request.
 // Nothing here writes anything except a copy you start.
-let fbPanes = [], fbActive = 0, fbShowMode = "all", fbSel = null, fbDestOff = new Set();
+let fbPanes = [], fbActive = 0, fbSel = null, fbDestOff = new Set();
 // v0.2.100: columns to show and the sort, both remembered in this browser.
-const FB_COLS = [["size", "Size", "r"], ["changed", "Changed", ""], ["created", "Created", ""]];
-let fbCols = new Set(pref("shuttle.fbcols", "size,changed,created").split(",").filter(c => FB_COLS.some(x => x[0] === c)));
-let fbSort = (() => { try { const x = JSON.parse(pref("shuttle.fbsort", "")); if (x && x.k && (x.dir === 1 || x.dir === -1)) return x; } catch (e) {} return { k: "name", dir: 1 }; })();
-const fbKey = (f, k) => k === "size" ? (f.file ? f.size || 0 : -1) : k === "changed" ? (f.mtime || "") : k === "created" ? (f.created || "") : f.name.toLowerCase();
-const fbSorted = list => list.slice().sort((a, b) => { const x = fbKey(a, fbSort.k), y = fbKey(b, fbSort.k);
-  return (x < y ? -1 : x > y ? 1 : 0) * fbSort.dir || a.name.localeCompare(b.name, undefined, { numeric: true }); });
-function fbColMenu() {
-  $("fbColList").replaceChildren(...FB_COLS.map(([k, name]) => { const l = el("label"), c = el("input"); c.type = "checkbox"; c.checked = fbCols.has(k);
-    c.onchange = () => { c.checked ? fbCols.add(k) : fbCols.delete(k); keep("shuttle.fbcols", [...fbCols].join(",")); fbPanes.forEach(fbDraw); }; l.append(c, name); return l; }));
+const FB_COLS = [["kind", "Kind", ""], ["size", "Size", "r"], ["changed", "Changed", ""], ["created", "Created", ""]];
+let fbCols = new Set(pref("shuttle.fbcols2", "kind,size,changed,created").split(",").filter(c => FB_COLS.some(x => x[0] === c)));
+// v0.2.101: column widths, remembered; the name column fills the rest until it is resized itself.
+const FB_W = { name: 0, kind: 110, size: 90, changed: 150, created: 150 };
+let fbW = (() => { try { return Object.assign({}, FB_W, JSON.parse(pref("shuttle.fbw", "{}"))); } catch (e) { return Object.assign({}, FB_W); } })();
+const fbKind = f => { if (!f.file) return "Folder"; const m = /\.([^./]{1,10})$/.exec(f.name); return m ? m[1].toUpperCase() + " file" : "File"; };
+function fbTemplate(p) {
+  const cols = FB_COLS.filter(c => fbCols.has(c[0]));
+  const t = ["22px", fbW.name ? fbW.name + "px" : "minmax(120px,1fr)"].concat(cols.map(c => fbW[c[0]] + "px"));
+  if (fbW.name) t.push("minmax(0,1fr)");
+  p.tbl.style.setProperty("--fbcols", t.join(" "));
+  p.tbl.style.setProperty("--fbmin", fbPanes.length > 1 ? "0px" : (60 + (fbW.name || 160) + cols.reduce((a, c) => a + fbW[c[0]] + 12, 0)) + "px");
 }
-fbColMenu();
-document.addEventListener("pointerdown", e => { if ($("fbCols").open && !$("fbCols").contains(e.target)) $("fbCols").open = false; });
+let fbSort = (() => { try { const x = JSON.parse(pref("shuttle.fbsort", "")); if (x && x.k && (x.dir === 1 || x.dir === -1)) return x; } catch (e) {} return { k: "name", dir: 1 }; })();
+const fbKey = (f, k, p) => k === "size" ? (f.file ? f.size || 0 : p && p.sizes[f.name] ? p.sizes[f.name].bytes : -1) : k === "changed" ? (f.mtime || "") : k === "created" ? (f.created || "") :
+  k === "kind" ? (f.file ? "1" : "0") + fbKind(f).toLowerCase() : f.name.toLowerCase();
+const fbSorted = (list, p) => list.slice().sort((a, b) => { const x = fbKey(a, fbSort.k, p), y = fbKey(b, fbSort.k, p);
+  return (x < y ? -1 : x > y ? 1 : 0) * fbSort.dir || a.name.localeCompare(b.name, undefined, { numeric: true }); });
+function fbColMenu(x, y) {
+  const m = $("fbColList");
+  m.replaceChildren(el("small", "mute", "Columns to show"), ...FB_COLS.map(([k, name]) => { const l = el("label"), c = el("input"); c.type = "checkbox"; c.checked = fbCols.has(k);
+    c.onchange = () => { c.checked ? fbCols.add(k) : fbCols.delete(k); keep("shuttle.fbcols2", [...fbCols].join(",")); fbPanes.forEach(fbDraw); }; l.append(c, name); return l; }));
+  const b = el("button", "", "Usual widths"); b.type = "button"; b.onclick = () => { fbW = Object.assign({}, FB_W); keep("shuttle.fbw", "{}"); fbPanes.forEach(fbDraw); m.hidden = true; };
+  m.append(b); m.hidden = false;
+  const r = m.getBoundingClientRect();
+  m.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 8)) + "px"; m.style.top = Math.max(8, Math.min(y, innerHeight - r.height - 8)) + "px";
+  m.querySelector("input").focus();
+}
+document.addEventListener("pointerdown", e => { if (!$("fbColList").hidden && !$("fbColList").contains(e.target)) $("fbColList").hidden = true; });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("fbColList").hidden) { $("fbColList").hidden = true; e.stopPropagation(); } }, true);
+// A heading's right edge resizes its column.
+function fbResizer(k, cell) {
+  const z = el("span", "rz"); z.title = "Drag to resize · double-click for the usual width";
+  z.onclick = e => e.stopPropagation();
+  z.ondblclick = e => { e.stopPropagation(); fbW[k] = FB_W[k]; keep("shuttle.fbw", JSON.stringify(fbW)); fbPanes.forEach(fbDraw); };
+  z.onpointerdown = e => {
+    e.preventDefault(); e.stopPropagation(); z.setPointerCapture(e.pointerId); z.classList.add("drag");
+    const x0 = e.clientX, w0 = k === "name" && !fbW.name ? cell.getBoundingClientRect().width + 12 : fbW[k];
+    z.onpointermove = m => { fbW[k] = Math.round(Math.max(k === "name" ? 120 : 50, Math.min(900, w0 + m.clientX - x0))); fbPanes.forEach(fbTemplate); };
+    z.onpointerup = z.onpointercancel = () => { z.onpointermove = z.onpointerup = z.onpointercancel = null; z.classList.remove("drag"); keep("shuttle.fbw", JSON.stringify(fbW)); };
+  };
+  return z;
+}
+// Folder sizes (v0.2.101): worked out by the server where it costs little,
+// or for every folder shown when Calculate sizes is pressed.
+let fbSizeAbort = null;
+function fbSizes(p, ask) {
+  if (!p.data || !(p.data.folders || []).some(f => !f.file)) { if (ask) $("fbCalcMsg").textContent = "No folders here."; return; }
+  if (!ask && p.sizesFor === p.path) return;
+  if (fbSizeAbort) fbSizeAbort.abort();
+  const ac = new AbortController(), path = p.path, seq = p.seq; fbSizeAbort = ac;
+  p.sizesFor = path; p.sizing = true; if (ask) $("fbCalcMsg").textContent = "Working out folder sizes…"; fbDraw(p);
+  fetch("/api/browse/sizes?path=" + encodeURIComponent(path) + (ask ? "" : "&auto=1"), { signal: ac.signal }).then(r => r.json()).then(d => {
+    if (p.seq !== seq || p.path !== path) return;
+    p.sizing = false;
+    const why = { spinning: "Folder sizes are not worked out by themselves on a spinning disk.", network: "Folder sizes are not worked out by themselves on a network share or the cloud.", busy: "Folder sizes wait while a copy is using this disk." }[d.skipped];
+    if (d.sizes) { p.sizes = d.sizes; $("fbCalcMsg").textContent = Object.values(d.sizes).some(x => x.partial) ? "Some folders are too big to count quickly: their size is at least what is shown." : ""; }
+    else if (why) { p.sizesFor = ""; $("fbCalcMsg").textContent = why + " Press Calculate sizes."; }
+    else if (d.error) $("fbCalcMsg").textContent = d.error;
+    fbDraw(p);
+  }).catch(() => { if (p.seq === seq) { p.sizing = false; fbDraw(p); } });
+}
+$("fbCalc").onclick = () => { const p = fbPanes[fbActive] || fbPanes[0]; if (p) { p.sizesFor = ""; fbSizes(p, true); } };
 const fbDone = st => ["strong", "proven", "already", "already2"].includes(st);
 const fbBad = st => ["failed", "warning"].includes(st);
 const fbShort = disk => { const m = /^(.)[^0-9]*([0-9]*)/.exec(disk || "?"); return (m[1] + m[2]).toUpperCase(); };
 function fbPane(i) {
   const box = el("section", "fbpane"), head = el("div", "fbph"), places = el("div", "fbpl"), crumbs = el("nav", "fcrumbs"), tbl = el("div", "fbt");
   crumbs.setAttribute("aria-label", "Where you are"); head.append(places, crumbs); box.append(head, tbl);
-  const p = { i, box, places, crumbs, tbl, path: pref("shuttle.fb" + i, ""), data: null, copies: null, sel: new Set(), seq: 0 };
+  const p = { i, box, places, crumbs, tbl, path: pref("shuttle.fb" + i, ""), data: null, copies: null, sel: new Set(), seq: 0, sizes: {}, sizesFor: "", sizing: false };
   box.onpointerdown = () => { if (fbActive !== i) { fbActive = i; fbMark(); fbTray(); } };
   return p;
 }
@@ -3130,8 +3194,9 @@ function fbLoad(p, path, keepSel) {
   fetch("/api/browse?files=1&path=" + encodeURIComponent(path || "")).then(r => r.json()).then(d => {
     if (seq !== p.seq) return;
     if (d.path !== p.path || !keepSel) p.sel.clear();
+    if (d.path !== p.path) { p.sizes = {}; p.sizesFor = ""; $("fbCalcMsg").textContent = ""; }
     p.path = d.path; p.data = d; keep("shuttle.fb" + p.i, d.path);
-    fbDraw(p);
+    fbDraw(p); fbSizes(p, false);
     return fetch("/api/copies?path=" + encodeURIComponent(d.path)).then(r => r.json()).then(c => { if (seq === p.seq) { p.copies = c; fbDraw(p); fbTray(); } });
   }).catch(() => { p.tbl.replaceChildren(el("p", "mute", "This folder could not be read.")); });
 }
@@ -3145,8 +3210,6 @@ function fbStates(p, f) {
   if (!f.file) { const x = c.folders[f.name]; return c.places.map((pl, k) => !x || !x.files[k] ? "" : x.bad[k] ? "failed" : x.strong[k] >= x.files[k] ? "strong" : x.proven[k] >= x.files[k] ? "proven" : x.proven[k] ? "working" : "waiting"); }
   const x = c.files[f.name]; return c.places.map((pl, k) => x ? x.status[k] || "" : "");
 }
-const fbDestsOn = p => p.copies ? p.copies.places.filter(pl => pl.dest && !fbDestOff.has(pl.dest)) : [];
-function fbMissing(p, f) { const sts = fbStates(p, f), on = fbDestsOn(p); return !on.length ? !sts.some(fbDone) : p.copies.places.some((pl, k) => pl.dest && !fbDestOff.has(pl.dest) && !fbDone(sts[k])); }
 function fbDraw(p) {
   const d = p.data; if (!d) return;
   // Places along the top, then where you are.
@@ -3156,33 +3219,39 @@ function fbDraw(p) {
   p.crumbs.replaceChildren(...(d.crumbs || []).flatMap((c, i, a) => { const b = el("button", "", c.name); b.type = "button"; b.onclick = () => fbLoad(p, c.path); return i < a.length - 1 ? [b, el("span", "", "/")] : [el("b", "", c.name)]; }));
   const words = $("fbFilter").value.toLowerCase().split(/\s+/).filter(Boolean);
   let list = (d.folders || []).filter(f => words.every(w => f.name.toLowerCase().includes(w)));
-  if (fbShowMode === "missing" && p.copies) list = list.filter(f => fbMissing(p, f));
   const places = p.copies ? p.copies.places : [];
-  list = fbSorted(list);
-  const cols = FB_COLS.filter(c => fbCols.has(c[0])), two = fbPanes.length > 1;
-  const w = { size: two ? "76px" : "84px", changed: two ? "130px" : "150px", created: two ? "130px" : "150px" };
-  p.tbl.style.setProperty("--fbcols", ["22px", "minmax(" + (two ? 120 : 160) + "px,1fr)"].concat(cols.map(c => w[c[0]])).join(" "));
-  p.tbl.style.setProperty("--fbmin", (two ? 0 : 230 + cols.reduce((a, c) => a + parseInt(w[c[0]]) + 12, 0)) + "px");
+  list = fbSorted(list, p);
+  const cols = FB_COLS.filter(c => fbCols.has(c[0]));
+  fbTemplate(p);
   const head = el("div", "fbr fbhd"), all = el("input");
   all.type = "checkbox"; all.setAttribute("aria-label", "Tick everything shown"); all.checked = list.length > 0 && list.every(f => p.sel.has(f.name));
   all.onchange = () => { list.forEach(f => all.checked ? p.sel.add(f.name) : p.sel.delete(f.name)); fbDraw(p); fbTray(); };
   const hb = (k, name, cls) => { const b = el("button", cls, name); b.type = "button"; b.title = "Sort by " + name.toLowerCase();
     if (fbSort.k === k) b.dataset.dir = fbSort.dir;
-    b.onclick = () => { fbSort = { k, dir: fbSort.k === k ? -fbSort.dir : k === "name" ? 1 : -1 }; keep("shuttle.fbsort", JSON.stringify(fbSort)); fbPanes.forEach(fbDraw); }; return b; };
+    b.onclick = () => { fbSort = { k, dir: fbSort.k === k ? -fbSort.dir : k === "name" || k === "kind" ? 1 : -1 }; keep("shuttle.fbsort", JSON.stringify(fbSort)); fbPanes.forEach(fbDraw); };
+    b.append(fbResizer(k, b)); return b; };
   head.append(all, hb("name", "Name", ""), ...cols.map(c => hb(...c)));
+  head.title = "Right-click a heading to choose the columns";
+  head.oncontextmenu = e => { e.preventDefault(); fbColMenu(e.clientX, e.clientY); };
+  let hold = 0; // a phone has no right-click: hold a heading instead
+  head.ontouchstart = e => { const t = e.touches[0]; clearTimeout(hold); hold = setTimeout(() => fbColMenu(t.clientX, t.clientY), 550); };
+  head.ontouchend = head.ontouchmove = () => clearTimeout(hold);
   const rows = list.map(f => {
     const r = el("div", "fbr" + (p.sel.has(f.name) ? " on" : "") + (fbSel && fbSel.path === f.path ? " foc" : "")), ck = el("input");
     ck.type = "checkbox"; ck.checked = p.sel.has(f.name); ck.setAttribute("aria-label", "Tick " + f.name);
     ck.onchange = () => { ck.checked ? p.sel.add(f.name) : p.sel.delete(f.name); r.classList.toggle("on", ck.checked); fbTray(); syncAll(); };
     const nm = el("button", "fbn " + (f.file ? "file" : "dir"), f.name); nm.type = "button";
     nm.onclick = () => f.file ? fbOpenFile(p, f) : fbLoad(p, f.path);
-    const sz = f.file ? size(f.size) : p.copies && p.copies.folders[f.name] ? (n => nf(n) + (n === 1 ? " file" : " files"))(Math.max(...p.copies.folders[f.name].files)) : "";
-    const cell = { size: el("span", "r mute", sz), changed: el("span", "mute", f.mtime ? when(f.mtime) : ""), created: el("span", "mute", f.created ? when(f.created) : "—") };
+    const fz = !f.file && p.sizes[f.name];
+    const sz = f.file ? size(f.size) : fz ? (fz.partial ? "≥ " : "") + size(fz.bytes) : p.sizing ? "…" : "";
+    const szc = el("span", "r mute", sz);
+    if (fz) szc.title = (fz.partial ? "At least " : "") + nf(fz.files) + (fz.files === 1 ? " file" : " files");
+    const cell = { kind: el("span", "kind", fbKind(f)), size: szc, changed: el("span", "mute", f.mtime ? when(f.mtime) : ""), created: el("span", "mute", f.created ? when(f.created) : "—") };
     r.append(ck, nm, ...cols.map(c => cell[c[0]]));
     return r;
   });
   const syncAll = () => { all.checked = list.length > 0 && list.every(f => p.sel.has(f.name)); };
-  const note = d.error ? [el("p", "mute", d.error)] : !list.length ? [el("p", "mute", fbShowMode === "missing" ? "Nothing here is missing on the chosen drives." : words.length ? "Nothing matches." : "This folder is empty.")] : [];
+  const note = d.error ? [el("p", "mute", d.error)] : !list.length ? [el("p", "mute", words.length ? "Nothing matches." : "This folder is empty.")] : [];
   if (d.truncated) note.push(el("p", "mute", "Only the first part of this folder is shown."));
   p.tbl.replaceChildren(head, ...rows, ...note);
 }
@@ -3243,9 +3312,6 @@ $("fbOther").onclick = () => {
   $("src").value = p.path; $("dst").value = ""; $("moreDst").replaceChildren(); $("newBtn").onclick(); setOnly([...p.sel], p.path);
 };
 $("fbFilter").oninput = () => fbPanes.forEach(fbDraw);
-$("fbShow").querySelectorAll("button").forEach(b => b.onclick = () => {
-  fbShowMode = b.dataset.s; $("fbShow").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); fbPanes.forEach(fbDraw);
-});
 $("fbTwo").querySelectorAll("button").forEach(btn => btn.onclick = () => {
   const two = btn.dataset.n === "2";
   if (two === fbPanes.length > 1) return;
