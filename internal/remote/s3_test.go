@@ -145,12 +145,31 @@ func (f *fakeS3) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		n, _ := strconv.Atoi(q.Get("partNumber"))
+		if cs := r.Header.Get("X-Amz-Copy-Source"); cs != "" { // a piece copied on the server
+			src, _ := url.PathUnescape(strings.TrimPrefix(cs, "/media/"))
+			var a, b int
+			fmt.Sscanf(r.Header.Get("X-Amz-Copy-Source-Range"), "bytes=%d-%d", &a, &b)
+			parts[n] = append([]byte(nil), f.objs[src][a:b+1]...)
+			fmt.Fprintf(w, "<CopyPartResult><ETag>\"%s\"</ETag></CopyPartResult>", etagOf(parts[n]))
+			return
+		}
 		parts[n] = body
 		f.puts++
 		w.Header().Set("ETag", `"`+etagOf(body)+`"`)
 	case r.Method == "PUT":
 		if _, ok := f.objs[key]; ok && r.Header.Get("If-None-Match") == "*" {
 			w.WriteHeader(412)
+			return
+		}
+		if cs := r.Header.Get("X-Amz-Copy-Source"); cs != "" { // copied on the server
+			src, _ := url.PathUnescape(strings.TrimPrefix(cs, "/media/"))
+			b, ok := f.objs[src]
+			if !ok {
+				w.WriteHeader(404)
+				return
+			}
+			f.objs[key] = append([]byte(nil), b...)
+			fmt.Fprint(w, "<CopyObjectResult/>")
 			return
 		}
 		f.objs[key] = body
@@ -186,6 +205,9 @@ func (f *fakeS3) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "<CompleteMultipartUploadResult/>")
 	case r.Method == "DELETE" && q.Has("uploadId"):
 		delete(f.uploads, q.Get("uploadId"))
+		w.WriteHeader(204)
+	case r.Method == "DELETE":
+		delete(f.objs, key)
 		w.WriteHeader(204)
 	default:
 		w.WriteHeader(405)
@@ -495,5 +517,65 @@ func TestS3PiecesStayInsideBudget(t *testing.T) {
 	}
 	if peak > 10<<20 {
 		t.Fatalf("budget exceeded: %d", peak)
+	}
+}
+
+func TestS3RenameOnlyGivesOwnUploadsTheirName(t *testing.T) {
+	f := newFakeS3()
+	srv := httptest.NewServer(f)
+	defer srv.Close()
+	r, err := New(s3Config(srv.URL), testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	small, big := source(3<<20), source(12<<20)
+	f.objs["Day 1/a.mov.shuttle-part"] = small
+	f.objs["Day 1/b.mov.shuttle-part"] = big
+	f.objs["Day 1/c.mov"] = []byte("there already")
+	if err := r.Rename(ctx, "Day 1/a.mov.shuttle-part", "Day 1/a.mov"); err != nil {
+		t.Fatal(err)
+	}
+	defer func(v int64) { s3CopyMax = v }(s3CopyMax)
+	s3CopyMax = 5 << 20 // copied in pieces
+	if err := r.Rename(ctx, "Day 1/b.mov.shuttle-part", "Day 1/b.mov"); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(f.objs["Day 1/a.mov"], small) || !bytes.Equal(f.objs["Day 1/b.mov"], big) {
+		t.Fatal("the renamed objects differ from the uploads")
+	}
+	if _, ok := f.objs["Day 1/a.mov.shuttle-part"]; ok {
+		t.Fatal("the temporary upload was left behind")
+	}
+	f.objs["Day 1/c.mov.shuttle-part"] = small
+	if err := r.Rename(ctx, "Day 1/c.mov.shuttle-part", "Day 1/c.mov"); !errors.Is(err, ErrExists) {
+		t.Fatalf("an existing name was not refused: %v", err)
+	}
+	if string(f.objs["Day 1/c.mov"]) != "there already" {
+		t.Fatal("an existing object was replaced")
+	}
+	if err := r.Rename(ctx, "Day 1/c.mov", "Day 1/d.mov"); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("a rename of a real file on S3 was not refused: %v", err)
+	}
+	if err := r.RemoveTemp(ctx, "Day 1/c.mov"); err == nil {
+		t.Fatal("RemoveTemp removed a file that is not Shuttle's own")
+	}
+}
+
+func TestSplitPlace(t *testing.T) {
+	for _, c := range []struct {
+		in, id, rel string
+		ok          bool
+	}{
+		{"srv:abc", "abc", "", true}, {"srv:abc/Day 1/a.mov", "abc", "Day 1/a.mov", true},
+		{"srv:abc/../x", "", "", false}, {"/Volumes/T5", "", "", false}, {"srv:", "", "", false},
+	} {
+		id, rel, ok := SplitPlace(c.in)
+		if id != c.id || rel != c.rel || ok != c.ok {
+			t.Errorf("%q: got %q %q %v", c.in, id, rel, ok)
+		}
+	}
+	if Place("abc", "") != "srv:abc" || Place("abc", "/a/b/") != "srv:abc/a/b" {
+		t.Error("Place")
 	}
 }

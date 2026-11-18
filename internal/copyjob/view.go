@@ -1,6 +1,8 @@
 package copyjob
 
 import (
+	"github.com/YC-BB-20/shuttle-server/internal/remote"
+
 	"errors"
 	"os"
 	"path/filepath"
@@ -349,6 +351,12 @@ func baseView(j *Job) (View, state, live) {
 	}
 	v.FromDisk, v.FromPath = placeOf(st.Spec.Source)
 	v.ToDisk, v.ToPath = placeOf(st.Spec.Dest)
+	if _, rel, ok := remote.SplitPlace(st.Spec.Source); ok { // v0.2.122: a place on a server
+		v.FromDisk, v.FromPath = st.Spec.SourceServer, "/"+rel
+	}
+	if _, rel, ok := remote.SplitPlace(st.Spec.Dest); ok {
+		v.ToDisk, v.ToPath = st.Spec.DestServer, "/"+rel
+	}
 	if st.ErrorsAsk != nil && st.Phase == "done" && st.Choice != "stopped" {
 		v.Errors = st.ErrorsAsk // held for an answer: shown with the queue, not the history
 	}

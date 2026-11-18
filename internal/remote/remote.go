@@ -111,11 +111,56 @@ type Remote interface {
 	// Abort gives up an unfinished upload, so the server frees its pieces.
 	Abort(ctx context.Context, st UploadState) error
 	// Rename gives a finished file its final name, failing with ErrExists
-	// rather than replacing one. ErrUnsupported on S3, which has no rename.
+	// rather than replacing one. On WebDAV it also moves files and folders
+	// (Files' Move). S3 has no rename: there it only gives one of Shuttle's
+	// own uploads (IsTemp) its final name, by a copy on the server, and is
+	// ErrUnsupported for anything else.
 	Rename(ctx context.Context, from, to string) error
 	// Resumable says whether a cut-off upload continues where it stopped.
 	Resumable() bool
+	// RemoveTemp removes one of Shuttle's own unfinished uploads. It refuses
+	// any name that is not a temporary name (IsTemp): nothing else on a
+	// server is ever removed by a copy.
+	RemoveTemp(ctx context.Context, path string) error
 }
+
+// TempSuffix ends the name a file is uploaded under until it is proven.
+const TempSuffix = ".shuttle-part"
+
+// IsTemp reports Shuttle's own temporary name.
+func IsTemp(p string) bool { return strings.HasSuffix(p, TempSuffix) }
+
+// PlacePrefix starts the path of a place on an added server, as the page
+// and copy jobs write it: "srv:ID" is the top of server ID, "srv:ID/a/b" a
+// folder or file inside it.
+const PlacePrefix = "srv:"
+
+// SplitPlace splits a server place into the server's id and the path inside
+// it; ok is false for anything else (a folder on this computer).
+func SplitPlace(p string) (id, rel string, ok bool) {
+	r, ok := strings.CutPrefix(p, PlacePrefix)
+	if !ok {
+		return "", "", false
+	}
+	id, rel, _ = strings.Cut(r, "/")
+	rel, err := clean(rel)
+	if id == "" || err != nil {
+		return "", "", false
+	}
+	return id, rel, true
+}
+
+// Place is the path of rel on server id.
+func Place(id, rel string) string {
+	rel = strings.Trim(rel, "/")
+	if rel == "" {
+		return PlacePrefix + id
+	}
+	return PlacePrefix + id + "/" + rel
+}
+
+// IsPlace reports whether p is a place on a server.
+func IsPlace(p string) bool { return strings.HasPrefix(p, PlacePrefix) }
 
 // Errors a caller acts on.
 var (

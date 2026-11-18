@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+
+	"github.com/YC-BB-20/shuttle-server/internal/remote"
 )
 
 // moveRename is os.Rename; tests replace it.
@@ -34,6 +36,9 @@ func (s *Server) moveItems(w http.ResponseWriter, r *http.Request) (any, error) 
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return nil, errors.New("could not read the request")
+	}
+	if remote.IsPlace(req.Folder) || remote.IsPlace(req.To) {
+		return s.moveServer(r, req.Folder, req.Names, req.To) // v0.2.122
 	}
 	folder, to := filepath.Clean(req.Folder), filepath.Clean(req.To)
 	if !filepath.IsAbs(req.Folder) || !filepath.IsAbs(req.To) || strings.Contains(req.Folder, "/../") || strings.Contains(req.To, "/../") ||

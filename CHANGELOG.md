@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.122 — 18 November 2026
+
+- **Servers are places.** Every server added in Settings (S3 or WebDAV) is in Files' drive drop-down and the folder picker, beside the drives: browse it, make a folder on it (WebDAV), and copy to it, from it or between two servers.
+- **Copies to a server are proven.** Each file is read in full and hashed first, sent under a temporary name, then downloaded from the server and hashed. Only when both match does it get its real name; a file already there is compared, never replaced. On S3 the real name is given by a copy on the server, so nothing passes through this Mac twice.
+- **Copies from a server are proven.** Each file is hashed as it downloads, read back from the disk while the server is read a second time, and named only when all three agree. A paused or cut-off download continues where it stopped.
+- **When the server or the line goes away**, the copy waits and says why ("Waiting for CTERA: …"), then carries on by itself. No file is marked failed for it.
+- **Move works on a WebDAV server**: the server renames, nothing passes through this Mac. S3 has no rename, so Move is refused there. Delete is not offered on servers yet.
+
 ## 0.2.121 — 18 November 2026
 
 - **No more notes pushing Files down.** The line above the panes no longer says that some folders are too big to count quickly (their size already shows "≥"), that sizes are being worked out (the Σ button says "calculating…"), or why sizes were not worked out by themselves (that is now the Σ button's tooltip). Errors and Delete progress still show there.

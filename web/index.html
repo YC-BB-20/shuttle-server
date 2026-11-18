@@ -879,7 +879,7 @@ body.on-files .shell { min-height:0; } body.on-files .shell > main { min-height:
   </section>
   <section class="card" id="srvSet">
     <h2>Servers</h2>
-    <p class="mute">Cloud servers Shuttle will copy to and from, such as CTERA. A login is kept only on this Mac, in a file only you can read, and is never shown again. For now a server can be added and tested; copies to and from it come in the next versions.</p>
+    <p class="mute">Cloud servers Shuttle will copy to and from, such as CTERA. A login is kept only on this Mac, in a file only you can read, and is never shown again. Each server is a place in Files, beside the drives: copy to it, from it or between servers, each file read back and proven.</p>
     <div id="srvList" class="srvlist"></div>
     <div class="btns" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button type="button" id="srvAdd">Add a server</button></div>
     <div id="srvForm" class="srvform" hidden>
@@ -1681,7 +1681,11 @@ function verify(path, opts) {
 // What has been read back for a finished copy (v0.2.27): the destination,
 // and the source a second time, each with a button to do it now when missing.
 // The disk a path is on: the name under /Volumes, or this Mac's own disk.
-const diskOf = p => { const m = /^\/Volumes\/([^/]+)/.exec(p || ""); return m ? m[1] : "this Mac"; };
+// v0.2.122: places on a server added in Settings are "srv:ID/…"; their names come with each folder listing.
+const srvNames = {};
+const srvId = p => { const m = /^srv:([^/]+)/.exec(p || ""); return m ? m[1] : ""; };
+const diskOf = p => { if (srvId(p)) return srvNames[srvId(p)] || "server"; const m = /^\/Volumes\/([^/]+)/.exec(p || ""); return m ? m[1] : "this Mac"; };
+function notePlaces(pl) { (pl || []).forEach(x => { if (x.kind === "remote") srvNames[srvId(x.path)] = x.name; }); }
 // Which kind of Verify a job is (v0.2.31), named on its row.
 const verKind = v => v.s2 === "only" ? "Source verification" : (v.s2 === "now" || v.s2 === "after") && v.source !== v.dest ? "Destination + source verification" : "Destination verification";
 const verKindHelp = v => v.s2 === "only" ? "The source is read again and compared with the hashes stored when it was copied; the copies are not read" :
@@ -1731,7 +1735,7 @@ function openPicker() {
   chosen = new Set(pickFor === "src" && start === srcOnlyAt ? srcOnly : []);
   browse(start, true); $("pickDlg").showModal();
 }
-const kindIcon = { home: "🏠", internal: "💻", disk: "💽", server: "🌐", share: "🌐" };
+const kindIcon = { home: "🏠", internal: "💻", disk: "💽", server: "🌐", share: "🌐", remote: "☁️" };
 function useLabel() {
   $("pickUse").textContent = chosen.size ? "Use " + chosen.size + " chosen" : "Use this folder";
   $("pickHint").textContent = pickFor === "ver" ? "Open a folder Shuttle copied to and press Use this folder, or tap one file to verify only that file." :
@@ -1743,12 +1747,12 @@ function useLabel() {
 function browse(path, keep) {
   if (!keep) chosen = new Set();
   fetch("/api/browse?path=" + encodeURIComponent(path) + (!isDst(pickFor) ? "&files=1" : "")).then(r => r.json()).then(d => {
-    pickAt = d.path;
+    pickAt = d.path; notePlaces(d.places);
     $("pickErr").textContent = d.error || d.note || (d.truncated ? "Only the first 2000 items are shown." : "");
     $("places").replaceChildren(...d.places.map(p => {
       const b = el("button"); b.type = "button";
       b.append((kindIcon[p.kind] || "") + " " + p.name);
-      const sub = p.note ? (p.kind === "server" ? "Server · later" : p.note) : p.total ? size(p.free) + " free" + (p.read_only ? " · read-only" : "") : "";
+      const sub = p.kind === "remote" ? (p.share === "s3" ? "S3 server" : "WebDAV server") : p.note ? (p.kind === "server" ? "Server · later" : p.note) : p.total ? size(p.free) + " free" + (p.read_only ? " · read-only" : "") : "";
       if (sub) b.append(el("small", "", sub));
       if (p.note) { b.classList.add("off"); b.title = p.note; }
       if (d.path === p.path || (p.kind !== "home" && p.path !== "/" && d.path.startsWith(p.path + "/"))) b.classList.add("here");
@@ -1919,7 +1923,7 @@ function showProblems(id) {
 // pause/stop. Tapping a row opens its details and its files.
 const cards = {};
 const stateText = { running: "Running", waiting: "Waiting", paused: "Paused", queued: "Queued", finished: "Finished", stopped: "Stopped" };
-const base = p => { const parts = (p || "").split("/").filter(Boolean); return parts.length ? parts[parts.length - 1] : p; };
+const base = p => { if (/^srv:[^/]+\/?$/.test(p || "")) return diskOf(p); const parts = (p || "").split("/").filter(Boolean); return parts.length ? parts[parts.length - 1] : p; }; // a server's top is named by the server (v0.2.122)
 const passRate = v => Math.max(v.source_rate || 0, v.dest_rate || 0);
 const kindName = v => v.kind === "verify" ? "Verify" : v.kind === "link" ? v.link_site || "Link" : "Copy";
 // A copy's name (v0.2.59): the folder's name for a whole folder; the one
@@ -2008,10 +2012,19 @@ function shareNotes(v) {
 function proofScheme(v) {
   if (v.kind === "verify") return verKind(v);
   if (v.kind === "link") return (v.files > 1 ? "Each file downloaded" : "Downloaded") + ", size checked, read back from the disk and hashed";
+  if (v.kind === "server") return srvId(v.dest) ? "Source read in full, sent, read back from the server" : "Downloaded and hashed, read back from the disk" + (v.s2 === "now" ? ", the server read a second time" : "");
   if (v.check === "none") return "Copied, hash generated";
   if (v.dest_share === "lucidlink" && v.lucid_read === "cache") return "Copied first; read back from LucidLink's cache on this Mac, then waits for the upload" + (v.s2 === "now" ? ", source read a second time" : "");
   if (v.dest_share === "lucidlink") return "Copied first; read back once LucidLink has uploaded everything" + (v.s2 === "now" ? ", source read a second time" : "");
   return v.s2 === "now" ? "Copy read back, source read a second time" : "Copy read back";
+}
+// v0.2.122: what a copy to or from a server reads, in the Proof tab.
+function serverProofText(v) {
+  const a = algoName[v.algo] || "XXH128";
+  if (srvId(v.dest)) return "Every file is read in full from the source and hashed with " + a + ", then sent to " + diskOf(v.dest) +
+    " under a temporary name, downloaded again from the server and hashed. Only when both match does it get its real name, never over a file already there. The source is read twice: once for the hash, once to send.";
+  return "Every file is downloaded from " + diskOf(v.source) + " and hashed with " + a + " as it is written, flushed, then read back from the disk" +
+    (v.s2 === "now" ? " while the server's file is downloaded a second time; all three must match" : "; both must match") + ". Only then does it get its real name, never over a file already there.";
 }
 function fillOverview(v, q, o) {
   const k = v.checks, fin = o.old;
@@ -2041,7 +2054,7 @@ function fillOverview(v, q, o) {
       if (r === lim) d.append(el("small", "", "The slower one: this is the limit right now")); return d; }) : [el("p", "mute", "Measuring…")]));
   }
   // Proof tab: what is read for this copy, and how far each read is.
-  const lines = [el("p", "", v.kind === "link" ? "The file is downloaded into a temporary file next to its place, its size is checked against what the site said, it is flushed to the disk, read back in full and hashed with XXH128. Only then does it get its name, never over a file already there." : o.ver ? verKindHelp(v) : "Every file is hashed with " + (algoName[v.algo] || "XXH128") + " as it is read from the source" +
+  const lines = [el("p", "", v.kind === "server" ? serverProofText(v) : v.kind === "link" ? "The file is downloaded into a temporary file next to its place, its size is checked against what the site said, it is flushed to the disk, read back in full and hashed with XXH128. Only then does it get its name, never over a file already there." : o.ver ? verKindHelp(v) : "Every file is hashed with " + (algoName[v.algo] || "XXH128") + " as it is read from the source" +
     (v.check === "none" ? ". This copy does not read its files back; a Verify does." : v.s2 === "now" ? "; the copy is then read back, and the source read a second time, and all three must match." : "; the copy is then read back and must match."))];
   lines.push(...shareNotes(v).map(t => el("p", "mute", t)));
   if (!o.ver && !fin && !o.scanning) lines.push(el("p", "mute", "So far: " + fileCounts(v) + (v.s2 === "now" ? " · source read twice: " + (v.strong || 0) : "")));
@@ -2613,6 +2626,7 @@ function srvRow(p) {
 }
 function loadServers() {
   fetch("/api/servers").then(r => r.json()).then(list => {
+    list.forEach(x => { srvNames[x.id] = x.name; }); // v0.2.122: names for server places in the queue
     $("srvList").replaceChildren(...(list.length ? list.map(srvRow) : [el("p", "mute", "No servers yet.")]));
   }).catch(() => {});
 }
@@ -3312,6 +3326,7 @@ let fbSizeAbort = null;
 function fbSizes(p, ask) {
   if (!p.data || !(p.data.folders || []).some(f => !f.file)) { if (ask) $("fbCalcMsg").textContent = "No folders here."; return; }
   if (!ask && p.sizesFor === p.path) return;
+  if (srvId(p.path)) { p.sizeWhy = "Folder sizes on a server are counted when a copy lists it."; return; } // v0.2.122
   if (fbSizeAbort) fbSizeAbort.abort();
   const ac = new AbortController(), path = p.path, seq = p.seq; fbSizeAbort = ac;
   p.sizesFor = path; p.sizing = true; p.sizeWhy = ""; fbDraw(p); // the pane's Σ button says "calculating…"
@@ -3386,7 +3401,7 @@ function fbLoad(p, path, keepSel) {
     if (seq !== p.seq) return;
     if (d.path !== p.path || !keepSel) p.sel.clear();
     if (d.path !== p.path) { p.sizes = {}; p.sizesFor = ""; p.sizeWhy = ""; $("fbCalcMsg").textContent = ""; }
-    p.path = d.path; p.data = d; fbSave();
+    p.path = d.path; p.data = d; fbSave(); notePlaces(d.places);
     fbDraw(p); fbSizes(p, false);
     return fetch("/api/copies?path=" + encodeURIComponent(d.path)).then(r => r.json()).then(c => { if (seq === p.seq) { p.copies = c; fbDraw(p); fbTray(); } });
   }).catch(() => { p.tbl.replaceChildren(el("p", "mute", "This folder could not be read.")); });
@@ -3406,7 +3421,7 @@ function fbFoot(p) {
   const all = d.folders || [], dirs = all.filter(f => !f.file).length, files = all.length - dirs, bytes = all.reduce((a, f) => a + (f.file ? f.size || 0 : 0), 0);
   const left = el("span", "", ""), b = el("b", "", all.length + (all.length === 1 ? " item" : " items"));
   left.append(b, " (" + dirs + (dirs === 1 ? " folder, " : " folders, ") + files + (files === 1 ? " file)" : " files)") + (bytes ? " · " + size(bytes) + " in files here" : "") + " · ");
-  const calc = el("button", "linkish", p.sizing ? "calculating…" : "Σ calculate folder size"); calc.type = "button"; calc.disabled = !dirs || p.sizing; if (p.sizeWhy) calc.title = p.sizeWhy;
+  const calc = el("button", "linkish", p.sizing ? "calculating…" : "Σ calculate folder size"); calc.type = "button"; calc.disabled = !dirs || p.sizing || !!srvId(p.path); if (p.sizeWhy) calc.title = p.sizeWhy;
   calc.onclick = e => { e.stopPropagation(); fbCalcFor(p); };
   left.append(calc);
   const pl = fbPlaceOf(p) || d.places.find(x => x.kind === "internal");
@@ -3418,7 +3433,7 @@ function fbDraw(p) {
   const d = p.data; if (!d) return;
   // The pane's title and its drive or server, then where you are.
   p.title.textContent = fbPanes.length < 2 ? "Files" : p.i === 0 ? "Source" : "Destination";
-  const kindWord = x => x.kind === "internal" ? "this Mac" : x.kind === "share" ? (x.share === "lucidlink" ? "LucidLink" : "SMB share") : x.kind === "server" ? "server (browse only)" : "drive";
+  const kindWord = x => x.kind === "internal" ? "this Mac" : x.kind === "share" ? (x.share === "lucidlink" ? "LucidLink" : "SMB share") : x.kind === "server" ? "server (browse only)" : x.kind === "remote" ? (x.share === "s3" ? "S3 server" : "WebDAV server") : "drive";
   const pk = JSON.stringify(d.places.map(x => [x.name, x.path, x.kind]));
   if (p.places.dataset.k !== pk) {
     p.places.dataset.k = pk;
@@ -3430,7 +3445,7 @@ function fbDraw(p) {
   const here = fbPlaceOf(p) || d.places.find(x => x.kind === "internal");
   p.places.value = p.places.dataset.cur = here ? here.path : "";
   p.up.disabled = !!d.top || !d.parent;
-  p.del.hidden = !copySet.delete_on; p.del.disabled = !p.sel.size;
+  p.del.hidden = !copySet.delete_on || !!srvId(d.path); p.del.disabled = !p.sel.size; // v0.2.122: no Delete on a server yet
   fbFoot(p);
   p.crumbs.replaceChildren(...(d.crumbs || []).flatMap((c, i, a) => { const b = el("button", "", c.name); b.type = "button"; b.onclick = () => fbLoad(p, c.path); return i < a.length - 1 ? [b, el("span", "", "/")] : [el("b", "", c.name)]; }));
   const words = $("fbFilter").value.toLowerCase().split(/\s+/).filter(Boolean);
@@ -3484,7 +3499,7 @@ function fbTray() {
   const names = [...p.sel], items = (p.data.folders || []).filter(f => p.sel.has(f.name));
   $("fbTray").hidden = !names.length;
   $("fbDel").hidden = true; // v0.2.112: Delete is among each pane's buttons
-  fbPanes.forEach(q => { if (q.del) { q.del.hidden = !copySet.delete_on; q.del.disabled = !q.sel.size; } });
+  fbPanes.forEach(q => { if (q.del) { q.del.hidden = !copySet.delete_on || !!srvId(q.path); q.del.disabled = !q.sel.size; } });
   if (!names.length) { $("fbMsg").textContent = ""; return; }
   // v0.2.113: folders count with their size once it is known (worked out by itself or with Σ).
   const bytes = items.reduce((a, f) => a + (f.file ? f.size : p.sizes[f.name] ? p.sizes[f.name].bytes : 0), 0), dirs = items.filter(f => !f.file).length;
@@ -3514,7 +3529,7 @@ function fbTray() {
 function fbTargets(p) {
   const o = fbPanes.find(x => x !== p);
   const out = o ? [] : (p.copies ? p.copies.places : []).map((pl, k) => ({ dest: pl.dest, label: base(pl.dest), disk: pl.disk || "", k })).filter(t => t.dest);
-  if (o && o.data && o.path !== p.path && !out.some(t => t.dest === o.path)) out.push({ dest: o.path, label: "Other pane: " + base(o.path), k: -1 });
+  if (o && o.data && o.path !== p.path && !out.some(t => t.dest === o.path)) out.push({ dest: o.path, label: "Other pane: " + base(o.path), disk: srvId(o.path) ? diskOf(o.path) : "", k: -1 });
   return out;
 }
 function fbFree(path) {
@@ -3549,11 +3564,12 @@ async function fbMoveTo(p, to) {
   const names = (p.data.folders || []).filter(f => p.sel.has(f.name)).map(f => f.name), folder = p.path;
   if (!names.length || !to) return;
   const what = names.length === 1 ? "\u201c" + names[0] + "\u201d" : names.length + " items";
-  if (!await confirmBox("Move " + what + "?", "Into " + to + ". Within the same drive this is instant and nothing is copied; to another drive Shuttle will not move (use Copy).", "Move", "Cancel")) return;
+  const where = srvId(to) ? diskOf(to) + " · /" + to.replace(/^srv:[^/]+\/?/, "") : to;
+  if (!await confirmBox("Move " + what + "?", "Into " + where + ". " + (srvId(to) ? "The server renames them: nothing passes through this Mac. Shuttle will not move between two places (use Copy)." : "Within the same drive this is instant and nothing is copied; to another drive Shuttle will not move (use Copy)."), "Move", "Cancel")) return;
   const say = await post("/api/move", { folder, names, to }).then(r => {
     p.sel.clear(); p.anchor = null;
     // v0.2.116: earlier copies' records follow, so Files still shows the moved items' copies.
-    return "Moved " + r.moved + (r.moved === 1 ? " item" : " items") + " into " + to + "." +
+    return "Moved " + r.moved + (r.moved === 1 ? " item" : " items") + " into " + where + "." +
       (r.records ? " The records of " + r.records + (r.records === 1 ? " earlier copy follow" : " earlier copies follow") + " them." : "") +
       (r.records_partial ? " " + r.records_partial + (r.records_partial === 1 ? " earlier copy was" : " earlier copies were") + " of several items, not all moved: Files shows " + (r.records_partial === 1 ? "it" : "them") + " at the old place." : "");
   }).catch(e => "Not moved: " + e.message);

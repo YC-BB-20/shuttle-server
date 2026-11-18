@@ -1,6 +1,8 @@
 package server
 
 import (
+	"github.com/YC-BB-20/shuttle-server/internal/remote"
+
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -67,6 +69,9 @@ func (s *Server) deleteItems(w http.ResponseWriter, r *http.Request) (any, error
 	var req deleteReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return nil, errors.New("could not read the request")
+	}
+	if remote.IsPlace(req.Folder) {
+		return nil, errors.New("Delete on a server is not built yet; nothing was deleted")
 	}
 	folder := filepath.Clean(req.Folder)
 	if !filepath.IsAbs(req.Folder) || folder != strings.TrimSuffix(req.Folder, "/") && folder != req.Folder {

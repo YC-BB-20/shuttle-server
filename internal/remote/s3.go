@@ -303,8 +303,6 @@ func openAnswer(resp *http.Response, off int64, what string, bad func(int, strin
 // Mkdir: S3 has no folders; a key's path makes them.
 func (s *s3) Mkdir(context.Context, string) error { return nil }
 
-func (s *s3) Rename(context.Context, string, string) error { return ErrUnsupported }
-
 // pieceFor picks the piece size for a file: the configured one, larger when
 // the file would need more than S3's 10,000 pieces. A piece must fit the
 // buffer budget twice over, so two files can move at once.
@@ -658,4 +656,149 @@ func xmlEsc(s string) string {
 	var b bytes.Buffer
 	xml.EscapeText(&b, []byte(s))
 	return b.String()
+}
+
+// RemoveTemp deletes one of Shuttle's own unfinished uploads.
+func (s *s3) RemoveTemp(ctx context.Context, path string) error {
+	if !IsTemp(path) {
+		return errors.New("only Shuttle's own unfinished uploads are removed")
+	}
+	k, err := s.key(path)
+	if err != nil {
+		return err
+	}
+	return retry(ctx, s.h.o.Tries, func() error {
+		req, err := s.req(ctx, "DELETE", k, nil, nil, nil)
+		if err != nil {
+			return err
+		}
+		resp, body, err := s.h.short(ctx, req, 64<<10)
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode == 204 || resp.StatusCode == 200 || resp.StatusCode == 404 {
+			return nil
+		}
+		return s3Err(resp.StatusCode, "remove the unfinished upload "+path, body)
+	})
+}
+
+// s3CopyMax is the largest object one server-side copy request may make;
+// larger ones are copied in pieces (S3's limit is 5 GB).
+var s3CopyMax int64 = 5 << 30
+
+// Rename on S3 gives one of Shuttle's own uploads its final name once it is
+// proven: the server copies the object to the new name (nothing passes
+// through this computer), then the temporary object is removed. S3 has no
+// real rename, so any other name is refused (ErrUnsupported) and an existing
+// name is never replaced (ErrExists).
+func (s *s3) Rename(ctx context.Context, from, to string) error {
+	if !IsTemp(from) || IsTemp(to) {
+		return ErrUnsupported
+	}
+	src, err := s.Stat(ctx, from)
+	if err != nil {
+		return err
+	}
+	fk, err := s.key(from)
+	if err != nil {
+		return err
+	}
+	tk, err := s.key(to)
+	if err != nil {
+		return err
+	}
+	if _, err := s.Stat(ctx, to); err == nil {
+		return ErrExists
+	} else if !errors.Is(err, ErrNotFound) {
+		return err
+	}
+	segs := strings.Split(fk, "/")
+	for i := range segs {
+		segs[i] = awsEscape(segs[i])
+	}
+	source := "/" + s.c.Bucket + "/" + strings.Join(segs, "/")
+	if src.Size <= s3CopyMax {
+		err = retry(ctx, s.h.o.Tries, func() error {
+			req, err := s.req(ctx, "PUT", tk, nil, nil, map[string]string{"x-amz-copy-source": source, "If-None-Match": "*"})
+			if err != nil {
+				return err
+			}
+			resp, err := s.h.long(ctx, req)
+			if err != nil {
+				return err
+			}
+			ans, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+			resp.Body.Close()
+			if resp.StatusCode != 200 || bytes.Contains(ans, []byte("<Error>")) {
+				code := resp.StatusCode
+				if code == 200 {
+					code = 500
+				}
+				return s3Err(code, "give "+to+" its name", ans)
+			}
+			return nil
+		})
+	} else {
+		err = s.copyParts(ctx, tk, source, src.Size)
+	}
+	if err != nil {
+		return err
+	}
+	// The new name must hold as many bytes as the proven upload.
+	if e, err := s.Stat(ctx, to); err != nil {
+		return err
+	} else if e.Size != src.Size {
+		return &Error{Msg: fmt.Sprintf("the server's copy under the final name holds %d bytes of %d", e.Size, src.Size), Temp: true}
+	}
+	return s.RemoveTemp(ctx, from)
+}
+
+// copyParts copies a large object on the server in pieces of at least 1 GB.
+func (s *s3) copyParts(ctx context.Context, tk, source string, size int64) error {
+	piece := max(int64(1)<<30, (size+s3MaxParts-2)/(s3MaxParts-1))
+	piece = min(piece, s3CopyMax)
+	id, err := s.create(ctx, tk)
+	if err != nil {
+		return err
+	}
+	st := UploadState{Path: s.rel(tk), Size: size, PieceSize: piece, UploadID: id}
+	for n, off := 1, int64(0); off < size; n, off = n+1, off+piece {
+		end := min(off+piece, size) - 1
+		var etag string
+		err := retry(ctx, s.h.o.Tries, func() error {
+			req, err := s.req(ctx, "PUT", tk, url.Values{"partNumber": {strconv.Itoa(n)}, "uploadId": {id}}, nil,
+				map[string]string{"x-amz-copy-source": source, "x-amz-copy-source-range": fmt.Sprintf("bytes=%d-%d", off, end)})
+			if err != nil {
+				return err
+			}
+			resp, err := s.h.long(ctx, req)
+			if err != nil {
+				return err
+			}
+			ans, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+			resp.Body.Close()
+			if resp.StatusCode != 200 || bytes.Contains(ans, []byte("<Error>")) {
+				code := resp.StatusCode
+				if code == 200 {
+					code = 500
+				}
+				return s3Err(code, "copy a piece on the server", ans)
+			}
+			var r struct {
+				ETag string `xml:"ETag"`
+			}
+			if xml.Unmarshal(ans, &r) != nil || r.ETag == "" {
+				return &Error{Msg: "the server's answer to copying a piece could not be read", Temp: true}
+			}
+			etag = strings.Trim(r.ETag, `"`)
+			return nil
+		})
+		if err != nil {
+			s.Abort(context.WithoutCancel(ctx), st)
+			return err
+		}
+		st.Parts = append(st.Parts, Part{N: n, ETag: etag, Size: end - off + 1})
+	}
+	return s.complete(ctx, tk, &st)
 }

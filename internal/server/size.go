@@ -1,6 +1,8 @@
 package server
 
 import (
+	"github.com/YC-BB-20/shuttle-server/internal/remote"
+
 	"context"
 	"net/http"
 	"os"
@@ -157,6 +159,10 @@ func (s *Server) copySize(w http.ResponseWriter, r *http.Request) {
 	only := q["only"]
 	if len(only) > 10000 {
 		only = only[:10000]
+	}
+	if remote.IsPlace(q.Get("path")) {
+		writeJSON(w, http.StatusOK, SizeCount{Path: q.Get("path"), Error: "The size on a server is counted when the copy lists it."})
+		return
 	}
 	if !filepath.IsAbs(p) {
 		writeJSON(w, http.StatusOK, SizeCount{Path: p, Error: "Choose a folder first."})

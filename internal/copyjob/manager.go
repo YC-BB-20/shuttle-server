@@ -14,6 +14,7 @@ import (
 	"github.com/YC-BB-20/shuttle-server/internal/diskio"
 	"github.com/YC-BB-20/shuttle-server/internal/limits"
 	"github.com/YC-BB-20/shuttle-server/internal/location"
+	"github.com/YC-BB-20/shuttle-server/internal/remote"
 )
 
 var (
@@ -47,6 +48,9 @@ type Manager struct {
 	// to upload before copying to LucidLink pauses (0: no limit).
 	Lucid    LucidClient
 	LucidMax int64
+	// Servers opens the servers added in Settings (v0.2.122); nil: copies
+	// to and from servers are refused.
+	Servers Servers
 
 	mu      sync.Mutex
 	jobs    []*Job
@@ -112,6 +116,9 @@ func (m *Manager) AddDraft(s Spec, d *Draft) (*Job, error) { return m.add(s, d) 
 func (m *Manager) add(s Spec, d *Draft) (*Job, error) {
 	if s.Kind == KindVerify {
 		return m.addVerify(s)
+	}
+	if remote.IsPlace(strings.TrimSpace(s.Source)) || remote.IsPlace(strings.TrimSpace(s.Dest)) {
+		return m.addServer(s) // v0.2.122
 	}
 	s.Kind, s.File, s.From, s.Paused = "", "", nil, false
 	s.EstBytes, s.EstFiles = max(0, s.EstBytes), max(0, s.EstFiles)
@@ -497,6 +504,10 @@ func (m *Manager) Run(ctx context.Context) {
 func (m *Manager) runOne(ctx context.Context, j *Job) {
 	if j.st.Spec.isLink() {
 		m.runLink(ctx, j)
+		return
+	}
+	if j.st.Spec.isServer() {
+		m.runServer(ctx, j)
 		return
 	}
 	sd, err1 := m.Disks.For(j.st.Spec.Source)

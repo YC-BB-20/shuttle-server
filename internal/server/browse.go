@@ -1,6 +1,8 @@
 package server
 
 import (
+	"github.com/YC-BB-20/shuttle-server/internal/remote"
+
 	"net/http"
 	"os"
 	"path/filepath"
@@ -265,8 +267,12 @@ func crumbs(p string, pl []Place) []Folder {
 // files=1. Names only, at most maxListed rows.
 func (s *Server) browse(w http.ResponseWriter, r *http.Request) {
 	home, _ := os.UserHomeDir()
-	pl := places()
+	pl := append(places(), s.serverPlaces()...)
 	p := r.URL.Query().Get("path")
+	if remote.IsPlace(p) { // v0.2.122: a folder on a server added in Settings
+		s.browseServer(w, r, p, pl)
+		return
+	}
 	if p == "" {
 		p = home
 	}

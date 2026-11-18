@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/YC-BB-20/shuttle-server/internal/diskio"
+	"github.com/YC-BB-20/shuttle-server/internal/remote"
 	"github.com/YC-BB-20/shuttle-server/internal/storage"
 )
 
@@ -29,6 +30,9 @@ func (s *Server) mkdir(w http.ResponseWriter, r *http.Request) (any, error) {
 	name := strings.TrimSpace(req.Name)
 	if err := folderName(name); err != nil {
 		return nil, err
+	}
+	if remote.IsPlace(req.Parent) {
+		return s.mkdirServer(r, req.Parent, name)
 	}
 	parent := filepath.Clean(req.Parent)
 	if !filepath.IsAbs(parent) || !pickable(parent) {

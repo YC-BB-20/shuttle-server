@@ -91,6 +91,10 @@ type Spec struct {
 	// SourceShare and DestShare (v0.2.97): diskio.ShareSMB or ShareLucid
 	// when that side is a network share, so the page can say what the
 	// read-back proves there.
+	// SourceServer and DestServer (v0.2.122): the names of the servers a
+	// server copy reads from or writes to (Kind "server"), for the page.
+	SourceServer    string   `json:"source_server,omitempty"`
+	DestServer      string   `json:"dest_server,omitempty"`
 	SourceShare     string   `json:"source_share,omitempty"`
 	DestShare       string   `json:"dest_share,omitempty"`
 	SkipAppleDouble bool     `json:"skip_appledouble,omitempty"`

@@ -205,11 +205,12 @@ func Run(opts Options) (code int) {
 
 	var jobs *copyjob.Manager
 	jobsDone := make(chan struct{})
+	servers := &remote.Store{Dir: filepath.Join(data, "secrets", "servers"), Opts: remote.Options{Budget: budget}}
 	disks := diskio.NewRegistry(1, 60*time.Second)
 	if !safe {
 		jobs = &copyjob.Manager{Dir: filepath.Join(stateDir, "jobs"), Budget: budget, Disks: disks,
 			Accepting: wd.AcceptingNewWork, Log: log, Floor: cfg.FloorBytes(), Secrets: filepath.Join(data, "secrets", "links"),
-			Lucid: lucid.New(cfg.LucidCommand), LucidMax: int64(cfg.LucidMaxWaitingGB * 1e9)}
+			Lucid: lucid.New(cfg.LucidCommand), LucidMax: int64(cfg.LucidMaxWaitingGB * 1e9), Servers: servers}
 		if v, err := diskio.VolumeOf(data); err == nil {
 			jobs.FloorVol = v.ID // the free-space floor is kept on the internal disk
 		}
@@ -382,7 +383,7 @@ func Run(opts Options) (code int) {
 	}
 	srv := (&server.Server{Page: shuttle.IndexHTML, Speed: speed, PageDir: cfg.PageDir, Hub: hub, Status: status, Jobs: actions, Listen: cfg.Listen,
 		Updates: updater, Restart: restart, Quit: quit, Login: login, LogsDir: filepath.Join(data, "logs"), Log: log,
-		Servers: &remote.Store{Dir: filepath.Join(data, "secrets", "servers"), Opts: remote.Options{Budget: budget}},
+		Servers: servers,
 		About: func() any {
 			return map[string]string{"version": version.Version, "commit": version.Commit, "changelog": shuttle.Changelog}
 		}}).HTTP()

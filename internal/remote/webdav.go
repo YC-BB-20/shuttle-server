@@ -341,11 +341,19 @@ func (d *webdav) Upload(ctx context.Context, path string, size int64, src io.Rea
 func (d *webdav) Abort(context.Context, UploadState) error { return nil }
 
 func (d *webdav) Rename(ctx context.Context, from, to string) error {
-	fu, err := d.url(from, false)
+	dir := false
+	if !IsTemp(from) { // Files' Move may move a folder, which WebDAV names with a final slash
+		e, err := d.Stat(ctx, from)
+		if err != nil {
+			return err
+		}
+		dir = e.Dir
+	}
+	fu, err := d.url(from, dir)
 	if err != nil {
 		return err
 	}
-	tu, err := d.url(to, false)
+	tu, err := d.url(to, dir)
 	if err != nil {
 		return err
 	}
@@ -365,5 +373,31 @@ func (d *webdav) Rename(ctx context.Context, from, to string) error {
 			return nil
 		}
 		return statusErr(resp.StatusCode, "rename "+from, "")
+	})
+}
+
+// RemoveTemp deletes one of Shuttle's own unfinished uploads.
+func (d *webdav) RemoveTemp(ctx context.Context, path string) error {
+	if !IsTemp(path) {
+		return errors.New("only Shuttle's own unfinished uploads are removed")
+	}
+	u, err := d.url(path, false)
+	if err != nil {
+		return err
+	}
+	return retry(ctx, d.h.o.Tries, func() error {
+		req, err := d.req(ctx, "DELETE", u, nil)
+		if err != nil {
+			return err
+		}
+		resp, _, err := d.h.short(ctx, req, 64<<10)
+		if err != nil {
+			return err
+		}
+		switch resp.StatusCode {
+		case 200, 204, 404:
+			return nil
+		}
+		return statusErr(resp.StatusCode, "remove the unfinished upload "+path, "")
 	})
 }
