@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.113 — 17 November 2026
+
+- **The ticked total counts folders:** once a folder's size is known (worked out by itself or with Σ calculate folder size), it is added; until then the bar says how many folders are not sized yet, instead of leaving them out.
+- **No empty band under Files:** the panes and the copy bar now reach down to the status bar.
+
 ## 0.2.112 — 17 November 2026
 
 - **Files looks like the router's:** each pane has its title (Source and Destination with two panes) and, on the right, a drop-down of every drive and share plus "Add or edit servers…"; then the path; then Up, Root, Refresh, New folder and Delete; and a footer with the counts, "Σ calculate folder size" and the space available. New folder opens inside its pane.

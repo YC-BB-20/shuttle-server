@@ -869,7 +869,7 @@ func TestPageV0_2_112(t *testing.T) {
 	for _, want := range []string{
 		`places = el("select", "fbsrc")`, `srv.value = "__servers"`, `p.title.textContent = fbPanes.length < 2 ? "Files" : p.i === 0 ? "Source" : "Destination";`,
 		`const up = bt("↑ Up"`, `const root = bt("⌂ Root"`, `bt("Refresh"`, `bt("+ New folder"`, `bt("Delete…"`, `bar.after($("fbNewBox"))`,
-		`function fbFoot(p) {`, `"Σ calculate folder size"`, `" available"`, `.fb { height:calc(100vh - 160px); height:calc(100dvh - 160px); min-height:420px; }`,
+		`function fbFoot(p) {`, `"Σ calculate folder size"`, `" available"`, 
 		`.fbt { flex:1 1 auto; min-height:0; overflow:auto; } .fbhd { position:sticky; top:0;`, `$("fbDel").hidden = true;`,
 	} {
 		if !strings.Contains(s, want) {
@@ -879,6 +879,18 @@ func TestPageV0_2_112(t *testing.T) {
 	for _, gone := range []string{`id="fbNewDir"`, `id="fbCalc"`, `Press Calculate sizes.`} {
 		if strings.Contains(s, gone) {
 			t.Errorf("page still has %q", gone)
+		}
+	}
+}
+
+func TestPageV0_2_113(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`body.on-files .shell > main { display:flex; flex-direction:column; padding-bottom:12px; }`, `body.on-files #tabFiles { flex:1 1 auto; min-height:360px; }`,
+		`(f.file ? f.size : p.sizes[f.name] ? p.sizes[f.name].bytes : 0)`, `" folders not sized yet"`, `fbDraw(p); fbTray(); // the ticked folders' total now has their sizes`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
 		}
 	}
 }

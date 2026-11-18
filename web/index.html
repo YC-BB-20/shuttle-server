@@ -662,11 +662,13 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
 .fbfoot b { color:var(--fg); font-weight:600; }
 .linkish { all:unset; cursor:pointer; color:var(--sel); } .linkish:hover { text-decoration:underline; } .linkish:disabled { color:var(--mute); cursor:default; text-decoration:none; }
 /* The panes fill the window; only each list scrolls, its headings staying in view. */
-.fb { height:calc(100vh - 160px); height:calc(100dvh - 160px); min-height:420px; }
+/* v0.2.113: Files fills what is left of the window exactly, down to the status bar. */
+body.on-files .shell > main { display:flex; flex-direction:column; padding-bottom:12px; }
+body.on-files #tabFiles { flex:1 1 auto; min-height:360px; }
 .fbpanes { flex:1 1 auto; min-height:0; grid-template-rows:minmax(0,1fr); } .fbpane { min-height:0; }
 .fbt { flex:1 1 auto; min-height:0; overflow:auto; } .fbhd { position:sticky; top:0; z-index:1; background:var(--card); }
 @container (max-width:700px) { .fbpanes.two { grid-template-rows:repeat(2, minmax(0,1fr)); } }
-@media (max-width:760px) { .fb { height:auto; } .fbt { max-height:70vh; } }
+@media (max-width:760px) { body.on-files .shell > main { display:block; } .fbt { max-height:70vh; } }
 .fcrumbs { display:flex; flex-wrap:wrap; align-items:center; gap:4px; font-size:15px; }
 .fcrumbs button { border:0; background:transparent; padding:2px 4px; color:#c9b8fa; font-weight:500; } .fcrumbs span { color:#8f909b; } .fcrumbs b { font-weight:600; overflow-wrap:anywhere; }
 .fbt { overflow-x:auto; }
@@ -3312,7 +3314,7 @@ function fbSizes(p, ask) {
     if (d.sizes) { p.sizes = d.sizes; $("fbCalcMsg").textContent = Object.values(d.sizes).some(x => x.partial) ? "Some folders are too big to count quickly: their size is at least what is shown." : ""; }
     else if (why) { p.sizesFor = ""; $("fbCalcMsg").textContent = why + " Press \u03a3 calculate folder size."; }
     else if (d.error) $("fbCalcMsg").textContent = d.error;
-    fbDraw(p);
+    fbDraw(p); fbTray(); // the ticked folders' total now has their sizes
   }).catch(() => { if (p.seq === seq) { p.sizing = false; fbDraw(p); } });
 }
 // v0.2.112: each pane has its own Calculate (in its footer).
@@ -3474,8 +3476,11 @@ function fbTray() {
   $("fbDel").hidden = true; // v0.2.112: Delete is among each pane's buttons
   fbPanes.forEach(q => { if (q.del) { q.del.hidden = !copySet.delete_on; q.del.disabled = !q.sel.size; } });
   if (!names.length) { $("fbMsg").textContent = ""; return; }
-  const bytes = items.reduce((a, f) => a + (f.file ? f.size : 0), 0), dirs = items.filter(f => !f.file).length;
-  $("fbSelText").textContent = names.length + (names.length === 1 ? " item ticked" : " items ticked") + (bytes ? " · " + size(bytes) : "") + (dirs ? " (" + dirs + (dirs === 1 ? " folder" : " folders") + ")" : "") + (fbTargets(p).length ? " · copy to:" : "");
+  // v0.2.113: folders count with their size once it is known (worked out by itself or with Σ).
+  const bytes = items.reduce((a, f) => a + (f.file ? f.size : p.sizes[f.name] ? p.sizes[f.name].bytes : 0), 0), dirs = items.filter(f => !f.file).length;
+  const unsized = items.filter(f => !f.file && !p.sizes[f.name]).length, partial = items.some(f => !f.file && p.sizes[f.name] && p.sizes[f.name].partial);
+  const amount = unsized ? (bytes ? size(bytes) + " + " : "") + unsized + (unsized === 1 ? " folder not sized yet" : " folders not sized yet") : bytes || dirs ? (partial ? "at least " : "") + size(bytes) : "";
+  $("fbSelText").textContent = names.length + (names.length === 1 ? " item ticked" : " items ticked") + (amount ? " · " + amount : "") + (dirs && !unsized ? " (" + dirs + (dirs === 1 ? " folder" : " folders") + ")" : "") + (fbTargets(p).length ? " · copy to:" : "");
   const dests = fbTargets(p);
   $("fbDests").replaceChildren(...dests.map(t => {
     const lab = el("label", "fbd"), ck = el("input"), tx = el("span", "");
