@@ -232,3 +232,10 @@ func TestWokeRule(t *testing.T) {
 		t.Fatal("not a wake")
 	}
 }
+
+// v0.2.118: the icon keeps the place the owner ⌘-dragged it to.
+func TestIconKeepsItsPlace(t *testing.T) {
+	if !strings.Contains(string(script), "item.autosaveName = 'ShuttleServerStatusItem';") {
+		t.Fatal("the status item has no autosave name")
+	}
+}

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.118 — 18 November 2026
+
+- **The menu bar icon keeps its place.** ⌘-drag it towards the clock and macOS remembers that spot, also after Shuttle restarts it on wake. Icons nearest the clock are the last to be hidden when the menu bar is full (it was not lost, only pushed out of room).
+
 ## 0.2.117 — 18 November 2026
 
 - **The menu bar icon comes back after the Mac sleeps.** When the Mac wakes, Shuttle starts the icon afresh (it could be gone though its helper still ran). And if the icon fails three times in a row — as it can while the Mac is on its lock screen — Shuttle tries again two minutes later, and keeps doing so, instead of giving up for good.

@@ -10,6 +10,10 @@ function run(argv) {
   app.setActivationPolicy($.NSApplicationActivationPolicyAccessory); // no Dock icon
 
   const item = $.NSStatusBar.systemStatusBar.statusItemWithLength($.NSVariableStatusItemLength);
+  // v0.2.118: a fixed name, so macOS remembers where the owner ⌘-dragged the
+  // icon (nearer the clock = hidden last when the menu bar is full), across
+  // restarts and wakes.
+  item.autosaveName = 'ShuttleServerStatusItem';
   const menu = $.NSMenu.alloc.init;
   menu.autoenablesItems = false;
   let pageURL = 'http://localhost:8470';
