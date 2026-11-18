@@ -936,3 +936,9 @@ func TestPageV0_2_119(t *testing.T) {
 		}
 	}
 }
+
+func TestPageV0_2_120(t *testing.T) {
+	if !strings.Contains(string(IndexHTML), "@media (min-width:761px) { body.on-files .fbtray { position:static; flex:none; } }") {
+		t.Error("the copy bar must sit under the panes on the Files page, not float over their footers")
+	}
+}

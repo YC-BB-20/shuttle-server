@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.120 — 18 November 2026
+
+- **Ticking files no longer moves the bottom of Files.** The copy bar sits under the panes, which make room for it; it no longer floats over the pane's footer and leaves a gap below.
+
 ## 0.2.119 — 18 November 2026
 
 - **Files keeps its height with big folders.** The panes are always as tall as the window; a folder of hundreds or thousands of files scrolls inside its pane, with the headings and the footer in view. (In 0.2.113 a long folder made the pane, and the page, grow.)

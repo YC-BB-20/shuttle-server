@@ -669,6 +669,9 @@ body.on-files #tabFiles { flex:1 1 auto; min-height:0; }
    scrolls inside its pane instead of making the pane (and the page) grow. */
 body.on-files { height:100vh; height:100dvh; overflow:hidden; }
 body.on-files .shell { min-height:0; } body.on-files .shell > main { min-height:0; overflow:hidden; }
+/* v0.2.120: the copy bar sits under the panes (which make room for it), never floating over their
+   footers: its sticking to the bottom was for a page that scrolls. */
+@media (min-width:761px) { body.on-files .fbtray { position:static; flex:none; } }
 .fbpanes { flex:1 1 auto; min-height:0; grid-template-rows:minmax(0,1fr); } .fbpane { min-height:0; }
 .fbt { flex:1 1 auto; min-height:0; overflow:auto; } .fbhd { position:sticky; top:0; z-index:1; background:var(--card); }
 @container (max-width:700px) { .fbpanes.two { grid-template-rows:repeat(2, minmax(0,1fr)); } }
