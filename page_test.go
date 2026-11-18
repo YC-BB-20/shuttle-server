@@ -809,3 +809,12 @@ func TestPageV0_2_106(t *testing.T) {
 		t.Error("the LucidLink wait text changed: update waitLines in the page")
 	}
 }
+
+func TestPageV0_2_107(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{`#done .job .grip { visibility:hidden !important; }`, `.job.verify.nested.open::before, .job.verify.nested.picked::before { display:none; }`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}

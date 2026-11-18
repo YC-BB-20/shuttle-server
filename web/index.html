@@ -484,6 +484,10 @@ dialog .head, .foot { border-color:var(--line); }
 .job .r > .bar { grid-area:b; margin:0; } .job .st { grid-area:s; min-width:0; display:flex; flex-direction:column; line-height:1.3; }
 .job .acts { grid-area:a; } .job .r::after { grid-area:c; }
 .job .r .grip[hidden] { display:grid !important; visibility:hidden; }
+/* v0.2.107: History cannot be reordered, so it never shows the drag dots (a copy that
+   finished could keep them); and a selected Verify under its copy has one edge line, not two. */
+#done .job .grip { visibility:hidden !important; }
+.job.verify.nested.open::before, .job.verify.nested.picked::before { display:none; }
 .job .rspeed, .job .m .sub, .job .m .speed { display:none !important; }
 .job.old .bar { display:block; }
 .job .st b { font-weight:600; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

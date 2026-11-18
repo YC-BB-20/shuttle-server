@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.107 — 17 November 2026
+
+- A selected Verify under its copy has one purple edge, not two.
+- History never shows the drag dots (only the queue can be reordered).
+
 ## 0.2.106 — 17 November 2026
 
 - **Delete, in Files.** Off until you turn it on in Settings → Delete. Tick items and press Delete… (or ⌘⌫). They go to the Trash of their disk, so you can get them back. On LucidLink and SMB shares there is no Trash, so it deletes for good, and needs its own second switch in Settings. Shuttle asks once or twice first (Settings; twice by default), says how much will go, and warns in red when it knows of no proven copy elsewhere. Nothing a copy in the queue still uses, no whole disk, no home folder and nothing of Shuttle's own can be deleted, and if any one item may not go, none is touched. Every delete is written to the log.
