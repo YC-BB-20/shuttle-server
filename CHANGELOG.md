@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.109 — 17 November 2026
+
+- **A Verify that has not started reading yet** (for example while it waits for LucidLink's upload) now shows, for each file, the hash the copy made of the source when it was copied. It said "No hash was stored for this file", which was wrong.
+
 ## 0.2.108 — 17 November 2026
 
 - Under "Waiting" in the State column, a copy to LucidLink shows how much is left to upload ("2.5 GB left to upload").

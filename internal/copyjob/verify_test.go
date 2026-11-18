@@ -2,6 +2,7 @@ package copyjob
 
 import (
 	"bytes"
+	"github.com/YC-BB-20/shuttle-server/internal/diskio"
 	"os"
 	"path/filepath"
 	"strings"
@@ -358,4 +359,34 @@ func TestFileInfoStateIncludesVerifies(t *testing.T) {
 	if fi, _ := m.FileInfo(c.st.ID, 0); fi.Status != "proven" || !strings.HasPrefix(fi.Proof, "Verified") {
 		t.Fatalf("%s: %s", fi.Status, fi.Proof)
 	}
+}
+
+// Before a Verify has read anything (here: waiting for LucidLink's upload),
+// its file information shows the hash the copy stored, not "no hash" (v0.2.109).
+func TestVerifyShowsStoredHashWhileWaiting(t *testing.T) {
+	root := t.TempDir()
+	src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
+	makeTree(t, src, 0)
+	m := newManager(t, filepath.Join(root, "state"))
+	startRun(t, m)
+	c, err := m.Add(Spec{Source: src, Dest: dst})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitState(t, m, c.st.ID, "finished")
+	m.shareHook = func(string) string { return diskio.ShareLucid }
+	m.Lucid = &fakeLucid{left: 5e9, copies: func() int { return 0 }}
+	v, err := m.Add(Spec{Kind: KindVerify, Source: dst})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitState(t, m, v.st.ID, "waiting")
+	fi, err := m.FileInfo(v.st.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Hash.C == "" || fi.Hash.D1 != "" {
+		t.Fatalf("stored %q, read back %q", fi.Hash.C, fi.Hash.D1)
+	}
+	m.Stop(v.st.ID)
 }

@@ -99,6 +99,9 @@ func (m *Manager) addVerify(s Spec) (*Job, error) {
 	if src != root {
 		s2 = s.S2
 	}
+	if m.shareHook != nil {
+		v.Share = m.shareHook(root) // tests: as for a copy
+	}
 	cs := m.Settings()
 	now := time.Now()
 	id, err := m.newJobDir(now.Format("20060102-150405.000")) // its own folder, never another job's (v0.2.85)

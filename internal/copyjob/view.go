@@ -1157,6 +1157,11 @@ func (m *Manager) FileInfo(id string, i int) (FileInfo, error) {
 		}
 		return true
 	})
+	if spec.isVerify() && fi.Hash.C == "" && e.H != "" {
+		// v0.2.109: before a Verify has read anything, its stored hash is the
+		// one the copy made of the source; it was shown as missing.
+		fi.Hash.C = e.H
+	}
 	fi.Kind = spec.Kind
 	fi.Algo = normAlgo(spec.Algo)
 	fi.Rechecks = j.rechecksOf(i)
