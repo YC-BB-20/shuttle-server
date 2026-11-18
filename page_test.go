@@ -805,7 +805,7 @@ func TestPageV0_2_106(t *testing.T) {
 	}
 	// The page splits the server's LucidLink wait into lines: the two must keep the same shape.
 	b, err := os.ReadFile("internal/copyjob/lucid.go")
-	if err != nil || !strings.Contains(string(b), `"Waiting for LucidLink to finish uploading (" + humanBytes(n) + " left) before reading the copies back"`) {
+	if err != nil || !strings.Contains(string(b), `"Waiting for LucidLink to finish uploading (" + humanBytes(n) + " left) " + why`) {
 		t.Error("the LucidLink wait text changed: update waitLines in the page")
 	}
 }
@@ -821,9 +821,28 @@ func TestPageV0_2_107(t *testing.T) {
 
 func TestPageV0_2_108(t *testing.T) {
 	s := string(IndexHTML)
-	for _, want := range []string{`if (v.state === "waiting") return ["Waiting", "warn", waitShort(v.reason || "")];`, `return m ? m[1] + " left to upload" : r;`} {
+	for _, want := range []string{`if (v.state === "waiting") return ["Waiting", "warn", waitShort(v.reason || "")];`, `return m ? m[1] + " left" : r;`, `[lucidUp(v.reason) ? "Waiting for LucidLink to upload" : "Waiting", "warn", waitShort(v.reason || "")]`} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
 		}
+	}
+}
+
+func TestPageV0_2_110(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`<div id="lucidBox" hidden>`, `id="lrCloud" value="cloud"`, `id="lrCache" value="cache"`, `if (!$("lucidBox").hidden) body.lucid_read = $("lrCache").checked ? "cache" : "cloud";`,
+		`<section class="card" id="lucidSet">`, `lucid_read: (document.querySelector('input[name="lucidDef"]:checked') || { value: "cloud" }).value`,
+		`const onLucid = path => sideDisks.some(d => d.share === "lucidlink"`, `if (v.dest_share === "lucidlink" && v.lucid_read === "cache")`,
+		`const lucidUp = r => /^Waiting for LucidLink to (finish uploading \(|upload: )/.test(r || "");`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	// The State column reads LucidLink's two waits by their wording.
+	b, _ := os.ReadFile("internal/copyjob/lucid.go")
+	if !strings.Contains(string(b), `"Waiting for LucidLink to upload: " + humanBytes(n) + " waiting;`) {
+		t.Error("the LucidLink copy-pause text changed: update lucidUp and waitShort in the page")
 	}
 }

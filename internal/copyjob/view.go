@@ -62,6 +62,7 @@ type View struct {
 	Check       string      `json:"check,omitempty"`        // "none": copy only in this job
 	SourceShare string      `json:"source_share,omitempty"` // smb or lucidlink (v0.2.97)
 	DestShare   string      `json:"dest_share,omitempty"`
+	LucidRead   string      `json:"lucid_read,omitempty"`  // on LucidLink: "cloud" or "cache" (v0.2.110)
 	VerifyNext  string      `json:"verify_next,omitempty"` // "run" or "paused": a Verify job follows this copy
 	After       string      `json:"after,omitempty"`       // a Verify job that starts when this copy has finished
 	VerifyJob   string      `json:"verify_job,omitempty"`
@@ -100,6 +101,35 @@ type rateMemo struct {
 	rate     float64 // smoothed
 	sumWork  float64 // work done while running this run, in bytes
 	sumSec   float64 // seconds spent running this run, pauses left out
+	// v0.2.110: each disk's speed is measured over the last diskWindow, not
+	// one second: a slow share (LucidLink at 3 MB/s) moves a 16 MB piece every
+	// few seconds, so a one-second count kept dropping to nothing.
+	disk []diskSample // at most about diskWindow/1s entries
+}
+
+type diskSample struct {
+	t        time.Time
+	src, dst int64
+}
+
+const diskWindow = 15 * time.Second
+
+// diskRates adds a sample and returns each disk's bytes per second since the
+// newest sample at least diskWindow old (or the oldest kept).
+func (r *rateMemo) diskRates(now time.Time, s, d int64) (int64, int64) {
+	r.disk = append(r.disk, diskSample{now, s, d})
+	for len(r.disk) > 1 && now.Sub(r.disk[1].t) >= diskWindow {
+		r.disk = r.disk[1:]
+	}
+	if len(r.disk) > 32 { // never grows, whatever the clock does
+		r.disk = append(r.disk[:0:0], r.disk[len(r.disk)-32:]...)
+	}
+	b := r.disk[0]
+	dt := now.Sub(b.t).Seconds()
+	if dt <= 0 {
+		return 0, 0
+	}
+	return int64(float64(max(0, s-b.src)) / dt), int64(float64(max(0, d-b.dst)) / dt)
 }
 
 // progress is how far a job is, 0 to 1, counting the passes it makes: with
@@ -255,12 +285,13 @@ func (m *Manager) Views() []View {
 			r := memo[j]
 			if r == nil {
 				r = &rateMemo{t: now, src: j.srcBytes.Load(), dst: j.dstBytes.Load(), work: v.Progress * float64(st.Bytes)}
+				r.disk = []diskSample{{now, r.src, r.dst}}
 				memo[j] = r
 			}
 			work := v.Progress * float64(st.Bytes)
 			if dt := now.Sub(r.t).Seconds(); dt >= 1 {
 				s, d := j.srcBytes.Load(), j.dstBytes.Load()
-				r.sr, r.dr = int64(float64(s-r.src)/dt), int64(float64(d-r.dst)/dt)
+				r.sr, r.dr = r.diskRates(now, s, d)
 				if w := max(0, work-r.work) / dt; r.rate == 0 || dt > 10 { // fresh, or back from a pause
 					r.rate = w
 				} else {
@@ -306,7 +337,7 @@ func baseView(j *Job) (View, state, live) {
 		Kind: st.Spec.Kind, VerifyFile: st.Spec.File,
 		Created: st.Created, Finished: st.Finished, CopyRate: st.CopyRate, Phase: st.Phase, Files: st.Files, Bytes: st.Bytes, EstBytes: st.Spec.EstBytes, Skipped: st.Skipped, System: st.SystemSkipped,
 		Verified: c.Verified, Identical: c.Identical, Failed: c.Failed, Strong: c.Strong, S2Warn: c.S2Warn, Gone: c.Gone, Changed: c.Changed, Added: st.Added, AddedBytes: st.AddedBytes, CheckedAt: st.CheckedAt, CheckNote: st.CheckNote, Checking: j.checking.Load(), Copied: c.Copied, Hashed: c.Hashed,
-		Check: st.Spec.Check, SourceShare: st.Spec.SourceShare, DestShare: st.Spec.DestShare, VerifyNext: st.Spec.Verify, VerifyJob: st.VerifyJob, After: st.After,
+		Check: st.Spec.Check, SourceShare: st.Spec.SourceShare, DestShare: st.Spec.DestShare, LucidRead: st.Spec.LucidRead, VerifyNext: st.Spec.Verify, VerifyJob: st.VerifyJob, After: st.After,
 		Proven: c.BytesProven, SameVolume: st.SameVolume, Scanned: l.scanned, ScannedB: l.scannedBytes,
 		Progress: progress(st, c, l), Space: st.SpaceAsk, Error: st.Error, From: st.Spec.From, Hidden: st.Hidden}
 	v.CopiedPart, v.ProvenPart = layers(st, c, l)

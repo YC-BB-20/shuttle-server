@@ -833,6 +833,13 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
     <div class="lpos"><label class="opt"><input type="radio" name="delN" value="1"><span>Ask once</span></label><label class="opt"><input type="radio" name="delN" value="2"><span>Ask twice (recommended)</span></label></div>
     <p class="err" id="delErr"></p>
   </section>
+  <section class="card" id="lucidSet">
+    <h2>Copies to LucidLink</h2>
+    <p class="mute">How New copy reads a copy back when it goes to LucidLink. Each copy can choose for itself.</p>
+    <label class="opt"><input type="radio" name="lucidDef" value="cloud"><span>Download it from LucidLink once uploaded (strongest: proves the copy in the cloud)</span></label>
+    <label class="opt"><input type="radio" name="lucidDef" value="cache"><span>Read LucidLink's cache on this Mac, then wait for the upload (no download)</span></label>
+    <p class="err" id="lucidErr"></p>
+  </section>
   <section class="card" id="layoutSet">
     <h2>Folder layout</h2>
     <label class="opt"><input type="checkbox" id="wrapDef"><span>Put new copies inside a wrapper folder: destination / wrapper / source folder</span></label>
@@ -953,6 +960,11 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
         <label class="opt"><input type="radio" name="when" id="whenEnd"><span>After all files are copied</span></label>
       </div>
       <label class="opt"><input type="checkbox" id="ckSep"><span>Check in a separate queue item, after the copy</span></label>
+      <div id="lucidBox" hidden>
+        <label>Reading the copy back on LucidLink</label>
+        <label class="opt"><input type="radio" name="lucidRead" id="lrCloud" value="cloud"><span>Download it from LucidLink once uploaded: proves the copy in the cloud (downloads it all once)</span></label>
+        <label class="opt"><input type="radio" name="lucidRead" id="lrCache" value="cache"><span>Read LucidLink's cache on this Mac, then wait until LucidLink says it is all uploaded (no download)</span></label>
+      </div>
       <label class="opt in"><input type="checkbox" id="ckPaused"><span>Add that item paused, to start when you choose</span></label>
     </div>
     <label>Folder layout</label>
@@ -1428,6 +1440,7 @@ $("startBtn").onclick = async () => {
   const proof = !dest ? { check: "none" } : $("ckSep").checked ? { check: "none", verify: $("ckPaused").checked ? "paused" : "run", s2 } :
     { hash: $("whenEnd").checked ? "later" : "copy", s2 };
   const body = Object.assign({ source: $("src").value, only: srcOnly }, proof);
+  if (!$("lucidBox").hidden) body.lucid_read = $("lrCache").checked ? "cache" : "cloud"; // used only for destinations on LucidLink
   if ($("ckWrap").checked) Object.assign(body, { wrap: true, wrap_name: $("wrapName").value.trim(), wrap_hash: $("ckWrapHash").checked });
   const p0 = $("src").value.trim();
   if (lastCount && lastCount.key === p0 + "\n" + (p0 === srcOnlyAt ? srcOnly : []).join("\n")) { body.est_bytes = lastCount.bytes; body.est_files = lastCount.files; }
@@ -1962,7 +1975,8 @@ function openFullLog() {
 function shareNotes(v) {
   const n = [];
   if (v.dest_share === "smb") n.push("The destination is a network share: each copy is read back from the share over the network. If the share is a CTERA Edge Filer, the filer uploads to the CTERA cloud by itself afterwards. Shuttle cannot see that upload, so check the filer's sync status before deleting the source.");
-  if (v.dest_share === "lucidlink") n.push("The destination is LucidLink: every file is copied first. The copies are read back only once LucidLink says nothing is left to upload and its cache on this Mac is cleared, so what is read comes from LucidLink's storage. Until then they count as written, not proven.");
+  if (v.dest_share === "lucidlink" && v.lucid_read === "cache") n.push("The destination is LucidLink, read back from its cache on this Mac (chosen for this copy): every file is copied first and read back at once, then the copy waits until LucidLink says nothing is left to upload. This proves the copy on this Mac and that LucidLink reports it uploaded; the copy in LucidLink's storage is not read.");
+  else if (v.dest_share === "lucidlink") n.push("The destination is LucidLink: every file is copied first. The copies are read back only once LucidLink says nothing is left to upload and its cache on this Mac is cleared, so what is read comes from LucidLink's storage. Until then they count as written, not proven.");
   if (v.source_share === "lucidlink" && v.s2 === "now") n.push("The source is LucidLink: its second read comes from LucidLink's cache on this Mac, not from LucidLink's storage (nothing is downloaded again for it).");
   return n;
 }
@@ -1971,6 +1985,7 @@ function proofScheme(v) {
   if (v.kind === "verify") return verKind(v);
   if (v.kind === "link") return (v.files > 1 ? "Each file downloaded" : "Downloaded") + ", size checked, read back from the disk and hashed";
   if (v.check === "none") return "Copied, hash generated";
+  if (v.dest_share === "lucidlink" && v.lucid_read === "cache") return "Copied first; read back from LucidLink's cache on this Mac, then waits for the upload" + (v.s2 === "now" ? ", source read a second time" : "");
   if (v.dest_share === "lucidlink") return "Copied first; read back once LucidLink has uploaded everything" + (v.s2 === "now" ? ", source read a second time" : "");
   return v.s2 === "now" ? "Copy read back, source read a second time" : "Copy read back";
 }
@@ -2044,10 +2059,12 @@ function waitLines(r) {
   if (m) return "Waiting for LucidLink\n" + m[1] + " left to upload\n" + m[2];
   return /^waiting\b/i.test(r) ? r : "Waiting · " + r;
 }
-// The State column's small line under "Waiting": for LucidLink, how much is left to upload.
+// The State column for a LucidLink upload wait (v0.2.110): "Waiting for LucidLink to
+// upload" over how much is left; any other wait: "Waiting" over its reason.
+const lucidUp = r => /^Waiting for LucidLink to (finish uploading \(|upload: )/.test(r || "");
 function waitShort(r) {
-  const m = /^Waiting for LucidLink to finish uploading \((.+?) left\)/.exec(r);
-  return m ? m[1] + " left to upload" : r;
+  const m = /^Waiting for LucidLink to finish uploading \((.+?) left\)/.exec(r) || /^Waiting for LucidLink to upload: (.+?) waiting/.exec(r);
+  return m ? m[1] + " left" : r;
 }
 const problemShort = v => [v.failed && v.failed + " failed", v.gone && v.gone + " deleted", v.changed && v.changed + " changed",
   v.added && v.added + " added", v.s2_warnings && v.s2_warnings + " source warnings"].filter(Boolean).join(" · ");
@@ -2065,7 +2082,7 @@ function stateShort(v, problems, pc, ver, scanning) {
   if (v.missing) return ["Disk not connected", "bad", v.reason || ""];
   if (v.state === "running" && scanning) return [ver ? "Reading hashes" : "Listing files", "run", v.scanned + " files so far"];
   if (v.state === "running") return [(ver ? "Checking " : "") + pc, "run", [rate(ver ? v.rate : v.copy_rate), v.eta_seconds ? clock(v.eta_seconds * 1000) + " left" : ""].filter(Boolean).join(" · ")];
-  if (v.state === "waiting") return ["Waiting", "warn", waitShort(v.reason || "")];
+  if (v.state === "waiting") return [lucidUp(v.reason) ? "Waiting for LucidLink to upload" : "Waiting", "warn", waitShort(v.reason || "")];
   if (v.state === "paused") return v.space ? ["Needs your answer", "warn", "may not fit"] : v.errors ? ["Needs your answer", "warn", v.errors.failed + " failed"] : ["Paused", "", pc];
   if (v.state === "queued") return [v.id === queueNext ? "Next" : "Waiting its turn", "", v.after ? "after its copy" : ""];
   if (v.state === "stopped") return ["Stopped", "", done2];
@@ -2463,6 +2480,7 @@ function showSet(c) {
   $("onRuleN").textContent = SAFE_COPIES() === 1 ? "1 copy" : SAFE_COPIES() + " copies";
   $("delOn").checked = !!c.delete_on; $("delShares").checked = !!c.delete_shares; $("delShares").disabled = !c.delete_on;
   document.querySelectorAll('input[name="delN"]').forEach(r => { r.checked = +r.value === (c.delete_confirms === 1 ? 1 : 2); });
+  document.querySelectorAll('input[name="lucidDef"]').forEach(r => { r.checked = r.value === (c.lucid_read === "cache" ? "cache" : "cloud"); });
   if (typeof fbTray === "function") fbTray();
   if (was !== SAFE_COPIES() && latest) renderOnset(latest.jobs || []);
 }
@@ -2472,7 +2490,16 @@ function showLayout(c) {
   $("wrapHashDef").disabled = !c.wrap;
 }
 // New copy starts from the Settings defaults each time it opens.
+// v0.2.110: the LucidLink read-back choice shows only when a destination is on LucidLink.
+const onLucid = path => sideDisks.some(d => d.share === "lucidlink" && path && (path === d.path || path.startsWith(d.path.replace(/\/$/, "") + "/")));
+function lucidBoxShow() {
+  const dests = [$("dst").value].concat(moreDsts().map(i => i.value)).map(d => d.trim());
+  $("lucidBox").hidden = !$("ckDest").checked || !dests.some(onLucid);
+}
+$("newDlg").addEventListener("input", lucidBoxShow); $("newDlg").addEventListener("change", lucidBoxShow);
+$("pickDlg").addEventListener("close", lucidBoxShow);
 function layoutDefaults() {
+  $(copySet.lucid_read === "cache" ? "lrCache" : "lrCloud").checked = true; setTimeout(lucidBoxShow);
   $("ckWrap").checked = !!copySet.wrap; $("ckWrapHash").checked = !!copySet.wrap_hash; $("wrapName").value = "";
   wrapShow();
 }
@@ -2483,18 +2510,20 @@ function wrapShow() {
 $("ckWrap").onchange = wrapShow;
 function loadSys() { fetch("/api/settings/copy").then(r => r.json()).then(showSet).catch(() => {}); }
 function saveSys(errBox) {
-  $("sysErr").textContent = ""; $("hashErr").textContent = ""; $("layoutErr").textContent = ""; $("safeErr").textContent = ""; $("delErr").textContent = "";
+  $("sysErr").textContent = ""; $("hashErr").textContent = ""; $("layoutErr").textContent = ""; $("safeErr").textContent = ""; $("delErr").textContent = ""; $("lucidErr").textContent = "";
   const algo = document.querySelector('input[name="hashAlgo"]:checked');
   post("/api/settings/copy", Object.assign({}, copySet, { skip_system_files: $("skipSys").checked, skip_appledouble_files: $("skipSys").checked && $("skipDot").checked, hash: algo ? algo.value : "xxh128",
     wrap: $("wrapDef").checked, wrap_hash: $("wrapDef").checked && $("wrapHashDef").checked, wrap_name_from: (document.querySelector('input[name="wrapFrom"]:checked') || { value: "folder" }).value,
     safe_copies: +(document.querySelector('input[name="safeN"]:checked') || { value: SAFE_COPIES() }).value,
     delete_on: $("delOn").checked, delete_shares: $("delOn").checked && $("delShares").checked,
-    delete_confirms: +(document.querySelector('input[name="delN"]:checked') || { value: 2 }).value }))
+    delete_confirms: +(document.querySelector('input[name="delN"]:checked') || { value: 2 }).value,
+    lucid_read: (document.querySelector('input[name="lucidDef"]:checked') || { value: "cloud" }).value }))
     .then(showSet).catch(e => { $(errBox).textContent = e.message; loadSys(); });
 }
 $("skipSys").onchange = $("skipDot").onchange = () => saveSys("sysErr"); document.querySelectorAll('input[name="hashAlgo"]').forEach(r => { r.onchange = () => saveSys("hashErr"); });
 $("wrapDef").onchange = $("wrapHashDef").onchange = () => saveSys("layoutErr"); document.querySelectorAll('input[name="wrapFrom"]').forEach(r => { r.onchange = () => saveSys("layoutErr"); });
 document.querySelectorAll('input[name="safeN"]').forEach(r => { r.onchange = () => saveSys("safeErr"); });
+document.querySelectorAll('input[name="lucidDef"]').forEach(r => { r.onchange = () => saveSys("lucidErr"); });
 $("delOn").onchange = $("delShares").onchange = () => saveSys("delErr"); document.querySelectorAll('input[name="delN"]').forEach(r => { r.onchange = () => saveSys("delErr"); });
 loadSys();
 

@@ -776,7 +776,7 @@ func (j *Job) run(ctx context.Context, e env, accepting func() bool) error {
 		j.mu.Unlock()
 		j.save()
 	}
-	if j.st.Phase == "check" && j.st.Spec.Lucid {
+	if j.st.Phase == "check" && j.st.Spec.Lucid && !j.st.Spec.fromCache() {
 		if err := j.lucidReady(ctx, e); err != nil {
 			return err
 		}
@@ -786,6 +786,13 @@ func (j *Job) run(ctx context.Context, e env, accepting func() bool) error {
 			return err
 		}
 		jr.Flush()
+		if j.st.Spec.fromCache() {
+			// Read back from the cache: done only once LucidLink has uploaded it all.
+			// After a restart the check above finds its files already done.
+			if err := j.lucidUploaded(ctx, e); err != nil {
+				return err
+			}
+		}
 		j.mu.Lock()
 		j.st.Phase = "s2"
 		j.mu.Unlock()

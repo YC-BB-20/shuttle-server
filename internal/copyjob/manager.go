@@ -269,6 +269,7 @@ func (m *Manager) add(s Spec, d *Draft) (*Job, error) {
 	}
 	s.SourceShare, s.DestShare = sv.Share, dv.Share
 	s.Lucid = dv.Share == diskio.ShareLucid
+	s.LucidRead = lucidReadFor(s.Lucid, s.LucidRead, m.Settings().LucidRead)
 	if s.Lucid {
 		// v0.2.98: a copy on LucidLink is read back only after everything is
 		// uploaded, so the whole folder is copied first and checked after.

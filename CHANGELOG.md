@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.110 — 17 November 2026
+
+- **Copies to LucidLink: choose how the copy is read back.** In New copy (shown when a destination is on LucidLink), with a default in Settings → Copies to LucidLink:
+  - **Download it from LucidLink once uploaded** (the default, as before): proves the copy in the cloud, but downloads it all once.
+  - **Read LucidLink's cache on this Mac, then wait for the upload:** no download. The copy is read back at once from the cache, and the copy or Verify finishes only when LucidLink says nothing is left to upload. The copy's notes say plainly that the cloud copy itself was not read.
+- **The State column names LucidLink's wait:** "Waiting for LucidLink to upload", with how much is left under it.
+- **The top box keeps each drive's speed** steady: it is measured over the last 15 seconds, so a slow LucidLink upload no longer makes it disappear and come back.
+
 ## 0.2.109 — 17 November 2026
 
 - **A Verify that has not started reading yet** (for example while it waits for LucidLink's upload) now shows, for each file, the hash the copy made of the source when it was copied. It said "No hash was stored for this file", which was wrong.

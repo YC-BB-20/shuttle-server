@@ -41,10 +41,26 @@ type Settings struct {
 	DeleteOn       bool `json:"delete_on"`
 	DeleteShares   bool `json:"delete_shares"`
 	DeleteConfirms int  `json:"delete_confirms"`
+	// LucidRead (v0.2.110) is how copies to LucidLink are read back unless
+	// New copy says otherwise: "cloud" (the default) or "cache".
+	LucidRead string `json:"lucid_read"`
 }
 
 // DefaultSettings are used until the owner saves a choice.
-var DefaultSettings = Settings{FormatVersion: 1, SkipSystem: true, Hash: AlgoXXH128, WrapNameFrom: "folder", SafeCopies: 2, DeleteConfirms: 2}
+var DefaultSettings = Settings{FormatVersion: 1, SkipSystem: true, Hash: AlgoXXH128, WrapNameFrom: "folder", SafeCopies: 2, DeleteConfirms: 2, LucidRead: LucidReadCloud}
+
+// How a copy on LucidLink is read back (Spec.LucidRead).
+const (
+	LucidReadCloud = "cloud"
+	LucidReadCache = "cache"
+)
+
+func normLucidRead(r string) string {
+	if r == LucidReadCache {
+		return r
+	}
+	return LucidReadCloud
+}
 
 func normConfirms(n int) int {
 	if n != 1 {
@@ -81,6 +97,7 @@ func (m *Manager) Settings() Settings {
 		s.WrapNameFrom = normWrapFrom(s.WrapNameFrom)
 		s.SafeCopies = normSafe(s.SafeCopies)
 		s.DeleteConfirms = normConfirms(s.DeleteConfirms)
+		s.LucidRead = normLucidRead(s.LucidRead)
 		m.set = &s
 	}
 	return *m.set
@@ -93,6 +110,7 @@ func (m *Manager) SetSettings(s Settings) (Settings, error) {
 	s.WrapNameFrom = normWrapFrom(s.WrapNameFrom)
 	s.SafeCopies = normSafe(s.SafeCopies)
 	s.DeleteConfirms = normConfirms(s.DeleteConfirms)
+	s.LucidRead = normLucidRead(s.LucidRead)
 	if !s.DeleteOn {
 		s.DeleteShares = false // the second switch only means something with the first
 	}

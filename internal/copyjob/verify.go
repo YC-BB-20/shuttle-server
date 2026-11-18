@@ -110,7 +110,7 @@ func (m *Manager) addVerify(s Spec) (*Job, error) {
 	}
 	j := &Job{dir: filepath.Join(m.Dir, id), st: state{FormatVersion: FormatVersion, ID: id, Created: now, Choice: choice, Phase: "scan",
 		Spec: Spec{Kind: KindVerify, Source: src, Dest: root, S2: s2, File: file, From: from, SkipSystem: cs.SkipSystem, SkipAppleDouble: cs.SkipSystem && cs.SkipAppleDouble, Algo: normAlgo(cs.Hash),
-			Lucid: v.Share == diskio.ShareLucid, DestShare: v.Share},
+			Lucid: v.Share == diskio.ShareLucid, DestShare: v.Share, LucidRead: lucidReadFor(v.Share == diskio.ShareLucid, s.LucidRead, cs.LucidRead)},
 		SourceVol: srcVol, DestVol: v.ID, SameVolume: srcVol == v.ID && src != root}}
 	if err := j.save(); err != nil {
 		return nil, err
@@ -156,7 +156,7 @@ func (m *Manager) queueVerify(cj *Job) {
 			after = st.ID
 		}
 		j := &Job{dir: filepath.Join(m.Dir, id), st: state{FormatVersion: FormatVersion, ID: id, Created: time.Now(), Choice: choice, Phase: "scan", After: after,
-			Spec:      Spec{Kind: KindVerify, Source: src, Dest: st.Spec.Dest, S2: st.Spec.S2, From: []string{st.ID}, SkipSystem: st.Spec.SkipSystem, SkipAppleDouble: st.Spec.SkipAppleDouble, Algo: st.Spec.Algo, Lucid: st.Spec.Lucid, DestShare: st.Spec.DestShare, SourceShare: st.Spec.SourceShare},
+			Spec:      Spec{Kind: KindVerify, Source: src, Dest: st.Spec.Dest, S2: st.Spec.S2, From: []string{st.ID}, SkipSystem: st.Spec.SkipSystem, SkipAppleDouble: st.Spec.SkipAppleDouble, Algo: st.Spec.Algo, Lucid: st.Spec.Lucid, LucidRead: st.Spec.LucidRead, DestShare: st.Spec.DestShare, SourceShare: st.Spec.SourceShare},
 			SourceVol: srcVol, DestVol: st.DestVol, SameVolume: srcVol == st.DestVol}}
 		if err := os.MkdirAll(j.dir, 0o700); err != nil {
 			m.Log.Error("could not queue the Verify job for a copy", "job", st.ID, "err", err)
@@ -502,7 +502,7 @@ func (j *Job) runVerify(ctx context.Context, e env, accepting func() bool) error
 		j.mu.Unlock()
 		j.save()
 	}
-	if j.st.Phase == "verify" && j.st.Spec.Lucid {
+	if j.st.Phase == "verify" && j.st.Spec.Lucid && !j.st.Spec.fromCache() {
 		if err := j.lucidReady(ctx, e); err != nil {
 			return err
 		}
@@ -512,6 +512,11 @@ func (j *Job) runVerify(ctx context.Context, e env, accepting func() bool) error
 			return err
 		}
 		jr.Flush()
+		if j.st.Spec.fromCache() {
+			if err := j.lucidUploaded(ctx, e); err != nil {
+				return err
+			}
+		}
 		if j.st.Spec.S2 == S2After && j.st.Spec.readsSource() {
 			j.mu.Lock()
 			j.st.Phase = "source"

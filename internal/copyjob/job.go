@@ -81,6 +81,13 @@ type Spec struct {
 	// LucidLink's mount. It is read back only once LucidLink says nothing is
 	// left to upload and its cache is cleared (DESIGN.md section 19).
 	Lucid bool `json:"lucid,omitempty"`
+	// LucidRead (v0.2.110), for a copy or Verify on LucidLink: "cloud" waits
+	// for the upload, clears LucidLink's cache and reads the copy back from
+	// LucidLink's storage (a download; the default); "cache" reads it back
+	// from LucidLink's cache on this computer at once, then waits until
+	// LucidLink says everything is uploaded. "" in a request means the
+	// Settings default.
+	LucidRead string `json:"lucid_read,omitempty"`
 	// SourceShare and DestShare (v0.2.97): diskio.ShareSMB or ShareLucid
 	// when that side is a network share, so the page can say what the
 	// read-back proves there.

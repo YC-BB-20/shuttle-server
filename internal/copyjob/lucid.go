@@ -19,6 +19,22 @@ var (
 	lucidEvery = 10 * time.Second // how often a copy asks before its next file
 )
 
+// lucidReadFor is how a new copy or Verify reads back: only on LucidLink,
+// as asked, or else as Settings say.
+func lucidReadFor(lucid bool, asked, def string) string {
+	if !lucid {
+		return ""
+	}
+	if asked == "" {
+		asked = def
+	}
+	return normLucidRead(asked)
+}
+
+// fromCache: the copy is read back from LucidLink's cache on this computer
+// (Spec.LucidRead "cache"), and lucidUploaded is waited for afterwards.
+func (s Spec) fromCache() bool { return s.Lucid && s.LucidRead == LucidReadCache }
+
 // lucidReady holds the read-back of copies on LucidLink until LucidLink says
 // nothing written on this computer is waiting to upload, then clears its
 // cache, so what is read back comes from LucidLink's storage and not from
@@ -26,6 +42,22 @@ var (
 // only this computer's cache, so nothing is called verified meanwhile. If
 // LucidLink cannot be asked, the job waits and says why; it never guesses.
 func (j *Job) lucidReady(ctx context.Context, e env) error {
+	return j.lucidWait(ctx, e, true)
+}
+
+// lucidUploaded (v0.2.110, LucidRead "cache") waits, after the copies were
+// read back from the cache, until LucidLink says nothing written on this
+// computer is left to upload. The cache is not cleared. Until then the job
+// is not finished.
+func (j *Job) lucidUploaded(ctx context.Context, e env) error {
+	return j.lucidWait(ctx, e, false)
+}
+
+func (j *Job) lucidWait(ctx context.Context, e env, drop bool) error {
+	why := "before reading the copies back"
+	if !drop {
+		why = "after checking the copies on this Mac"
+	}
 	logged := ""
 	say := func(reason string) {
 		j.setLive(func(l *live) { l.reason = reason })
@@ -36,15 +68,21 @@ func (j *Job) lucidReady(ctx context.Context, e env) error {
 	}
 	for {
 		if e.lucid == nil {
-			say("Waiting to check the copies: Shuttle cannot ask LucidLink what is left to upload")
+			say("Waiting for LucidLink: Shuttle cannot ask LucidLink what is left to upload")
 		} else if n, err := e.lucid.Waiting(ctx); err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			say("Waiting to check the copies: " + err.Error())
+			say("Waiting for LucidLink: " + err.Error())
 		} else if n > 0 {
 			// The page splits this text into three lines (waitLines, v0.2.106): keep its shape.
-			say("Waiting for LucidLink to finish uploading (" + humanBytes(n) + " left) before reading the copies back")
+			say("Waiting for LucidLink to finish uploading (" + humanBytes(n) + " left) " + why)
+		} else if !drop {
+			j.setLive(func(l *live) { l.reason = "" })
+			if e.log != nil {
+				e.log.Info("LucidLink has uploaded everything; the copies were read back from its cache on this computer", "job", j.st.ID)
+			}
+			return nil
 		} else if err := e.lucid.Drop(ctx); err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()

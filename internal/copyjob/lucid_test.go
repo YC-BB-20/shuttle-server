@@ -95,7 +95,7 @@ func TestCopyToLucidLinkReadsBackAfterUpload(t *testing.T) {
 	cmu.Unlock()
 
 	fl.set(0, true) // room again, but LucidLink cannot be asked: copying goes on, the check waits
-	v := waitReason(t, m, j.st.ID, "Waiting to check the copies")
+	v := waitReason(t, m, j.st.ID, "Waiting for LucidLink:")
 	cmu.Lock()
 	if copies != len(files) {
 		t.Fatalf("want every file copied before the check, got %d of %d", copies, len(files))
@@ -182,4 +182,100 @@ func TestLucidLinkSourceSecondReadUsesCache(t *testing.T) {
 		t.Fatalf("LucidLink's cache was dropped %d times for a LucidLink source", fl.drops)
 	}
 	checkDest(t, dst, files)
+}
+
+// v0.2.110, "read the cache": a copy to LucidLink is read back at once from
+// the cache on this computer, never clears the cache, and is finished only
+// when LucidLink says nothing is left to upload.
+func TestCopyToLucidLinkFromCache(t *testing.T) {
+	oldPoll, oldEvery := lucidPoll, lucidEvery
+	lucidPoll, lucidEvery = 5*time.Millisecond, 0
+	t.Cleanup(func() { lucidPoll, lucidEvery = oldPoll, oldEvery })
+	root := t.TempDir()
+	src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
+	files := makeTree(t, src, 1<<20)
+	m := newManager(t, filepath.Join(root, "state"))
+	fl := &fakeLucid{left: 3e9, copies: func() int { return 0 }}
+	m.Lucid, m.LucidMax = fl, 0 // no copy pause: only the upload wait is tested
+	m.shareHook = func(string) string { return diskio.ShareLucid }
+	startRun(t, m)
+	j, err := m.Add(Spec{Source: src, Dest: dst, LucidRead: LucidReadCache})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j.st.Spec.LucidRead != LucidReadCache {
+		t.Fatalf("spec %+v", j.st.Spec)
+	}
+	v := waitReason(t, m, j.st.ID, "after checking the copies on this Mac")
+	if v.Verified != len(files) {
+		t.Fatalf("copies not read back from the cache before the upload finished: verified %d strong %d copied %d proven %d phase? stage %q", v.Verified, v.Strong, v.Copied, v.Proven, v.Stage)
+	}
+	fl.set(0, false)
+	v = waitState(t, m, j.st.ID, "finished")
+	if v.Strong != len(files) || v.Failed != 0 || v.LucidRead != LucidReadCache {
+		t.Fatalf("%+v", v)
+	}
+	fl.mu.Lock()
+	defer fl.mu.Unlock()
+	if fl.drops != 0 {
+		t.Fatal("the cache was cleared")
+	}
+	checkDest(t, dst, files)
+
+	// A request that does not say uses the Settings default; not on LucidLink it is empty.
+	m.SetSettings(Settings{LucidRead: LucidReadCache})
+	if got := lucidReadFor(true, "", m.Settings().LucidRead); got != LucidReadCache {
+		t.Fatalf("default %q", got)
+	}
+	if got := lucidReadFor(false, LucidReadCache, LucidReadCache); got != "" {
+		t.Fatalf("not on LucidLink: %q", got)
+	}
+	if DefaultSettings.LucidRead != LucidReadCloud {
+		t.Fatal("the default must stay the download from LucidLink")
+	}
+}
+
+// The same for a check in its own Verify item after the copy: the choice is
+// carried over, the Verify reads the cache at once and finishes only after
+// the upload (v0.2.110).
+func TestSeparateVerifyOnLucidLinkFromCache(t *testing.T) {
+	oldPoll, oldEvery := lucidPoll, lucidEvery
+	lucidPoll, lucidEvery = 5*time.Millisecond, 0
+	t.Cleanup(func() { lucidPoll, lucidEvery = oldPoll, oldEvery })
+	root := t.TempDir()
+	src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
+	files := makeTree(t, src, 0)
+	m := newManager(t, filepath.Join(root, "state"))
+	fl := &fakeLucid{left: 3e9, copies: func() int { return 0 }}
+	m.Lucid = fl
+	m.shareHook = func(string) string { return diskio.ShareLucid }
+	startRun(t, m)
+	c, err := m.Add(Spec{Source: src, Dest: dst, Check: "none", Verify: "run", S2: "now", LucidRead: LucidReadCache})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitState(t, m, c.st.ID, "finished")
+	var vid string
+	for _, v := range m.Views() {
+		if v.Kind == KindVerify {
+			vid = v.ID
+		}
+	}
+	if vid == "" {
+		t.Fatal("no Verify item")
+	}
+	v := waitReason(t, m, vid, "after checking the copies on this Mac")
+	if v.LucidRead != LucidReadCache {
+		t.Fatalf("choice not carried over: %+v", v.LucidRead)
+	}
+	fl.set(0, false)
+	v = waitState(t, m, vid, "finished")
+	if v.Verified != len(files) || v.Failed != 0 {
+		t.Fatalf("verified %d failed %d", v.Verified, v.Failed)
+	}
+	fl.mu.Lock()
+	defer fl.mu.Unlock()
+	if fl.drops != 0 {
+		t.Fatal("the cache was cleared")
+	}
 }
