@@ -48,7 +48,32 @@ const maxListed = 2000
 var (
 	volMu      sync.Mutex
 	volPending = map[string]bool{}
+	// volShare is the last answer for a share's own mount point (v0.2.103).
+	// A busy share (LucidLink while it uploads) can take longer than the
+	// time limit to answer; it is shown as it was rather than dropped from
+	// the list. Only shares: a disk that stops answering still shows as
+	// not responding at once.
+	volShare = map[string]shareSeen{}
 )
+
+type shareSeen struct {
+	v  diskio.Volume
+	at time.Time
+}
+
+// shareGrace is how long a share's last answer stands in for a slow one.
+var shareGrace = 2 * time.Minute
+
+func busyShare(p string) (diskio.Volume, bool) {
+	volMu.Lock()
+	defer volMu.Unlock()
+	if s, ok := volShare[p]; ok && time.Since(s.at) < shareGrace {
+		return s.v, true
+	}
+	return diskio.Volume{}, false
+}
+
+var ()
 
 // volume reports the volume holding p; hung is true when the lookup did not
 // answer in time (or an earlier one still has not).
@@ -56,6 +81,9 @@ func volume(p string, wait time.Duration) (v diskio.Volume, ok, hung bool) {
 	volMu.Lock()
 	if volPending[p] {
 		volMu.Unlock()
+		if v, ok := busyShare(p); ok {
+			return v, true, false
+		}
 		return diskio.Volume{}, false, true
 	}
 	volPending[p] = true
@@ -69,12 +97,25 @@ func volume(p string, wait time.Duration) (v diskio.Volume, ok, hung bool) {
 		if err != nil {
 			v = diskio.Volume{}
 		}
+		volMu.Lock()
+		if v.Share != "" && v.Mount == p {
+			if len(volShare) > 50 {
+				clear(volShare)
+			}
+			volShare[p] = shareSeen{v, time.Now()}
+		} else {
+			delete(volShare, p) // unmounted, or no longer a share: never shown from memory
+		}
+		volMu.Unlock()
 		ch <- v
 	}()
 	select {
 	case v := <-ch:
 		return v, v.Mount != "", false
 	case <-time.After(wait):
+		if v, ok := busyShare(p); ok {
+			return v, true, false
+		}
 		return diskio.Volume{}, false, true
 	}
 }

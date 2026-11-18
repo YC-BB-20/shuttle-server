@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseDirty(t *testing.T) {
@@ -19,13 +20,22 @@ func TestParseDirty(t *testing.T) {
 		"0\n":                        0,
 		"  52428800  \n":             52428800,
 		"Cache:\ndirtyBytes: 77 B\n": 77,
+		// LucidLink 3 on macOS, seen on the owner's Mac (v0.2.103)
+		"-- time --             -- cache -- \ncurrentDateAndTimeUTC  dirtyBytes  \n2026-11-18T00:42:41Z   0B          \n2026-11-18T00:42:43Z   5GiB\n": 0,
+		"-- time -- -- cache --\ncurrentDateAndTimeUTC dirtyBytes\n2026-11-18T00:42:41Z 1.5GiB\n":                                                      3 << 29,
+		"currentDateAndTimeUTC  dirtyBytes\n2026-11-18T00:42:41Z   512KiB\n":                                                                           512 << 10,
 	} {
 		got, ok := parseDirty(out)
 		if !ok || got != want {
 			t.Errorf("%q: got %d %v, want %d", out, got, ok, want)
 		}
 	}
-	for _, out := range []string{"", "error: not linked", "12\n34\n", "dirty", "1.5\n", "dirtyBytes: lots"} {
+	for _, out := range []string{"", "error: not linked", "12\n34\n", "dirty", "1.5\n", "dirtyBytes: lots",
+		// the table's heading alone, a row that does not read, and never the year of a timestamp
+		"-- time --             -- cache -- \ncurrentDateAndTimeUTC  dirtyBytes  \n",
+		"currentDateAndTimeUTC  dirtyBytes\n2026-11-18T00:42:41Z   lots\n",
+		"currentDateAndTimeUTC  dirtyBytes\n2026-11-18T00:42:41Z\n",
+		"dirtyBytes\n2026-11-18T00:42:41Z 0B\n"} {
 		if n, ok := parseDirty(out); ok {
 			t.Errorf("%q: read as %d, should not be understood", out, n)
 		}
@@ -66,6 +76,13 @@ func TestFindAndRun(t *testing.T) {
 	c := New(p)
 	if n, err := c.Waiting(context.Background()); err != nil || n != 42 {
 		t.Fatalf("%d %v", n, err)
+	}
+	// LucidLink 3: a heading, then a row every 2 seconds, never stopping.
+	// The first row is read and the command stopped, well within the limit.
+	os.WriteFile(p, []byte("#!/bin/sh\necho '-- time --  -- cache --'\necho 'currentDateAndTimeUTC  dirtyBytes'\nwhile true; do echo '2026-11-18T00:42:41Z   3MiB'; sleep 2; done\n"), 0o755)
+	start := time.Now()
+	if n, err := c.Waiting(context.Background()); err != nil || n != 3<<20 || time.Since(start) > 5*time.Second {
+		t.Fatalf("streaming table: %d %v after %v", n, err, time.Since(start))
 	}
 	os.WriteFile(p, []byte("#!/bin/sh\nsleep 60\n"), 0o755)
 	old := Timeout

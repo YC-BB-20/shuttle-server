@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -83,10 +84,14 @@ type Client struct {
 	Set string // the command named in the config; "" finds it
 	Cmd string // the command found; looked for again while empty, so LucidLink installed later is found
 	Run func(ctx context.Context, cmd string, args ...string) (string, error)
+	// Stream runs a command that keeps printing (LucidLink 3's "perf" prints
+	// a row every 2 seconds and never stops) until done is true of the
+	// complete lines so far, then stops it. nil: Run is used (v0.2.103).
+	Stream func(ctx context.Context, done func(string) bool, cmd string, args ...string) (string, error)
 }
 
 // New finds the command (set may name it) and returns a client.
-func New(set string) *Client { return &Client{Set: set, Cmd: Find(set), Run: run} }
+func New(set string) *Client { return &Client{Set: set, Cmd: Find(set), Run: run, Stream: runUntil} }
 
 func (c *Client) cmd() string {
 	if c.Cmd == "" {
@@ -111,10 +116,44 @@ func run(ctx context.Context, cmd string, args ...string) (string, error) {
 	return out.String(), err
 }
 
-// capped keeps the first maxOut bytes written to it.
-type capped struct{ b bytes.Buffer }
+// runUntil is run for a command that keeps printing: once done is true of
+// the complete lines printed so far, the command's whole process group is
+// stopped and those lines are returned.
+func runUntil(ctx context.Context, done func(string) bool, cmd string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, Timeout)
+	defer cancel()
+	stop, stopped := context.WithCancel(ctx)
+	defer stopped()
+	c := exec.CommandContext(stop, cmd, args...)
+	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	c.Cancel = func() error { return syscall.Kill(-c.Process.Pid, syscall.SIGKILL) }
+	c.WaitDelay = 2 * time.Second
+	out := &capped{done: done, stop: stopped}
+	c.Stdout, c.Stderr = out, out
+	err := c.Run()
+	if lines, ok := out.answered(); ok {
+		return lines, nil
+	}
+	if ctx.Err() != nil {
+		return out.String(), errors.New("LucidLink's command did not answer in time")
+	}
+	return out.String(), err
+}
+
+// capped keeps the first maxOut bytes written to it. With done set, it
+// calls stop once done is true of the complete lines so far.
+type capped struct {
+	mu   sync.Mutex
+	b    bytes.Buffer
+	done func(string) bool
+	stop func()
+	hit  string
+	ok   bool
+}
 
 func (c *capped) Write(p []byte) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if room := maxOut - c.b.Len(); room > 0 {
 		if len(p) > room {
 			c.b.Write(p[:room])
@@ -122,10 +161,27 @@ func (c *capped) Write(p []byte) (int, error) {
 			c.b.Write(p)
 		}
 	}
+	if c.done != nil && !c.ok {
+		s := c.b.String()
+		if lines := s[:strings.LastIndexByte(s, '\n')+1]; lines != "" && c.done(lines) {
+			c.hit, c.ok = lines, true
+			c.stop()
+		}
+	}
 	return len(p), nil
 }
 
-func (c *capped) String() string { return c.b.String() }
+func (c *capped) answered() (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.hit, c.ok
+}
+
+func (c *capped) String() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.b.String()
+}
 
 // Waiting returns the bytes written to the filespace on this computer that
 // LucidLink has not uploaded yet.
@@ -133,7 +189,13 @@ func (c *Client) Waiting(ctx context.Context) (int64, error) {
 	if c == nil || c.cmd() == "" {
 		return 0, ErrNoCommand
 	}
-	out, err := c.Run(ctx, c.Cmd, "perf", "--cache", "dirtyBytes")
+	var out string
+	var err error
+	if c.Stream != nil {
+		out, err = c.Stream(ctx, func(s string) bool { _, ok := parseDirty(s); return ok }, c.Cmd, "perf", "--cache", "dirtyBytes")
+	} else {
+		out, err = c.Run(ctx, c.Cmd, "perf", "--cache", "dirtyBytes")
+	}
 	if err != nil {
 		return 0, fmt.Errorf("LucidLink's command could not say what is left to upload (%v)", short(err, out))
 	}
@@ -175,8 +237,10 @@ func firstLine(s string) string {
 }
 
 var (
-	// "dirtyBytes: 1234", "dirtyBytes 1.5 GiB", "dirtyBytes = 0"
-	afterName = regexp.MustCompile(`(?i)dirty\s*bytes\s*[:=]?\s*([0-9][0-9,.]*)\s*([kmgtp]i?b|b|bytes)?\b`)
+	// "dirtyBytes: 1234", "dirtyBytes 1.5 GiB", "dirtyBytes = 0", on one line
+	afterName = regexp.MustCompile(`(?i)dirty[ \t]*bytes[ \t]*[:=]?[ \t]*([0-9][0-9,.]*)[ \t]*([kmgtp]i?b|b|bytes)?\b`)
+	// one table cell: "0B", "1.5GiB", "512 KiB"
+	cell = regexp.MustCompile(`(?i)^([0-9][0-9,.]*)([kmgtp]i?b|b|bytes)?$`)
 	// a line holding only a number, with or without a unit
 	alone = regexp.MustCompile(`(?im)^\s*([0-9][0-9,.]*)\s*([kmgtp]i?b|b|bytes)?\s*$`)
 )
@@ -185,6 +249,9 @@ var (
 // a number after the word dirtyBytes, or the output's only number standing
 // on a line of its own; anything else is not understood.
 func parseDirty(out string) (int64, bool) {
+	if n, ok, table := parseTable(out); table {
+		return n, ok
+	}
 	if m := afterName.FindStringSubmatch(out); m != nil {
 		return toBytes(m[1], m[2])
 	}
@@ -209,4 +276,46 @@ func toBytes(num, unit string) (int64, bool) {
 		return 0, false // a fraction of a byte is not a byte count
 	}
 	return int64(f * mult), true
+}
+
+// parseTable reads LucidLink 3's "perf" table (v0.2.103):
+//
+//	-- time --             -- cache --
+//	currentDateAndTimeUTC  dirtyBytes
+//	2026-11-18T00:42:41Z   0B
+//
+// table is true when a heading row names dirtyBytes as a column of its own;
+// then only the first row under it counts, and it must read cleanly.
+func parseTable(out string) (n int64, ok, table bool) {
+	lines := strings.Split(out, "\n")
+	for i, l := range lines {
+		f := strings.Fields(l)
+		col, numbers := -1, false
+		for k, x := range f {
+			if strings.EqualFold(x, "dirtyBytes") {
+				col = k
+			}
+			numbers = numbers || cell.MatchString(x) || x == "=" || x == ":"
+		}
+		if col < 0 || len(f) < 2 || numbers {
+			continue // not a heading row: one name, or a name with its value
+		}
+		for _, row := range lines[i+1:] {
+			r := strings.Fields(row)
+			if len(r) == 0 {
+				continue
+			}
+			if len(r) != len(f) {
+				return 0, false, true
+			}
+			m := cell.FindStringSubmatch(r[col])
+			if m == nil {
+				return 0, false, true
+			}
+			n, ok = toBytes(m[1], m[2])
+			return n, ok, true
+		}
+		return 0, false, true // the heading, no row yet
+	}
+	return 0, false, false
 }

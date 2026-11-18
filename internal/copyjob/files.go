@@ -21,9 +21,13 @@ var (
 	// ChunkSize is one read or write. 16 MB since v0.2.55 (was 4 MB), the
 	// same as the speed test: with the system cache bypassed there is no
 	// read-ahead, so a bigger request is what keeps a USB disk's queue full.
-	ChunkSize       int64         = 16 << 20
-	CheckpointEvery int64         = 1 << 30
+	ChunkSize       int64 = 16 << 20
+	CheckpointEvery int64 = 1 << 30
+	// ShareFlushEvery is how often a copy onto a network share is flushed
+	// (v0.2.103), so its progress follows what has really been sent.
+	ShareFlushEvery int64         = 64 << 20
 	chunkDelay      time.Duration // tests only: slows every chunk
+	shareFlushed    func()        // tests only: called after each share flush
 )
 
 // Buffers in flight: the copy keeps up to copyBufs so the source can run
@@ -464,6 +468,15 @@ func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int, hs 
 		defer close(hashIn)
 	}
 	written, last := off, off
+	// v0.2.103: on an SMB share or the LucidLink mount, macOS keeps written
+	// bytes in memory and sends them only at the flush, so a file showed 100%
+	// at once and then sat silent. Flushing every ShareFlushEvery bytes keeps
+	// what is counted close to what has really arrived.
+	var flushEvery int64
+	if j.st.Spec.DestShare != "" {
+		flushEvery = ShareFlushEvery
+	}
+	flushed := off
 	var werr error
 	for c := range full {
 		if werr == nil {
@@ -493,7 +506,14 @@ func (j *Job) copyFile(ctx context.Context, e env, src, tmp string, idx int, hs 
 		if werr == nil && written-last >= CheckpointEvery && written < size {
 			if err := diskio.Flush(ctx, e.dst, out); err == nil {
 				j.saveCheckpoint(Checkpoint{Index: idx, Stage: "copy", Offset: written, State: hashState(), Size: size, Mtime: mtime})
-				last = written
+				last, flushed = written, written
+			}
+		} else if werr == nil && flushEvery > 0 && written-flushed >= flushEvery && written < size {
+			if err := diskio.Flush(ctx, e.dst, out); err == nil {
+				flushed = written
+				if shareFlushed != nil {
+					shareFlushed()
+				}
 			}
 		}
 		if werr == nil && ctx.Err() != nil {

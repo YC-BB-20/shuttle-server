@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.103 — 17 November 2026
+
+- **LucidLink copies can now be checked.** LucidLink's command on a Mac prints a small table and a new row every 2 seconds without stopping; Shuttle waited for it to finish and gave up. It now reads the first row ("0B" means everything is uploaded) and stops the command. It never takes a timestamp or anything unclear for the amount.
+- **Copies onto LucidLink or an SMB share show real progress.** macOS took the whole file into memory at once (100% straight away) and sent it on only at the end, with nothing shown. Shuttle now sends it on every 64 MB, so the bar follows what has really arrived.
+- **LucidLink no longer flashes in the list of disks.** While it is busy it can take more than a second to answer; Shuttle shows it as it last was (for up to two minutes) instead of dropping it. A disk that stops answering still shows "Not responding" at once.
+
 ## 0.2.102 — 17 November 2026
 
 - **LucidLink filespaces now show up.** The LucidLink app on a Mac mounts a filespace one folder deeper than a disk (/Volumes/NAME/FILESPACE), as a share served by the Mac itself. Shuttle now finds it in Files and Disks and treats it as LucidLink, whatever the filespace is called, so copies to it wait for the upload before reading back.

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/YC-BB-20/shuttle-server/internal/diskio"
 )
 
 // A folder in /Volumes holding plain folders (left behind by an unplugged
@@ -43,5 +45,38 @@ func TestNestedPlaces(t *testing.T) {
 	}
 	if got := nestedPlaces("/", rv.Mount, seen, 100); len(got) != 0 && got[0].Path == "/proc" {
 		t.Fatal("listed twice")
+	}
+}
+
+// A share whose lookup is slow is shown as it last answered, for a while;
+// a disk that is slow is not (v0.2.103).
+func TestBusyShareKeepsItsPlace(t *testing.T) {
+	p := "/Volumes/work/filespace"
+	volMu.Lock()
+	volPending[p] = true // an earlier lookup is still waiting
+	volShare[p] = shareSeen{diskio.Volume{Mount: p, Share: diskio.ShareLucid}, time.Now()}
+	volMu.Unlock()
+	defer func() {
+		volMu.Lock()
+		delete(volPending, p)
+		delete(volShare, p)
+		volMu.Unlock()
+	}()
+	if v, ok, hung := volume(p, time.Millisecond); !ok || hung || v.Share != diskio.ShareLucid {
+		t.Fatalf("busy share dropped: %+v %v %v", v, ok, hung)
+	}
+	volMu.Lock()
+	volShare[p] = shareSeen{diskio.Volume{Mount: p, Share: diskio.ShareLucid}, time.Now().Add(-shareGrace - time.Second)}
+	volMu.Unlock()
+	if _, ok, hung := volume(p, time.Millisecond); ok || !hung {
+		t.Fatal("an old answer stood in for a share that stopped answering")
+	}
+	d := "/Volumes/T5"
+	volMu.Lock()
+	volPending[d] = true
+	volMu.Unlock()
+	defer func() { volMu.Lock(); delete(volPending, d); volMu.Unlock() }()
+	if _, ok, hung := volume(d, time.Millisecond); ok || !hung {
+		t.Fatal("a slow disk was not shown as not responding")
 	}
 }
