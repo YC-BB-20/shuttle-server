@@ -374,10 +374,12 @@ select { padding:5px 8px; }
 .job .ico.ok { background:#173a27; color:var(--ok); } .job .ico.warn { background:#3a2d10; color:var(--warn); }
 .job .ico.bad { background:#3a1717; color:var(--bad); } .job .ico.idle { background:#26262c; color:var(--mute); }
 .job.verify .ico { width:22px; height:22px; font-size:11px; }
-.job.verify.nested { border-left-color:transparent; position:relative; }
+/* v0.2.102: a Verify under its copy is set in by padding, not a margin, so its row, its
+   selected background and its selected stripe start at the list's edge like every other row. */
+.job.verify.nested { margin-left:0; border-left:0; padding-left:calc(14px + 28px + 3px); position:relative; }
 /* v0.2.100: the line of a Verify under its copy runs through the centre of the copy's icon:
-   row padding 14 + grip 14 + gap 12 + half the 28px icon = 54px from the list's edge, less this row's 28px margin, 3px border and half the line. */
-.job.verify.nested::before { content:""; position:absolute; top:0; bottom:0; left:calc(14px + 14px + 12px + 14px - 28px - 3px - 1.5px); width:3px; background:var(--sel); pointer-events:none; }
+   row padding 14 + grip 14 + gap 12 + half the 28px icon = 54px from the list's edge, less half the line. */
+.job.verify.nested::before { content:""; position:absolute; top:0; bottom:0; left:calc(14px + 14px + 12px + 14px - 1.5px); width:3px; background:var(--sel); pointer-events:none; }
 .job .bar, .bar { background:var(--line); }
 .job .bar { height:6px; border-radius:3px; }
 .bar.main, .status.monitor .bar.main { height:10px; }
@@ -461,6 +463,9 @@ dialog .head, .foot { border-color:var(--line); }
 .jh button { all:unset; box-sizing:border-box; cursor:pointer; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-radius:4px; }
 .jh button:hover { color:var(--fg); } .jh button:focus-visible { outline:2px solid var(--sel); outline-offset:2px; }
 .jh button[data-dir="up"]::after { content:" ↑"; } .jh button[data-dir="down"]::after { content:" ↓"; } .jh button[data-dir="up"], .jh button[data-dir="down"] { color:var(--fg); }
+/* v0.2.102: the empty heading before Name puts the list back in the queue order. */
+.jh .hq { grid-column:1 / 3; align-self:stretch; display:grid; place-items:center; color:var(--mute); }
+.jh .hq.on::before { content:"⇅"; font-size:13px; }
 .jh .hn { grid-area:m; } .jh .hk { grid-area:k; } .jh .hz { grid-area:z; text-align:right; } .jh .hb { grid-area:b; } .jh .hs { grid-area:s; }
 .shell > main { container-type:inline-size; }
 .jobs:not(:has(.job)), .hist:not(:has(.job)) { display:none; }
@@ -616,8 +621,9 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
 .fbhd button:hover, .fbhd button[data-dir] { color:var(--fg); } .fbhd button:focus-visible { outline:2px solid var(--sel); outline-offset:2px; }
 .fbhd button[data-dir="1"]::after { content:" ↑"; } .fbhd button[data-dir="-1"]::after { content:" ↓"; }
 .fbhd .r { justify-self:end; }
-/* The details area is gone in Files while no file is open, so the list has the full width. */
-.shell:has(#tabFiles:not([hidden])) .insp:not(.on) { display:none; }
+/* v0.2.102: the details area is gone on every page until a copy, card or file is opened,
+   so the list has the full width; ✕, Esc, X or clicking it again closes it. */
+.insp:not(.on) { display:none; }
 /* A file's places: the source, then its backups by drive or cloud. */
 .fsec { margin:4px 0 0; font-size:12px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--mute); }
 .fbak { margin-top:18px; } .fbak > summary { cursor:pointer; list-style:none; display:flex; align-items:center; gap:6px; }
@@ -664,7 +670,7 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
 
 /* v0.2.90: Add link. */
 #linkDlg { width:min(640px, calc(100vw - 24px)); }
-#linkDlg .lhint { font-size:12px; margin-right:auto; margin-left:12px; }
+#linkDlg .lhint { font-size:12px; margin-right:auto; margin-left:12px; padding-right:16px; min-width:0; } /* v0.2.102: room before Cancel */
 #linkDlg textarea { width:100%; box-sizing:border-box; font:13px/1.45 ui-monospace, Menlo, monospace; padding:8px 10px; border:1px solid var(--line2); border-radius:8px; background:var(--bg); color:var(--fg); resize:vertical; }
 .lfound { display:flex; flex-direction:column; gap:6px; margin:6px 0 4px; max-height:30vh; overflow:auto; }
 .lf { display:flex; gap:10px; align-items:flex-start; padding:9px 12px; border-radius:9px; } .lf.ok { background:#173a27; } .lf.bad { background:#3a1717; }
@@ -744,12 +750,12 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
     <span class="pkg"><button type="button" id="pkPause">Pause</button><button type="button" id="pkResume">Resume</button><button type="button" id="pkStop">Stop…</button></span>
     <span class="pkg" id="pkMoves"><button type="button" id="pkTop" title="Before every other waiting job, in the order they are in now">To the top</button><button type="button" id="pkUp" title="One place up (⌥↑)">Up ⌥↑</button><button type="button" id="pkDown" title="One place down (⌥↓)">Down ⌥↓</button><button type="button" id="pkEnd">To the end</button></span>
     <button type="button" id="pkClear" title="Clear the selection (Esc)">Clear</button></div>
-  <div class="jobs" id="jobs"><div class="jh"><button type="button" class="hn" data-sort="name">Name</button><button type="button" class="hk" data-sort="kind">Kind</button><button type="button" class="hz" data-sort="size">Size</button><button type="button" class="hb" data-sort="prog">Written · proven</button><button type="button" class="hs" data-sort="status">State</button></div></div>
+  <div class="jobs" id="jobs"><div class="jh"><button type="button" class="hq" aria-label="Back to the queue order"></button><button type="button" class="hn" data-sort="name">Name</button><button type="button" class="hk" data-sort="kind">Kind</button><button type="button" class="hz" data-sort="size">Size</button><button type="button" class="hb" data-sort="prog">Written · proven</button><button type="button" class="hs" data-sort="status">State</button></div></div>
   <p class="qhint" id="qHint" hidden>Drag a waiting row by its handle, press Run next, or press ⌥↑ / ⌥↓ on a row to change the order. ⇧-click selects a run of rows, ⌘-click adds or removes one; then stop, pause or move them together.</p>
   <div class="jobs-head"><h2>History</h2></div>
   <p class="mute" id="noDone">Finished and stopped copies appear here.</p>
   <p class="mute" id="noDoneF" hidden>No finished or stopped copies match the filters.</p>
-  <div class="hist" id="done"><div class="jh"><button type="button" class="hn" data-sort="name">Name</button><button type="button" class="hk" data-sort="kind">Kind</button><button type="button" class="hz" data-sort="size">Size</button><button type="button" class="hb" data-sort="prog">Written · proven</button><button type="button" class="hs" data-sort="status">State</button></div></div>
+  <div class="hist" id="done"><div class="jh"><button type="button" class="hq" aria-label="Back to the queue order"></button><button type="button" class="hn" data-sort="name">Name</button><button type="button" class="hk" data-sort="kind">Kind</button><button type="button" class="hz" data-sort="size">Size</button><button type="button" class="hb" data-sort="prog">Written · proven</button><button type="button" class="hs" data-sort="status">State</button></div></div>
   <p><button type="button" id="moreHist" hidden>Show older copies</button></p>
   </div>
   <div id="tabFiles" class="fb" hidden>
@@ -835,14 +841,6 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
       <p class="err" id="srvErr"></p>
     </div>
   </section>
-  <h2 class="sechead">How Shuttle is using this computer</h2>
-  <div class="grid resources" style="margin-bottom:12px">
-    <section class="card"><h2>Memory</h2><p id="mem"></p><div class="bar"><i id="memBar"></i></div><p class="mute" id="memNote"></p></section>
-    <section class="card"><h2>Buffer budget</h2><p id="buf"></p><div class="bar"><i id="bufBar"></i></div><p class="mute" id="bufNote"></p></section>
-    <section class="card"><h2>Free space</h2><p id="disk"></p><p class="mute" id="diskNote"></p></section>
-    <section class="card"><h2>Processor</h2><p id="cpu"></p><p class="mute" id="cpuNote"></p></section>
-    <section class="card"><h2>Open files</h2><p id="files"></p><p class="mute">Pages open: <span id="pages"></span></p></section>
-  </div>
   <section class="card" id="updates" data-page="updates">
     <h2>Updates</h2>
     <p id="updLine">…</p>
@@ -868,6 +866,14 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
     <p class="err" id="loginErr"></p>
   </section>
   <section class="card" data-page="updates"><h2>Data folder</h2><p class="path" id="data"></p><p class="mute">Temp: <span class="path" id="temp"></span></p></section>
+  <h2 class="sechead" data-page="updates">How Shuttle is using this computer</h2>
+  <div class="grid resources" data-page="updates" style="margin-bottom:12px">
+    <section class="card"><h2>Memory</h2><p id="mem"></p><div class="bar"><i id="memBar"></i></div><p class="mute" id="memNote"></p></section>
+    <section class="card"><h2>Buffer budget</h2><p id="buf"></p><div class="bar"><i id="bufBar"></i></div><p class="mute" id="bufNote"></p></section>
+    <section class="card"><h2>Free space</h2><p id="disk"></p><p class="mute" id="diskNote"></p></section>
+    <section class="card"><h2>Processor</h2><p id="cpu"></p><p class="mute" id="cpuNote"></p></section>
+    <section class="card"><h2>Open files</h2><p id="files"></p><p class="mute">Pages open: <span id="pages"></span></p></section>
+  </div>
   <section class="card" id="verSet" data-page="versions">
     <h2>Installed version</h2>
     <p id="verNow">…</p>
@@ -884,7 +890,7 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
   </div>
 </main>
 <aside class="insp" id="insp" aria-label="Details">
-  <div class="ihead" id="inspHead" hidden><div><h2 id="inspTitle"></h2><p class="ist" id="inspState"></p></div><button type="button" id="inspClose" aria-label="Close the details">✕</button></div>
+  <div class="ihead" id="inspHead" hidden><div><h2 id="inspTitle"></h2><p class="ist" id="inspState"></p></div><button type="button" id="inspClose" aria-label="Close the details (Esc or X)" title="Close (Esc or X)">✕</button></div>
   <div class="itabs" id="inspTabs" role="tablist" aria-label="Details"><button type="button" role="tab" data-tab="overview">Overview</button><button type="button" role="tab" data-tab="files">Files</button><button type="button" role="tab" data-tab="proof">Status</button><button type="button" role="tab" data-tab="problems">Problems</button><button type="button" role="tab" data-tab="log">Log</button></div>
   <p class="iempty" id="inspEmpty">Click a copy to see everything about it here: where it goes, its proof, its files and their hashes, problems, and the hash list.</p>
   <div class="ibody" id="inspBody"></div>
@@ -1981,6 +1987,13 @@ function selectJob(id, keepOpen) {
   else $("inspBody").replaceChildren();
 }
 $("inspClose").onclick = () => { if (selId) selectJob(selId); else if (selCard) closeCard(); else if (fbSel) fbCloseFile(); };
+// v0.2.102: X closes the details too, unless typing.
+document.addEventListener("keydown", e => {
+  if ((e.key !== "x" && e.key !== "X") || e.metaKey || e.ctrlKey || e.altKey || document.querySelector("dialog[open]")) return;
+  const t = e.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+  if (!$("insp").classList.contains("on")) return;
+  e.preventDefault(); $("inspClose").click();
+});
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape" || document.querySelector("dialog[open]")) return;
   if (picked.size) { picked.clear(); drawPicked(); return; }
@@ -2606,6 +2619,10 @@ function syncQf(counts) {
     b.setAttribute("aria-sort", on ? (Number(sd) > 0 ? "ascending" : "descending") : "none");
     b.title = on ? "Sorted by " + b.textContent.toLowerCase() + (Number(sd) > 0 ? ", A–Z / smallest first" : ", Z–A / largest first") + ". Click to " + (Number(sd) === headFirst(b.dataset.sort) ? "reverse" : "go back to the queue order") : "Sort by " + b.textContent.toLowerCase();
   });
+  document.querySelectorAll(".jh .hq").forEach(b => {
+    b.classList.toggle("on", sk !== "queue");
+    b.title = sk === "queue" ? "In the queue order" : "Back to the queue order";
+  });
   const nh = counts ? counts.hidden || 0 : 0;
   $("qfHidden").hidden = !nh && !qf.showHidden; $("qfHidden").setAttribute("aria-pressed", !!qf.showHidden);
   $("qfHidden").querySelector(".n").textContent = nh || "";
@@ -2638,6 +2655,7 @@ document.querySelectorAll(".jh button[data-sort]").forEach(b => b.onclick = () =
   qf.sort = k !== key ? key + ":" + first : Number(d) === first ? key + ":" + (-first) : "queue:1";
   qfChanged();
 });
+document.querySelectorAll(".jh .hq").forEach(b => b.onclick = () => { if (qf.sort !== "queue:1") { qf.sort = "queue:1"; qfChanged(); } });
 syncQf();
 // Each Verify sits right under the one copy it checks, set in with the pink
 // edge. A Verify whose copy is not in the same list (filtered out, in the

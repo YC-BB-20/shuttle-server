@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.102 — 17 November 2026
+
+- **LucidLink filespaces now show up.** The LucidLink app on a Mac mounts a filespace one folder deeper than a disk (/Volumes/NAME/FILESPACE), as a share served by the Mac itself. Shuttle now finds it in Files and Disks and treats it as LucidLink, whatever the filespace is called, so copies to it wait for the upload before reading back.
+- A copy to or from a filespace no longer counts it as "not connected" because of that extra folder.
+- **The details panel is hidden until you click a copy** (or a file in Files), so the list has the full width. ✕, Esc, the X key or clicking the copy again closes it.
+- **Click the heading area left of Name to go back to the queue order** after sorting by a column. A ⇅ shows there while the list is sorted another way.
+- **A Verify under its copy, when selected, has its purple edge at the list's left edge** like every other row, not set in.
+- Add link: more room between "Paste a link anywhere…" and Cancel.
+- **Settings → System** now holds "How Shuttle is using this computer" (memory, buffers, free space, processor, open files); Copy settings no longer shows it.
+
 ## 0.2.101 — 17 November 2026
 
 - **Files: a Kind column** (Folder, MOV file, …) that sorts like the others.

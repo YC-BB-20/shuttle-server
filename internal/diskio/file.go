@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -126,7 +127,21 @@ func VolumeMounted(path string) bool {
 				return false
 			}
 			v, err := volumeOf(root)
-			return err == nil && v.Mount == root
+			if err == nil && v.Mount == root {
+				return true
+			}
+			// LucidLink mounts its filespace one folder deeper, at
+			// /Volumes/NAME/FILESPACE (v0.2.102): the path counts as
+			// mounted when its own volume is mounted inside root.
+			at := clean
+			for len(at) > len(root) {
+				if _, err := os.Stat(at); err == nil {
+					break
+				}
+				at = filepath.Dir(at)
+			}
+			v, err = volumeOf(at)
+			return err == nil && strings.HasPrefix(v.Mount, root+"/")
 		}
 	}
 	return true
@@ -169,6 +184,12 @@ func shareKind(typ, from, mount string) string {
 	}
 	switch t {
 	case "smbfs", "cifs", "smb3":
+		// The LucidLink app on macOS serves its filespace as an SMB share
+		// from this computer itself (//guest:@127.0.0.1:22000/NAME). A
+		// share from this computer is never a filer (v0.2.102).
+		if localHost(from) {
+			return ShareLucid
+		}
 		return ShareSMB
 	case "apfs", "hfs", "exfat", "msdos", "vfat", "fat32", "ntfs", "ntfs3", "ext2", "ext3", "ext4", "btrfs", "xfs", "udf", "cd9660", "tmpfs":
 		return ""
@@ -177,6 +198,28 @@ func shareKind(typ, from, mount string) string {
 		return ShareLucid
 	}
 	return ""
+}
+
+// localHost says whether a share's source ("//host:port/share") is served
+// by this computer.
+func localHost(from string) bool {
+	h := strings.TrimPrefix(from, "//")
+	if i := strings.IndexByte(h, '/'); i >= 0 {
+		h = h[:i]
+	}
+	if i := strings.LastIndexByte(h, '@'); i >= 0 {
+		h = h[i+1:]
+	}
+	h = strings.ToLower(h)
+	if strings.HasPrefix(h, "[") { // [::1]:port
+		if i := strings.IndexByte(h, ']'); i > 0 {
+			h = h[1:i]
+		}
+	} else if i := strings.LastIndexByte(h, ':'); i >= 0 && strings.Count(h, ":") == 1 {
+		h = h[:i]
+	}
+	ip := net.ParseIP(h)
+	return h == "localhost" || (ip != nil && ip.IsLoopback())
 }
 
 // shareFrom drops the user name from a mount's source:

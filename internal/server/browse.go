@@ -129,6 +129,15 @@ func places() []Place {
 			if !ok {
 				continue
 			}
+			if v.Mount != p && dir == "/Volumes" && e.Type().IsDir() && !seen[p] {
+				// A plain folder in /Volumes may hold a mount one level
+				// down: LucidLink mounts its filespace at
+				// /Volumes/NAME/FILESPACE (v0.2.102). A link such as
+				// "Macintosh HD" is never followed.
+				seen[p] = true
+				out = append(out, nestedPlaces(p, v.Mount, seen, 100-len(out))...)
+				continue
+			}
 			if v.Mount == "/" { // "Macintosh HD" in /Volumes is the computer's own disk
 				continue
 			}
@@ -136,15 +145,54 @@ func places() []Place {
 				continue // not a mount point: a folder left behind by an unplugged disk, or a user folder in /media
 			}
 			seen[v.Mount] = true
-			pl := Place{Name: e.Name(), Path: p, Kind: "disk", Free: v.Free, Total: v.Total, ReadOnly: v.ReadOnly}
-			switch {
-			case v.Share != "":
-				pl.Kind, pl.Share = "share", v.Share // an SMB share or the LucidLink mount: copies use it (v0.2.97–98)
-			case v.Network:
-				pl.Kind, pl.Note = "server", "Shuttle copies only with SMB network shares and the LucidLink mount"
-			}
-			out = append(out, pl)
+			out = append(out, mountPlace(e.Name(), p, v))
 		}
+	}
+	return out
+}
+
+// mountPlace is the picker's entry for a mount point.
+func mountPlace(name, p string, v diskio.Volume) Place {
+	pl := Place{Name: name, Path: p, Kind: "disk", Free: v.Free, Total: v.Total, ReadOnly: v.ReadOnly}
+	switch {
+	case v.Share != "":
+		pl.Kind, pl.Share = "share", v.Share // an SMB share or the LucidLink mount: copies use it (v0.2.97–98)
+	case v.Network:
+		pl.Kind, pl.Note = "server", "Shuttle copies only with SMB network shares and the LucidLink mount"
+	}
+	return pl
+}
+
+// nestedMax is how many names nestedPlaces reads in one folder.
+var nestedMax = 20
+
+// nestedPlaces lists the mount points directly inside folder, a plain
+// folder on the volume mounted at parent. It reads at most nestedMax names, and
+// only mounts other than parent count: a folder left behind by an
+// unplugged disk is never listed.
+func nestedPlaces(folder, parent string, seen map[string]bool, room int) []Place {
+	f, err := os.Open(folder)
+	if err != nil {
+		return nil
+	}
+	names, _ := f.Readdirnames(nestedMax)
+	f.Close()
+	sort.Strings(names)
+	var out []Place
+	for _, n := range names {
+		if strings.HasPrefix(n, ".") || len(out) >= room {
+			continue
+		}
+		p := filepath.Join(folder, n)
+		v, ok, hung := volume(p, time.Second)
+		if hung {
+			out = append(out, Place{Name: n, Path: p, Kind: "disk", Note: "Not responding"})
+		}
+		if !ok || v.Mount != p || v.Mount == parent || seen[p] {
+			continue
+		}
+		seen[p] = true
+		out = append(out, mountPlace(n, p, v))
 	}
 	return out
 }

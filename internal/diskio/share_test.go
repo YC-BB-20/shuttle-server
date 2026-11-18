@@ -13,6 +13,13 @@ func TestShareKind(t *testing.T) {
 		{"apfs", "/dev/disk3s1", "/Volumes/T5", ""},
 		{"apfs", "/dev/disk4s1", "/Volumes/Lucid Archive", ""},
 		{"exfat", "/dev/disk5s1", "/Volumes/LUCID", ""},
+		// LucidLink on macOS: an SMB share from this computer (v0.2.102)
+		{"smbfs", "//127.0.0.1:22000/projects", "/Volumes/work/projects", ShareLucid},
+		{"smbfs", "//guest:@127.0.0.1:22000/projects", "/Volumes/work/projects", ShareLucid},
+		{"smbfs", "//localhost/x", "/Volumes/x", ShareLucid},
+		{"smbfs", "//[::1]:22000/x", "/Volumes/a/x", ShareLucid},
+		{"smbfs", "//10.0.0.127/x", "/Volumes/x", ShareSMB},
+		{"smbfs", "//127.example.com/x", "/Volumes/x", ShareSMB},
 	} {
 		if got := shareKind(c.typ, c.from, c.mount); got != c.want {
 			t.Errorf("%v: got %q", c, got)
