@@ -17,6 +17,7 @@ import (
 	"time"
 
 	shuttle "github.com/YC-BB-20/shuttle-server"
+	"github.com/YC-BB-20/shuttle-server/internal/awake"
 	"github.com/YC-BB-20/shuttle-server/internal/config"
 	"github.com/YC-BB-20/shuttle-server/internal/copyjob"
 	"github.com/YC-BB-20/shuttle-server/internal/diskio"
@@ -218,6 +219,15 @@ func Run(opts Options) (code int) {
 		} else {
 			go disks.Run(ctx)
 			go func() { jobs.Run(ctx); close(jobsDone) }()
+			// v0.2.111: no sleep while anything in the queue runs, waits (a disk, LucidLink's upload) or is next.
+			go (&awake.Keeper{Log: log, Busy: func() bool {
+				for _, v := range jobs.Views() {
+					if v.State == "running" || v.State == "waiting" || v.State == "queued" {
+						return true
+					}
+				}
+				return false
+			}}).Run(ctx)
 		}
 	}
 

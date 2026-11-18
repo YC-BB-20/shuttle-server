@@ -517,6 +517,7 @@ dialog .head, .foot { border-color:var(--line); }
 .ihead { position:sticky; top:0; z-index:1; display:flex; gap:10px; align-items:flex-start; padding:16px 18px 12px; background:var(--side); border-bottom:1px solid var(--line); }
 .ihead > div { flex:1; min-width:0; }
 .ihead h2 { margin:0; font-size:17px; overflow-wrap:anywhere; }
+#strip { cursor:pointer; } #strip button { cursor:auto; }
 .ist { margin:2px 0 0; color:var(--mute); font-size:13px; white-space:pre-line; }
 .ihead button { flex:none; width:30px; height:30px; padding:0; border-radius:15px; background:transparent; }
 .iempty { margin:0; padding:24px 20px; color:var(--mute); }
@@ -664,6 +665,8 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
 .fbr .r { text-align:right; } .fbr .mute { font-size:13px; }
 .fbr input { width:16px; height:16px; margin:0; }
 .fbn { border:0; background:transparent; padding:2px 0; text-align:left; font-weight:500; min-width:0; overflow-wrap:anywhere; display:flex; align-items:center; gap:8px; color:var(--fg); }
+/* v0.2.111: the name is only as wide as its text, so a click beside it ticks the row (as in one pane) in narrow two-pane rows too. */
+.fbn { justify-self:start; max-width:100%; }
 .fbn::before { content:""; flex:none; width:12px; height:15px; border:1.5px solid #8f909b; border-radius:2px; box-sizing:border-box; margin:0 2px; }
 .fbn.dir::before { width:16px; height:12px; border:0; border-radius:3px; background:#8e63ea; margin:0; } .fbn.dir { font-weight:600; }
 .fbn:hover { color:#e2d8fd; }
@@ -929,7 +932,7 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
 <aside class="insp" id="insp" aria-label="Details">
   <div class="ihead" id="inspHead" hidden><div><h2 id="inspTitle"></h2><p class="ist" id="inspState"></p></div><button type="button" id="inspClose" aria-label="Close the details (Esc or X)" title="Close (Esc or X)">✕</button></div>
   <div class="itabs" id="inspTabs" role="tablist" aria-label="Details"><button type="button" role="tab" data-tab="overview">Overview</button><button type="button" role="tab" data-tab="files">Files</button><button type="button" role="tab" data-tab="proof">Status</button><button type="button" role="tab" data-tab="problems">Problems</button><button type="button" role="tab" data-tab="log">Log</button></div>
-  <p class="iempty" id="inspEmpty">Click a copy to see everything about it here: where it goes, its proof, its files and their hashes, problems, and the hash list.</p>
+  <p class="iempty" id="inspEmpty">Click a copy to see everything about it here: where it goes, how it is verified, its files and their hashes, problems, and the hash list.</p>
   <div class="ibody" id="inspBody"></div>
 </aside>
 </div>
@@ -949,7 +952,7 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
     <p class="addrow"><button type="button" id="addDst">+ Add another drive</button><span class="mute" id="dstNote"></span></p>
     </div>
     <div class="ncol">
-    <label>Proof</label>
+    <label>Verify</label>
     <label class="opt"><input type="checkbox" id="ckCopy" checked disabled><span>Copy, hashing the source as it is read</span></label>
     <label class="opt"><input type="checkbox" id="ckDest" checked><span>Verify the destination: read each copy back</span></label>
     <label class="opt"><input type="checkbox" id="ckSrc" checked><span>Read the source again: catches a bad read from the card or cable</span></label>
@@ -1079,7 +1082,7 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
     <div id="expScope"></div>
     <label>Format</label>
     <label class="opt"><input type="checkbox" id="expTxt" checked><span>xxhsum list: one line per file, checked by hand with <code>xxhsum -c</code></span></label>
-    <label class="opt"><input type="checkbox" id="expCsv"><span>CSV report: path, size, modified time, hash, proof level, date</span></label>
+    <label class="opt"><input type="checkbox" id="expCsv"><span>CSV report: path, size, modified time, hash, how it was verified, date</span></label>
     <div id="expAlgoBox">
       <label>Hash</label>
       <label class="opt"><input type="radio" name="expAlgo" value="xxh128" checked><span>XXH128</span></label>
@@ -1932,7 +1935,7 @@ function loadProblems(c) {
   if (v.failed && (v.state === "finished" || v.errors) && v.kind !== "verify" && v.kind !== "link") {
     const rb = el("button", "", v.failed === 1 ? "Try the failed file again" : "Try the " + v.failed + " failed files again"); rb.type = "button";
     rb.onclick = () => { rb.disabled = true; post("/api/jobs/" + v.id + "/retry").catch(e => { rb.disabled = false; alert(e.message); }); };
-    head.push(el("p", "mute", "Puts them back at the end of the queue, copied with the same proof. Files already proven are not touched, and nothing at the destination is overwritten."), rb);
+    head.push(el("p", "mute", "Puts them back at the end of the queue, copied and verified the same way. Files already proven are not touched, and nothing at the destination is overwritten."), rb);
   }
   box.replaceChildren(...head, list);
   if (!(v.failed || v.gone || v.changed || v.s2_warnings)) {
@@ -2073,7 +2076,7 @@ const problemShort = v => [v.failed && v.failed + " failed", v.gone && v.gone + 
 const nFailed = n => n === 1 ? "1 failed file" : n + " failed files";
 function errorsLine(e, v) {
   const one = e.failed === 1, most = e.reason ? (e.same >= e.failed ? (one ? " The reason: " : " All of them: ") : " Most of them (" + e.same + "): ") + e.reason + "." : "";
-  return nFailed(e.failed).replace(/^./, c => c.toUpperCase()) + "." + most + (one ? " Try it again (it goes" : " Try them again (they go") + " to the end of the queue, with the same proof), or leave " + (one ? "it" : "them") + " failed. Files already proven are not touched" +
+  return nFailed(e.failed).replace(/^./, c => c.toUpperCase()) + "." + most + (one ? " Try it again (it goes" : " Try them again (they go") + " to the end of the queue, verified the same way), or leave " + (one ? "it" : "them") + " failed. Files already proven are not touched" +
     (v.verify_job ? ", and this copy's Verify waits for your answer." : ".");
 }
 function stateShort(v, problems, pc, ver, scanning) {
@@ -2210,7 +2213,7 @@ function card(v) {
   else if (v.state === "finished" && only && v.checks && (v.checks.dest || v.checks.source)) line = problems ? "Finished with problems — see the files marked Error." :
       "Copied without checks; later Verify jobs have since checked it: " + proofLine(v.checks) + ". The file list shows each file's result.";
   else if (v.state === "finished" && only) line = problems ? "Finished with problems — see the files marked Error." : "Finished. Every file is copied and hashed; no copy was read back." +
-      (v.verify_next ? " The check is its own item in the queue." : " Not proof enough to erase a card.");
+      (v.verify_next ? " The check is its own item in the queue." : " Not verified enough to erase a card.");
   else if (v.state === "finished") line = problems ? "Finished with problems — see the files marked Error." : "Finished. Every file is verified" + (v.s2 === "now" || (v.checks && v.checks.source >= v.checks.of) ? " twice (source read again" + (v.s2 === "now" ? ")." : " by a later Verify).") : " (the copy read back; the source was not read again).");
   else if (v.state === "paused" && v.space) line = v.space.message + " Continue anyway, or cancel the job.";
   else if (v.state === "paused" && v.errors) line = errorsLine(v.errors, v);
@@ -3089,7 +3092,7 @@ function renderOnset(list) {
     const t = el("article", "ocard " + cls), vd = el("div", "vd"), vt = el("div", "vt");
     const vi = icon(ic, 44); vi.classList.add("vi");
     vt.append(el("span", "nm", base(g.source)), el("span", "vw", word), el("span", "why", g.disk + " · " + why));
-    vd.append(vi, vt); vd.title = "Show this card's proof: " + g.source; vd.tabIndex = 0; vd.setAttribute("role", "button");
+    vd.append(vi, vt); vd.title = "Show how this card was verified: " + g.source; vd.tabIndex = 0; vd.setAttribute("role", "button");
     vd.onclick = () => selectCard(g.source); vd.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectCard(g.source); } };
     if (selCard === g.source) { t.classList.add("sel"); cardPanel(g, copies, st, word, why, cls); }
     const drv = el("div", "drv");
@@ -3139,6 +3142,8 @@ function fillSys(s) {
     g("Free space on this Mac", s.disk.error ? "unknown" : size(s.disk.free), 0, "Floor " + size(s.disk.floor) + (s.disk.below_floor ? " · below the floor" : "")));
 }
 $("sysBtn").onclick = () => { if (latest) fillSys(latest); $("sysDlg").showModal(); };
+// v0.2.111: clicking the status bar (not its System button) opens the queue.
+$("strip").onclick = e => { if (e.target.closest("button, a, input")) return; showTab("status"); };
 $("sysLog").onclick = () => { $("sysDlg").close(); openFullLog(); };
 $("sysUpd").onclick = () => { $("sysDlg").close(); showTab("settings", "updates"); };
 $("sysSet").onclick = () => { $("sysDlg").close(); showTab("settings"); };
@@ -3422,7 +3427,7 @@ function fbTray() {
     const lab = el("label", "fbd"), ck = el("input"), tx = el("span", "");
     ck.type = "checkbox"; ck.checked = !fbDestOff.has(t.dest); ck.onchange = () => { ck.checked ? fbDestOff.delete(t.dest) : fbDestOff.add(t.dest); fbPanes.forEach(fbDraw); fbTray(); };
     const free = fbFree(t.dest), need = t.k >= 0 ? items.filter(f => !fbDone(fbStates(p, f)[t.k])).reduce((a, f) => a + (f.file ? f.size : 0), 0) : bytes;
-    tx.append(el("b", "", t.label), el("small", "mute", (free != null ? size(Math.max(0, free - need)) + " free after" : "") + (t.k >= 0 ? " · missing " + items.filter(f => !fbDone(fbStates(p, f)[t.k])).length : "")));
+    tx.append(el("b", "", t.label), el("small", "mute", [t.disk, free != null ? size(Math.max(0, free - need)) + " free after" : "", t.k >= 0 ? "missing " + items.filter(f => !fbDone(fbStates(p, f)[t.k])).length : ""].filter(Boolean).join(" · ")));
     lab.title = t.dest; lab.append(ck, tx); return lab;
   }));
   const on = dests.filter(t => !fbDestOff.has(t.dest));
@@ -3434,16 +3439,18 @@ function fbTray() {
 }
 // Where the ticked items can go: each drive that already holds a copy of
 // this folder, and in two panes the other pane's folder.
+// v0.2.111: with two panes the copy goes to the other pane only; with one, to the
+// places earlier copies of this folder went, each named by its folder and its drive.
 function fbTargets(p) {
-  const out = (p.copies ? p.copies.places : []).map((pl, k) => ({ dest: pl.dest, label: pl.disk || base(pl.dest), k })).filter(t => t.dest);
   const o = fbPanes.find(x => x !== p);
+  const out = o ? [] : (p.copies ? p.copies.places : []).map((pl, k) => ({ dest: pl.dest, label: base(pl.dest), disk: pl.disk || "", k })).filter(t => t.dest);
   if (o && o.data && o.path !== p.path && !out.some(t => t.dest === o.path)) out.push({ dest: o.path, label: "Other pane: " + base(o.path), k: -1 });
   return out;
 }
 function fbFree(path) {
   const inside = (x, d) => x === d || x.startsWith(d.replace(/\/$/, "") + "/");
   const d = sideDisks.filter(d => d.total && inside(path, d.path)).sort((a, b) => b.path.length - a.path.length)[0];
-  return d ? d.free : null;
+  return d && d.kind !== "share" ? d.free : null; // a share's free space (LucidLink says 1024 TB) means nothing
 }
 async function fbCopy(onlyMissing) {
   const p = fbPanes[fbActive], items = (p.data.folders || []).filter(f => p.sel.has(f.name));
@@ -3576,7 +3583,7 @@ function fbOpenFile(p, f) {
   $("inspState").textContent = size(f.size) + (f.mtime ? " · changed " + when(f.mtime) : ""); $("inspState").className = "ist";
   const box = el("div", "fpanel"), c = p.copies, x = c && c.files[f.name];
   if (!c || !c.places.length || !x) {
-    box.append(el("p", "mute", "Shuttle has not copied this file. Tick it and choose Copy to another place to make copies with proof."));
+    box.append(el("p", "mute", "Shuttle has not copied this file. Tick it and choose Copy to another place to make verified copies."));
   } else {
     // v0.2.100: the source first, then the backups, grouped by the drive or cloud they are on.
     const sts = x.status, twice = sts.some(st => st === "strong" || st === "already2");
@@ -4042,7 +4049,7 @@ function loadInfo() {
     const state = fi.status === "working" ? fi.stage + (fi.size ? " — " + size(fi.done) + " of " + size(fi.size) : "") : fileLabel[fi.status] || fi.status;
     body.push(el("h3", "", "General"), kv([["Name", name], ["Folder", fi.path.includes("/") ? fi.path.slice(0, fi.path.lastIndexOf("/")) : "(top of the copy)"],
       ["Size", size(fi.size) + " (" + fi.size.toLocaleString() + " bytes)"], ["Modified", new Date(fi.mtime).toLocaleString()],
-      ["State", state], ["Proof", fi.proof], ["Problem", fi.why || ""]]));
+      ["State", state], ["Verify", fi.proof], ["Problem", fi.why || ""]]));
     const dest = fi.dest_exists ? (fi.dest_size === fi.size ? "there, same size" : "there, but " + size(fi.dest_size) + " — not the same size") : "not there yet";
     const jv = cards[at.id] && cards[at.id]._v;
     if (fi.status === "failed" && fi.job_done && fi.kind !== "verify" && fi.kind !== "link" && (!jv || jv.state === "finished")) {

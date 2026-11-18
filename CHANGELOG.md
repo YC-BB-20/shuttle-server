@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.111 — 17 November 2026
+
+- **The Mac stays awake while the queue has work** (running, waiting for a disk or for LucidLink's upload, or next in line), using macOS's own caffeinate; it may sleep again once the queue is idle. Closing a laptop's lid still sleeps it.
+- **Files, two panes:** clicking beside a name ticks the row, as in one pane (the name is only as wide as its text); copy goes to the other pane only, without the boxes for earlier copies' places.
+- **Copy-to boxes** name the folder and its drive, and give no "free after" for LucidLink or a share (LucidLink reports 1024 TB).
+- **Clicking the status bar** at the bottom opens the queue.
+- "Proof" is called "Verify" in the page.
+
 ## 0.2.110 — 17 November 2026
 
 - **Copies to LucidLink: choose how the copy is read back.** In New copy (shown when a destination is on LucidLink), with a default in Settings → Copies to LucidLink:

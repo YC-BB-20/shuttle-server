@@ -846,3 +846,20 @@ func TestPageV0_2_110(t *testing.T) {
 		t.Error("the LucidLink copy-pause text changed: update lucidUp and waitShort in the page")
 	}
 }
+
+func TestPageV0_2_111(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`.fbn { justify-self:start; max-width:100%; }`, `const out = o ? [] : (p.copies ? p.copies.places : [])`, `return d && d.kind !== "share" ? d.free : null;`,
+		`$("strip").onclick = e => { if (e.target.closest("button, a, input")) return; showTab("status"); };`, `<label>Verify</label>`, `["Verify", fi.proof]`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	for _, gone := range []string{`<label>Proof</label>`, `["Proof", fi.proof]`, `make copies with proof`} {
+		if strings.Contains(s, gone) {
+			t.Errorf("page still has %q", gone)
+		}
+	}
+}
