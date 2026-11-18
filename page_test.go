@@ -886,7 +886,7 @@ func TestPageV0_2_112(t *testing.T) {
 func TestPageV0_2_113(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
-		`body.on-files .shell > main { display:flex; flex-direction:column; padding-bottom:12px; }`, `body.on-files #tabFiles { flex:1 1 auto; min-height:360px; }`,
+		`body.on-files .shell > main { display:flex; flex-direction:column; padding-bottom:12px; }`, `body.on-files #tabFiles { flex:1 1 auto; min-height:0; }`,
 		`(f.file ? f.size : p.sizes[f.name] ? p.sizes[f.name].bytes : 0)`, `" folders not sized yet"`, `fbDraw(p); fbTray(); // the ticked folders' total now has their sizes`,
 	} {
 		if !strings.Contains(s, want) {
@@ -922,6 +922,15 @@ func TestPageV0_2_115(t *testing.T) {
 func TestPageV0_2_116(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{`(r.records ? " The records of " + r.records`, `(r.records_partial ? " " + r.records_partial`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}
+
+func TestPageV0_2_119(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{"body.on-files { height:100vh; height:100dvh; overflow:hidden; }", "body.on-files .shell { min-height:0; } body.on-files .shell > main { min-height:0; overflow:hidden; }"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
 		}

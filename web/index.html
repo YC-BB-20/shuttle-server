@@ -664,11 +664,15 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
 /* The panes fill the window; only each list scrolls, its headings staying in view. */
 /* v0.2.113: Files fills what is left of the window exactly, down to the status bar. */
 body.on-files .shell > main { display:flex; flex-direction:column; padding-bottom:12px; }
-body.on-files #tabFiles { flex:1 1 auto; min-height:360px; }
+body.on-files #tabFiles { flex:1 1 auto; min-height:0; }
+/* v0.2.119: the Files page is exactly the window's height, so a folder of thousands of files
+   scrolls inside its pane instead of making the pane (and the page) grow. */
+body.on-files { height:100vh; height:100dvh; overflow:hidden; }
+body.on-files .shell { min-height:0; } body.on-files .shell > main { min-height:0; overflow:hidden; }
 .fbpanes { flex:1 1 auto; min-height:0; grid-template-rows:minmax(0,1fr); } .fbpane { min-height:0; }
 .fbt { flex:1 1 auto; min-height:0; overflow:auto; } .fbhd { position:sticky; top:0; z-index:1; background:var(--card); }
 @container (max-width:700px) { .fbpanes.two { grid-template-rows:repeat(2, minmax(0,1fr)); } }
-@media (max-width:760px) { body.on-files .shell > main { display:block; } .fbt { max-height:70vh; } }
+@media (max-width:760px) { body.on-files { height:auto; overflow:visible; } body.on-files .shell > main { display:block; overflow:visible; } .fbt { max-height:70vh; } }
 .fcrumbs { display:flex; flex-wrap:wrap; align-items:center; gap:4px; font-size:15px; }
 .fcrumbs button { border:0; background:transparent; padding:2px 4px; color:#c9b8fa; font-weight:500; } .fcrumbs span { color:#8f909b; } .fcrumbs b { font-weight:600; overflow-wrap:anywhere; }
 .fbt { overflow-x:auto; }

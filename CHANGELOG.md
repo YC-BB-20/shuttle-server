@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.119 — 18 November 2026
+
+- **Files keeps its height with big folders.** The panes are always as tall as the window; a folder of hundreds or thousands of files scrolls inside its pane, with the headings and the footer in view. (In 0.2.113 a long folder made the pane, and the page, grow.)
+
 ## 0.2.118 — 18 November 2026
 
 - **The menu bar icon keeps its place.** ⌘-drag it towards the clock and macOS remembers that spot, also after Shuttle restarts it on wake. Icons nearest the clock are the last to be hidden when the menu bar is full (it was not lost, only pushed out of room).
