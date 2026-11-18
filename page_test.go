@@ -818,3 +818,12 @@ func TestPageV0_2_107(t *testing.T) {
 		}
 	}
 }
+
+func TestPageV0_2_108(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{`if (v.state === "waiting") return ["Waiting", "warn", waitShort(v.reason || "")];`, `return m ? m[1] + " left to upload" : r;`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.108 — 17 November 2026
+
+- Under "Waiting" in the State column, a copy to LucidLink shows how much is left to upload ("2.5 GB left to upload").
+
 ## 0.2.107 — 17 November 2026
 
 - A selected Verify under its copy has one purple edge, not two.

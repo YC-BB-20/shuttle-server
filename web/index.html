@@ -2044,6 +2044,11 @@ function waitLines(r) {
   if (m) return "Waiting for LucidLink\n" + m[1] + " left to upload\n" + m[2];
   return /^waiting\b/i.test(r) ? r : "Waiting · " + r;
 }
+// The State column's small line under "Waiting": for LucidLink, how much is left to upload.
+function waitShort(r) {
+  const m = /^Waiting for LucidLink to finish uploading \((.+?) left\)/.exec(r);
+  return m ? m[1] + " left to upload" : r;
+}
 const problemShort = v => [v.failed && v.failed + " failed", v.gone && v.gone + " deleted", v.changed && v.changed + " changed",
   v.added && v.added + " added", v.s2_warnings && v.s2_warnings + " source warnings"].filter(Boolean).join(" · ");
 // The State column: a few words, a tone, and a small second line.
@@ -2060,7 +2065,7 @@ function stateShort(v, problems, pc, ver, scanning) {
   if (v.missing) return ["Disk not connected", "bad", v.reason || ""];
   if (v.state === "running" && scanning) return [ver ? "Reading hashes" : "Listing files", "run", v.scanned + " files so far"];
   if (v.state === "running") return [(ver ? "Checking " : "") + pc, "run", [rate(ver ? v.rate : v.copy_rate), v.eta_seconds ? clock(v.eta_seconds * 1000) + " left" : ""].filter(Boolean).join(" · ")];
-  if (v.state === "waiting") return ["Waiting", "warn", v.reason || ""];
+  if (v.state === "waiting") return ["Waiting", "warn", waitShort(v.reason || "")];
   if (v.state === "paused") return v.space ? ["Needs your answer", "warn", "may not fit"] : v.errors ? ["Needs your answer", "warn", v.errors.failed + " failed"] : ["Paused", "", pc];
   if (v.state === "queued") return [v.id === queueNext ? "Next" : "Waiting its turn", "", v.after ? "after its copy" : ""];
   if (v.state === "stopped") return ["Stopped", "", done2];
