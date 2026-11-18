@@ -75,3 +75,39 @@ func TestMoveGuards(t *testing.T) {
 		t.Fatal("moved the home folder")
 	}
 }
+
+type moveJobs struct {
+	delJobs
+	folder, to string
+	names      []string
+}
+
+func (m *moveJobs) Moved(folder string, names []string, to string) (int, int) {
+	m.folder, m.names, m.to = folder, names, to
+	return 2, 1
+}
+
+// The records hear of exactly what moved (v0.2.116).
+func TestMoveTellsTheRecords(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	a, b := filepath.Join(home, "A"), filepath.Join(home, "B")
+	os.MkdirAll(filepath.Join(a, "Day 01"), 0o755)
+	os.MkdirAll(b, 0o755)
+	s, _ := newTest()
+	jobs := &moveJobs{delJobs: delJobs{set: copyjob.DefaultSettings}}
+	s.Jobs = jobs
+	body, _ := json.Marshal(map[string]any{"folder": a, "to": b, "names": []string{"Day 01"}})
+	req := httptest.NewRequest("POST", "/api/move", strings.NewReader(string(body)))
+	req.Host = "localhost:8470"
+	req.Header.Set("X-Shuttle", "1")
+	req.Header.Set("Origin", "http://localhost:8470")
+	rec := httptest.NewRecorder()
+	s.HTTP().Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"records":2`) || !strings.Contains(rec.Body.String(), `"records_partial":1`) {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	if jobs.folder != a || jobs.to != b || len(jobs.names) != 1 || jobs.names[0] != "Day 01" {
+		t.Fatalf("told %q %v %q", jobs.folder, jobs.names, jobs.to)
+	}
+}

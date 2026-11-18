@@ -918,3 +918,12 @@ func TestPageV0_2_115(t *testing.T) {
 		t.Error("Versions: the version history must come first, the installed version and its changes below")
 	}
 }
+
+func TestPageV0_2_116(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{`(r.records ? " The records of " + r.records`, `(r.records_partial ? " " + r.records_partial`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}

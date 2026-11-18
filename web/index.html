@@ -3542,7 +3542,11 @@ async function fbMoveTo(p, to) {
   const what = names.length === 1 ? "\u201c" + names[0] + "\u201d" : names.length + " items";
   if (!await confirmBox("Move " + what + "?", "Into " + to + ". Within the same drive this is instant and nothing is copied; to another drive Shuttle will not move (use Copy).", "Move", "Cancel")) return;
   const say = await post("/api/move", { folder, names, to }).then(r => {
-    p.sel.clear(); p.anchor = null; return "Moved " + r.moved + (r.moved === 1 ? " item" : " items") + " into " + to + ".";
+    p.sel.clear(); p.anchor = null;
+    // v0.2.116: earlier copies' records follow, so Files still shows the moved items' copies.
+    return "Moved " + r.moved + (r.moved === 1 ? " item" : " items") + " into " + to + "." +
+      (r.records ? " The records of " + r.records + (r.records === 1 ? " earlier copy follow" : " earlier copies follow") + " them." : "") +
+      (r.records_partial ? " " + r.records_partial + (r.records_partial === 1 ? " earlier copy was" : " earlier copies were") + " of several items, not all moved: Files shows " + (r.records_partial === 1 ? "it" : "them") + " at the old place." : "");
   }).catch(e => "Not moved: " + e.message);
   await Promise.all(fbPanes.filter(q => q.path === folder || q.path === to).map(q => fbLoad(q, q.path, true)));
   fbTray(); $("fbCalcMsg").textContent = say; // after the reload, which clears that line

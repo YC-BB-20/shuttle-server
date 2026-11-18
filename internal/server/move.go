@@ -14,6 +14,11 @@ import (
 // moveRename is os.Rename; tests replace it.
 var moveRename = os.Rename
 
+// mover is the job manager's Moved (v0.2.116): earlier copies' records follow a move.
+type mover interface {
+	Moved(folder string, names []string, to string) (updated, partial int)
+}
+
 // moveItems moves ticked items into another folder on the same drive or
 // share (POST /api/move, v0.2.114): a rename only, so a folder of any size
 // moves at once and nothing is read or written. It never copies: on another
@@ -110,10 +115,18 @@ func (s *Server) moveItems(w http.ResponseWriter, r *http.Request) (any, error) 
 		froms = append(froms, p)
 	}
 	moved := 0
+	var done []string
+	// However far the move got, the records follow what did move.
+	records := func(out map[string]any) map[string]any {
+		if mv, ok := s.Jobs.(mover); ok && len(done) > 0 {
+			out["records"], out["records_partial"] = mv.Moved(folder, done, to)
+		}
+		return out
+	}
 	for _, p := range froms {
 		dst := filepath.Join(to, filepath.Base(p))
 		if _, err := os.Lstat(dst); err == nil { // appeared since the check: never replaced
-			return map[string]any{"moved": moved}, fmt.Errorf("%d moved; %q was not, as something of that name appeared in the target", moved, filepath.Base(p))
+			return records(map[string]any{"moved": moved}), fmt.Errorf("%d moved; %q was not, as something of that name appeared in the target", moved, filepath.Base(p))
 		}
 		if err := moveRename(p, dst); err != nil {
 			if errors.Is(err, syscall.EXDEV) {
@@ -122,12 +135,13 @@ func (s *Server) moveItems(w http.ResponseWriter, r *http.Request) (any, error) 
 			if s.Log != nil {
 				s.Log.Warn("move: not moved", "path", p, "to", dst, "err", err)
 			}
-			return map[string]any{"moved": moved}, fmt.Errorf("%d moved; %q was not: %v. Nothing else was touched.", moved, filepath.Base(p), err)
+			return records(map[string]any{"moved": moved}), fmt.Errorf("%d moved; %q was not: %v. Nothing else was touched.", moved, filepath.Base(p), err)
 		}
 		moved++
+		done = append(done, filepath.Base(p))
 		if s.Log != nil {
 			s.Log.Info("move: moved", "path", p, "to", dst)
 		}
 	}
-	return map[string]any{"moved": moved}, nil
+	return records(map[string]any{"moved": moved}), nil
 }

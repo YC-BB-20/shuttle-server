@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.116 — 17 November 2026
+
+- **Shuttle knows about a Move.** The records of earlier copies follow what was moved — its source folder, its backup folder, or chosen items when all of them moved — so Files still shows the moved items' copies, offers their drives in "copy to", and Delete knows they are backed up. The Move message says how many records followed. A copy of several chosen items of which only some moved stays at the old place, and the message says so.
+
 ## 0.2.115 — 17 November 2026
 
 - Settings → Versions: the version history comes first, the installed version and what changed below it.
