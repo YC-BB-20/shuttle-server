@@ -869,7 +869,7 @@ func TestPageV0_2_112(t *testing.T) {
 	for _, want := range []string{
 		`places = el("select", "fbsrc")`, `srv.value = "__servers"`, `p.title.textContent = fbPanes.length < 2 ? "Files" : p.i === 0 ? "Source" : "Destination";`,
 		`const up = bt("↑ Up"`, `const root = bt("⌂ Root"`, `bt("Refresh"`, `bt("+ New folder"`, `bt("Delete…"`, `bar.after($("fbNewBox"))`,
-		`function fbFoot(p) {`, `"Σ calculate folder size"`, `" available"`, 
+		`function fbFoot(p) {`, `"Σ calculate folder size"`, `" available"`,
 		`.fbt { flex:1 1 auto; min-height:0; overflow:auto; } .fbhd { position:sticky; top:0;`, `$("fbDel").hidden = true;`,
 	} {
 		if !strings.Contains(s, want) {
