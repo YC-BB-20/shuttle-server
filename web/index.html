@@ -3314,13 +3314,15 @@ function fbSizes(p, ask) {
   if (!ask && p.sizesFor === p.path) return;
   if (fbSizeAbort) fbSizeAbort.abort();
   const ac = new AbortController(), path = p.path, seq = p.seq; fbSizeAbort = ac;
-  p.sizesFor = path; p.sizing = true; if (ask) $("fbCalcMsg").textContent = "Working out folder sizes…"; fbDraw(p);
+  p.sizesFor = path; p.sizing = true; p.sizeWhy = ""; fbDraw(p); // the pane's Σ button says "calculating…"
   fetch("/api/browse/sizes?path=" + encodeURIComponent(path) + (ask ? "" : "&auto=1"), { signal: ac.signal }).then(r => r.json()).then(d => {
     if (p.seq !== seq || p.path !== path) return;
     p.sizing = false;
     const why = { spinning: "Folder sizes are not worked out by themselves on a spinning disk.", network: "Folder sizes are not worked out by themselves on a network share or the cloud.", busy: "Folder sizes wait while a copy is using this disk." }[d.skipped];
-    if (d.sizes) { p.sizes = d.sizes; $("fbCalcMsg").textContent = Object.values(d.sizes).some(x => x.partial) ? "Some folders are too big to count quickly: their size is at least what is shown." : ""; }
-    else if (why) { p.sizesFor = ""; $("fbCalcMsg").textContent = why + " Press \u03a3 calculate folder size."; }
+    // v0.2.121: no line above the panes for routine notes (it moved them down): a partial size
+    // shows "≥" in its row, and why sizes were not worked out is the Σ button's tooltip.
+    if (d.sizes) { p.sizes = d.sizes; $("fbCalcMsg").textContent = ""; }
+    else if (why) { p.sizesFor = ""; p.sizeWhy = why; }
     else if (d.error) $("fbCalcMsg").textContent = d.error;
     fbDraw(p); fbTray(); // the ticked folders' total now has their sizes
   }).catch(() => { if (p.seq === seq) { p.sizing = false; fbDraw(p); } });
@@ -3383,7 +3385,7 @@ function fbLoad(p, path, keepSel) {
   return fetch("/api/browse?files=1&path=" + encodeURIComponent(path || "")).then(r => r.json()).then(d => {
     if (seq !== p.seq) return;
     if (d.path !== p.path || !keepSel) p.sel.clear();
-    if (d.path !== p.path) { p.sizes = {}; p.sizesFor = ""; $("fbCalcMsg").textContent = ""; }
+    if (d.path !== p.path) { p.sizes = {}; p.sizesFor = ""; p.sizeWhy = ""; $("fbCalcMsg").textContent = ""; }
     p.path = d.path; p.data = d; fbSave();
     fbDraw(p); fbSizes(p, false);
     return fetch("/api/copies?path=" + encodeURIComponent(d.path)).then(r => r.json()).then(c => { if (seq === p.seq) { p.copies = c; fbDraw(p); fbTray(); } });
@@ -3404,7 +3406,7 @@ function fbFoot(p) {
   const all = d.folders || [], dirs = all.filter(f => !f.file).length, files = all.length - dirs, bytes = all.reduce((a, f) => a + (f.file ? f.size || 0 : 0), 0);
   const left = el("span", "", ""), b = el("b", "", all.length + (all.length === 1 ? " item" : " items"));
   left.append(b, " (" + dirs + (dirs === 1 ? " folder, " : " folders, ") + files + (files === 1 ? " file)" : " files)") + (bytes ? " · " + size(bytes) + " in files here" : "") + " · ");
-  const calc = el("button", "linkish", p.sizing ? "calculating…" : "Σ calculate folder size"); calc.type = "button"; calc.disabled = !dirs || p.sizing;
+  const calc = el("button", "linkish", p.sizing ? "calculating…" : "Σ calculate folder size"); calc.type = "button"; calc.disabled = !dirs || p.sizing; if (p.sizeWhy) calc.title = p.sizeWhy;
   calc.onclick = e => { e.stopPropagation(); fbCalcFor(p); };
   left.append(calc);
   const pl = fbPlaceOf(p) || d.places.find(x => x.kind === "internal");

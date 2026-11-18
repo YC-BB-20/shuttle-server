@@ -942,3 +942,17 @@ func TestPageV0_2_120(t *testing.T) {
 		t.Error("the copy bar must sit under the panes on the Files page, not float over their footers")
 	}
 }
+
+func TestPageV0_2_121(t *testing.T) {
+	s := string(IndexHTML)
+	for _, gone := range []string{`too big to count quickly`, `"Working out folder sizes…"`, `" Press Σ calculate folder size."`} {
+		if strings.Contains(s, gone) {
+			t.Errorf("the line above the panes must not carry routine notes; page still has %q", gone)
+		}
+	}
+	for _, want := range []string{`(fz.partial ? "≥ " : "")`, `if (p.sizeWhy) calc.title = p.sizeWhy;`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}

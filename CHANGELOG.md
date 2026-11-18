@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.121 — 18 November 2026
+
+- **No more notes pushing Files down.** The line above the panes no longer says that some folders are too big to count quickly (their size already shows "≥"), that sizes are being worked out (the Σ button says "calculating…"), or why sizes were not worked out by themselves (that is now the Σ button's tooltip). Errors and Delete progress still show there.
+
 ## 0.2.120 — 18 November 2026
 
 - **Ticking files no longer moves the bottom of Files.** The copy bar sits under the panes, which make room for it; it no longer floats over the pane's footer and leaves a gap below.
