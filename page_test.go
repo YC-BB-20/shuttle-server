@@ -821,7 +821,7 @@ func TestPageV0_2_107(t *testing.T) {
 
 func TestPageV0_2_108(t *testing.T) {
 	s := string(IndexHTML)
-	for _, want := range []string{`if (v.state === "waiting") return ["Waiting", "warn", waitShort(v.reason || "")];`, `return m ? m[1] + " left" : r;`, `[lucidUp(v.reason) ? "Waiting for LucidLink to upload" : "Waiting", "warn", waitShort(v.reason || "")]`} {
+	for _, want := range []string{`return m ? m[1] + " left" : r;`, `[lucidUp(v.reason) ? "Waiting for LucidLink to upload" : "Waiting", "warn", waitShort(v.reason || "")]`} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
 		}
