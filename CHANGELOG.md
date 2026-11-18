@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.104 — 17 November 2026
+
+- **New copy is wider and does not scroll:** where from and to on the left, proof and folder layout on the right. On a phone it stays one column.
+- Fewer words in New copy: the "Strongest…", "The source is only read…" and "System files … are left out" lines are gone. A note still appears if system files are set to be copied.
+
 ## 0.2.103 — 17 November 2026
 
 - **LucidLink copies can now be checked.** LucidLink's command on a Mac prints a small table and a new row every 2 seconds without stopping; Shuttle waited for it to finish and gave up. It now reads the first row ("0B" means everything is uploaded) and stops the command. It never takes a timestamp or anything unclear for the amount.

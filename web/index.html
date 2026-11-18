@@ -83,6 +83,11 @@
   /* The folder picker keeps one size whatever folder or option is shown, so nothing jumps. */
   #pickDlg { height:min(80vh, 640px); height:min(85dvh, 640px); }
   #pickDlg .body, #pickDlg .list { scrollbar-gutter:stable; }
+  /* v0.2.104: New copy uses more of the screen, in two columns (where from and to; proof and layout), so it does not scroll. */
+  #newDlg { width:min(1040px, calc(100vw - 24px)); max-height:min(92vh, 900px); max-height:min(92dvh, 900px); }
+  #newDlg .body { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr); column-gap:32px; align-content:start; }
+  #newDlg .ncol { min-width:0; } #newDlg .body > .full { grid-column:1 / -1; } #newDlg .body > .full:empty { display:none; }
+  @media (max-width:760px) { #newDlg .body { grid-template-columns:minmax(0,1fr); } }
   #infoDlg { width:min(960px, calc(100vw - 24px)); max-height:min(90vh, 1000px); max-height:min(90dvh, 1000px); }
   #infoDlg .head h2 { min-width:0; overflow-wrap:anywhere; }
   dialog .head { display:flex; align-items:center; padding:12px 16px; border-bottom:1px solid var(--line); }
@@ -900,6 +905,7 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
 <dialog id="newDlg">
   <div class="head"><h2>New copy</h2><button type="button" data-close>Cancel</button></div>
   <div class="body">
+    <div class="ncol">
     <label for="src">Copy from (source)</label>
     <div class="row"><input type="text" id="src" placeholder="/Volumes/CARD_A001"><button type="button" data-pick="src">Choose…</button></div>
     <p class="mute" id="srcOnly" hidden><span></span> <button type="button" id="srcAll">Use the whole folder</button></p>
@@ -909,6 +915,8 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
     <p class="warn" id="dstSpace" style="min-height:1.3em;margin:4px 0 0"></p>
     <div id="moreDst" class="moredst"></div>
     <p class="addrow"><button type="button" id="addDst">+ Add another drive</button><span class="mute" id="dstNote"></span></p>
+    </div>
+    <div class="ncol">
     <label>Proof</label>
     <label class="opt"><input type="checkbox" id="ckCopy" checked disabled><span>Copy, hashing the source as it is read</span></label>
     <label class="opt"><input type="checkbox" id="ckDest" checked><span>Verify the destination: read each copy back</span></label>
@@ -929,9 +937,9 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
       <label class="opt"><input type="checkbox" id="ckWrapHash"><span>Write the hash list beside the media folder, never inside it</span></label>
     </div>
     <p class="mute" id="proofSum"></p>
-    <p class="mute">The source is only read, never changed. Files already at the destination are compared, never replaced.</p>
-    <p class="mute" id="sysNote"></p>
-    <p class="err" id="newErr"></p>
+    </div>
+    <p class="mute full" id="sysNote"></p>
+    <p class="err full" id="newErr"></p>
   </div>
   <div class="foot"><button type="button" data-close>Cancel</button><button type="button" class="primary" id="startBtn">Start copy</button></div>
 </dialog>
@@ -1483,9 +1491,8 @@ function proofForm(changed) {
   $("ckMore").hidden = !dest; $("ckSep").closest(".opt").hidden = !end;
   $("ckPaused").disabled = !sep; $("ckPaused").closest(".opt").hidden = !sep;
   $("proofSum").textContent = !dest ? "Copy only: fastest, the source is read once, but nothing checks the copy. Not for cards you will erase." :
-    (src ? "Strongest: the copy read back and the source read again must both match what was copied. Right for camera cards."
-         : "The copy is read back and compared with what was read for it. A bad read from the card or cable would not be noticed.") +
-    (sep ? " The check is its own item in the queue" + ($("ckPaused").checked ? ", added paused." : ", started when the copy finishes.") : "");
+    ((src ? "" : "The copy is read back and compared with what was read for it. A bad read from the card or cable would not be noticed.") +
+    (sep ? " The check is its own item in the queue" + ($("ckPaused").checked ? ", added paused." : ", started when the copy finishes.") : "")).trim();
 }
 ["ckDest", "ckSrc", "ckSep", "ckPaused", "whenFile", "whenEnd"].forEach(id => $(id).onchange = () => proofForm(id));
 proofForm();
@@ -2400,7 +2407,8 @@ async function installUpdate(u, running) {
 function showSys(c) {
   $("skipSys").checked = c.skip_system_files; $("skipDot").checked = c.skip_system_files && c.skip_appledouble_files;
   $("skipDot").disabled = !c.skip_system_files; $("skipDot").closest(".opt").classList.toggle("mute", !c.skip_system_files);
-  $("sysNote").textContent = c.skip_system_files ? "System files such as .DS_Store" + (c.skip_appledouble_files ? " and \"._\" files" : "") + " are left out (Settings)." : "System files such as .DS_Store are copied too (Settings).";
+  // v0.2.104: only the unusual setting is mentioned; leaving system files out is the normal case.
+  $("sysNote").textContent = c.skip_system_files ? "" : "System files such as .DS_Store are copied too (Settings).";
 }
 // v0.2.57: every save sends all the choices, so one switch never resets another.
 let copySet = {};

@@ -748,3 +748,20 @@ func TestPageV0_2_102(t *testing.T) {
 		t.Error("resource cards are not on the System page")
 	}
 }
+
+func TestPageV0_2_104(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`#newDlg { width:min(1040px, calc(100vw - 24px));`, `#newDlg .body { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);`,
+		`<div class="ncol">`, `<p class="mute full" id="sysNote"></p>`, `$("sysNote").textContent = c.skip_system_files ? "" :`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	for _, gone := range []string{`Strongest: the copy read back`, `The source is only read, never changed. Files already at the destination`, `" are left out (Settings)."`} {
+		if strings.Contains(s, gone) {
+			t.Errorf("page still has %q", gone)
+		}
+	}
+}
