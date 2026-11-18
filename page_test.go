@@ -911,3 +911,10 @@ func TestPageV0_2_114(t *testing.T) {
 		}
 	}
 }
+
+func TestPageV0_2_115(t *testing.T) {
+	s := string(IndexHTML)
+	if h, v := strings.Index(s, `<section class="card" id="history" data-page="versions">`), strings.Index(s, `<section class="card" id="verSet" data-page="versions">`); h < 0 || v < 0 || h > v {
+		t.Error("Versions: the version history must come first, the installed version and its changes below")
+	}
+}

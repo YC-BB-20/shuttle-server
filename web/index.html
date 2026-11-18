@@ -926,18 +926,18 @@ body.on-files #tabFiles { flex:1 1 auto; min-height:360px; }
     <p class="err" id="loginErr"></p>
   </section>
   <section class="card" data-page="updates"><h2>Data folder</h2><p class="path" id="data"></p><p class="mute">Temp: <span class="path" id="temp"></span></p></section>
-  <section class="card" id="verSet" data-page="versions">
-    <h2>Installed version</h2>
-    <p id="verNow">…</p>
-    <h3 class="sechead">What changed</h3>
-    <pre class="vlog" id="verLog">Loading…</pre>
-  </section>
   <section class="card" id="history" data-page="versions">
     <h2>Version history</h2>
     <p class="mute">Any recent green build, or any version kept on this Mac, can be installed. It is checked the same way as an update, and the version it replaces is kept. Copies pause and continue after the restart; an older version carries on with them in its own way, and nothing already verified is lost.</p>
     <div class="btns" style="display:flex;gap:8px;margin-top:8px"><button type="button" id="histLoad">Refresh list</button></div>
     <p class="mute" id="histNote"></p>
     <div class="vers" id="histList"></div>
+  </section>
+  <section class="card" id="verSet" data-page="versions">
+    <h2>Installed version</h2>
+    <p id="verNow">…</p>
+    <h3 class="sechead">What changed</h3>
+    <pre class="vlog" id="verLog">Loading…</pre>
   </section>
   </div>
 </main>

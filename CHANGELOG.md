@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.115 — 17 November 2026
+
+- Settings → Versions: the version history comes first, the installed version and what changed below it.
+
 ## 0.2.114 — 17 November 2026
 
 - **Move.** Tick files or folders and press Move (to the other pane, or choose a folder with one pane). Within one drive or share it is a rename: a folder with any number of files and subfolders moves at once, nothing is read or written. To another drive Shuttle refuses (use Copy). It never replaces something already there, never moves a folder into itself or anything a copy in the queue uses, and if one item may not move, none does. Every move is written to the log.
