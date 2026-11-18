@@ -714,7 +714,7 @@ func TestPageV0_2_101(t *testing.T) {
 	for _, want := range []string{
 		`const FB_COLS = [["kind", "Kind", ""], ["size", "Size", "r"], ["changed", "Changed", ""], ["created", "Created", ""]];`,
 		`k === "kind" ? (f.file ? "1" : "0") + fbKind(f).toLowerCase()`, `head.oncontextmenu = e => { e.preventDefault(); fbColMenu(e.clientX, e.clientY, p); };`,
-		`function fbResizer(k, cell, p)`, `p.w[k] = Math.round(Math.max(k === "name" ? 120 : 50, Math.min(900, w0 + m.clientX - x0))); fbTemplate(p);`, `id="fbCalc"`, `function fbSizes(p, ask)`,
+		`function fbResizer(k, cell, p)`, `p.w[k] = Math.round(Math.max(k === "name" ? 120 : 50, Math.min(900, w0 + m.clientX - x0))); fbTemplate(p);`, `function fbSizes(p, ask)`,
 		`fetch("/api/browse/sizes?path=" + encodeURIComponent(path) + (ask ? "" : "&auto=1"), { signal: ac.signal })`, `fbDraw(p); fbSizes(p, false);`,
 		`data-p="updates" aria-pressed="false">System</button>`, `<section class="card" id="runSet" data-page="updates">`, `$("runBtns").replaceChildren(...rbtns);`,
 		`<section class="card" id="loginSet" data-page="updates" hidden>`, `<section class="card" data-page="updates"><h2>Data folder</h2>`, `<section class="card" id="safeSet" hidden>`,
@@ -774,7 +774,7 @@ func TestPageV0_2_105(t *testing.T) {
 		`let fbLay = pref("shuttle.fblayout", "1") === "2" ? "2" : "1";`, `function fbSetLayout(n) {`, `if (fbPanes.length) fbSave(); // the layout being left`,
 		`keep("shuttle.fblay" + fbLay, JSON.stringify({ panes: fbPanes.map(p => ({ path: p.path || "", cols: [...p.cols].join(","), w: p.w, sort: p.sort })) }));`,
 		`(e.key !== "1" && e.key !== "2")`, `e.preventDefault(); fbSetLayout(e.key);`,
-		`id="fbNewDir"`, `<form class="newdir fbnew" id="fbNewBox" hidden>`, `post("/api/mkdir", { parent: p.path, name: $("fbNewName").value })`,
+		`<form class="newdir fbnew" id="fbNewBox" hidden>`, `post("/api/mkdir", { parent: p.path, name: $("fbNewName").value })`,
 		`p.sort = { k, dir: p.sort.k === k ? -p.sort.dir : k === "name" || k === "kind" ? 1 : -1 }; fbSave(); fbDraw(p);`, `function fbColMenu(x, y, p) {`, `function fbResizer(k, cell, p) {`,
 	} {
 		if !strings.Contains(s, want) {
@@ -794,7 +794,7 @@ func TestPageV0_2_106(t *testing.T) {
 	for _, want := range []string{
 		`<section class="card" id="delSet">`, `<input type="checkbox" id="delOn">`, `<input type="checkbox" id="delShares">`, `name="delN" value="2"><span>Ask twice (recommended)`,
 		`delete_on: $("delOn").checked, delete_shares: $("delOn").checked && $("delShares").checked,`,
-		`$("fbDel").hidden = !copySet.delete_on;`, `<dialog id="delDlg">`, `post("/api/delete", { folder, names })`,
+		`$("fbDel").hidden = true;`, `<dialog id="delDlg">`, `post("/api/delete", { folder, names })`,
 		`if (copySet.delete_confirms !== 1 && delStepN === 1) {`, `$("delGo").disabled = share && !copySet.delete_shares;`,
 		`e.key !== "Backspace"`, `function fbRange(p, list, name, on) {`, `if (e.shiftKey && fbRange(p, list, f.name, ck.checked)) return;`,
 		`function waitLines(r) {`, `/^Waiting for LucidLink to finish uploading \((.+?) left\) (.+)$/`, `q(".dsub").textContent = v.state === "waiting" ? "" : sub;`,
@@ -858,6 +858,25 @@ func TestPageV0_2_111(t *testing.T) {
 		}
 	}
 	for _, gone := range []string{`<label>Proof</label>`, `["Proof", fi.proof]`, `make copies with proof`} {
+		if strings.Contains(s, gone) {
+			t.Errorf("page still has %q", gone)
+		}
+	}
+}
+
+func TestPageV0_2_112(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`places = el("select", "fbsrc")`, `srv.value = "__servers"`, `p.title.textContent = fbPanes.length < 2 ? "Files" : p.i === 0 ? "Source" : "Destination";`,
+		`const up = bt("↑ Up"`, `const root = bt("⌂ Root"`, `bt("Refresh"`, `bt("+ New folder"`, `bt("Delete…"`, `bar.after($("fbNewBox"))`,
+		`function fbFoot(p) {`, `"Σ calculate folder size"`, `" available"`, `.fb { height:calc(100vh - 160px); height:calc(100dvh - 160px); min-height:420px; }`,
+		`.fbt { flex:1 1 auto; min-height:0; overflow:auto; } .fbhd { position:sticky; top:0;`, `$("fbDel").hidden = true;`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	for _, gone := range []string{`id="fbNewDir"`, `id="fbCalc"`, `Press Calculate sizes.`} {
 		if strings.Contains(s, gone) {
 			t.Errorf("page still has %q", gone)
 		}

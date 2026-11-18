@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.112 — 17 November 2026
+
+- **Files looks like the router's:** each pane has its title (Source and Destination with two panes) and, on the right, a drop-down of every drive and share plus "Add or edit servers…"; then the path; then Up, Root, Refresh, New folder and Delete; and a footer with the counts, "Σ calculate folder size" and the space available. New folder opens inside its pane.
+- **Big folders scroll inside their pane:** the panes fill the window, the list scrolls, and its column headings stay in view.
+- **A share that macOS reconnects at another place** ("Share-1", or one folder deeper for LucidLink) is followed: a copy or Verify waiting for it carries on there, and the log says where it moved. Only the same server and share counts.
+
 ## 0.2.111 — 17 November 2026
 
 - **The Mac stays awake while the queue has work** (running, waiting for a disk or for LucidLink's upload, or next in line), using macOS's own caffeinate; it may sleep again once the queue is idle. Closing a laptop's lid still sleeps it.

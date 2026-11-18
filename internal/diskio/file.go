@@ -8,7 +8,9 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -261,4 +263,88 @@ func VolumeOf(path string) (Volume, error) {
 		p = parent
 	}
 	return volumeOf(p)
+}
+
+// ShareFrom splits a share's volume id ("share:" + source + ":" + mount)
+// into the share's source ("//host/share") and the mount point it had.
+func ShareFrom(id string) (from, mount string, ok bool) {
+	rest, ok := strings.CutPrefix(id, "share:")
+	if !ok {
+		return "", "", false
+	}
+	i := strings.LastIndex(rest, ":/")
+	if i <= 0 {
+		return "", "", false
+	}
+	return rest[:i], rest[i+1:], true
+}
+
+// shareRoots are where mounted shares are looked for; tests replace it.
+var shareRoots = func() []string {
+	if runtime.GOOS == "darwin" {
+		return []string{"/Volumes"}
+	}
+	return []string{"/mnt", "/media", "/run/media"}
+}
+
+// shareLookup is VolumeOf with a time limit; tests replace it.
+var shareLookup = func(p string) (Volume, bool) {
+	ch := make(chan Volume, 1)
+	go func() { v, _ := VolumeOf(p); ch <- v }()
+	select {
+	case v := <-ch:
+		return v, v.Mount != ""
+	case <-time.After(2 * time.Second):
+		return Volume{}, false // a share that does not answer is not where the job goes
+	}
+}
+
+var findingShare atomic.Bool
+
+// FindShare looks for the share with this source mounted anywhere, its own
+// mount point or one folder deeper (v0.2.112): macOS may reconnect a share
+// as "Share-1" after it dropped. Only one search runs at a time, at most 40
+// names per folder, every lookup with a time limit.
+func FindShare(from string) (Volume, bool) {
+	if from == "" || !findingShare.CompareAndSwap(false, true) {
+		return Volume{}, false
+	}
+	defer findingShare.Store(false)
+	var found Volume
+	try := func(p string) bool {
+		v, ok := shareLookup(p)
+		if ok && v.Mount == p && v.Share != "" && v.From == from {
+			found = v
+			return true
+		}
+		return false
+	}
+	names := func(dir string) []string {
+		f, err := os.Open(dir)
+		if err != nil {
+			return nil
+		}
+		defer f.Close()
+		n, _ := f.Readdirnames(40)
+		return n
+	}
+	for _, root := range shareRoots() {
+		for _, n := range names(root) {
+			p := filepath.Join(root, n)
+			if strings.HasPrefix(n, ".") {
+				continue
+			}
+			if try(p) {
+				return found, true
+			}
+			if fi, err := os.Lstat(p); err == nil && fi.IsDir() {
+				for _, m := range names(p) {
+					if !strings.HasPrefix(m, ".") && try(filepath.Join(p, m)) {
+						return found, true
+					}
+				}
+			}
+		}
+	}
+	return Volume{}, false
 }

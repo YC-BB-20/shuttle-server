@@ -619,10 +619,11 @@ body.wall .dchip .dn { font-size:16px; } body.wall .dchip .ds { font-size:22px; 
 body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .ocard .vw { font-size:22px; }
 
 /* v0.2.89: Files. */
-.fb { display:flex; flex-direction:column; gap:12px; min-height:calc(100vh - 160px); }
+.fb { display:flex; flex-direction:column; gap:12px; }
 .fbhead { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; }
 .fbhead input { width:200px; padding:6px 10px; margin-left:auto; }
-/* v0.2.105: the New folder form takes its own line under the bar. */
+/* v0.2.105: the New folder form takes its own line under the bar (v0.2.112: under the pane's buttons). */
+.fbph .fbnew { display:flex; align-items:center; margin:0; } .fbph .fbnew[hidden] { display:none; } .fbph .fbnew input { flex:0 1 320px; min-width:0; } .fbnew button { white-space:nowrap; }
 .fbhead .fbnew { order:8; flex-basis:100%; align-items:center; margin:0; } .fbhead .fbnew[hidden] { display:none; }
 .fbhead .fbnew input { margin-left:0; width:auto; flex:0 1 320px; } .fbnew .err { font-size:13px; min-width:0; overflow-wrap:anywhere; } .fbcalcmsg { font-size:13px; order:9; flex-basis:100%; } .fbcalcmsg:empty { display:none; }
 /* v0.2.100: columns to show, and headings that sort. */
@@ -652,8 +653,20 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
 .fbpane { min-width:0; background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; display:flex; flex-direction:column; }
 .fbpane.act { border-color:var(--sel); }
 .fbph { padding:10px 14px; border-bottom:1px solid var(--line); display:flex; flex-direction:column; gap:8px; }
-.fbpl { display:flex; gap:6px; overflow-x:auto; } .fbpl button { white-space:nowrap; font-size:12px; padding:3px 10px; border-radius:999px; background:transparent; color:var(--mute); }
-.fbpl button.here { background:#2c2540; color:#e2d8fd; border-color:#4a3c78; }
+/* v0.2.112: the router's pane: title and drive drop-down, path, buttons, list, footer. */
+.fbtop { display:flex; align-items:center; gap:12px; min-width:0; } .fbtitle { font-size:15px; }
+.fbsrc { margin-left:auto; min-width:0; max-width:60%; padding:6px 10px; }
+.fbbar { display:flex; flex-wrap:wrap; gap:6px; } .fbbar button { padding:4px 10px; font-size:13px; }
+.fbbar button:disabled { opacity:.45; cursor:default; }
+.fbfoot { display:flex; flex-wrap:wrap; justify-content:space-between; gap:6px 16px; padding:9px 14px; border-top:1px solid var(--line); font-size:13px; color:var(--mute); }
+.fbfoot b { color:var(--fg); font-weight:600; }
+.linkish { all:unset; cursor:pointer; color:var(--sel); } .linkish:hover { text-decoration:underline; } .linkish:disabled { color:var(--mute); cursor:default; text-decoration:none; }
+/* The panes fill the window; only each list scrolls, its headings staying in view. */
+.fb { height:calc(100vh - 160px); height:calc(100dvh - 160px); min-height:420px; }
+.fbpanes { flex:1 1 auto; min-height:0; grid-template-rows:minmax(0,1fr); } .fbpane { min-height:0; }
+.fbt { flex:1 1 auto; min-height:0; overflow:auto; } .fbhd { position:sticky; top:0; z-index:1; background:var(--card); }
+@container (max-width:700px) { .fbpanes.two { grid-template-rows:repeat(2, minmax(0,1fr)); } }
+@media (max-width:760px) { .fb { height:auto; } .fbt { max-height:70vh; } }
 .fcrumbs { display:flex; flex-wrap:wrap; align-items:center; gap:4px; font-size:15px; }
 .fcrumbs button { border:0; background:transparent; padding:2px 4px; color:#c9b8fa; font-weight:500; } .fcrumbs span { color:#8f909b; } .fcrumbs b { font-weight:600; overflow-wrap:anywhere; }
 .fbt { overflow-x:auto; }
@@ -784,8 +797,6 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
     <div class="fbhead">
       <h1 class="vh">Files</h1>
       <div class="seg" id="fbTwo" role="group" aria-label="Panes"><button type="button" data-n="1" aria-pressed="true" title="One pane (key 1)">One pane</button><button type="button" data-n="2" aria-pressed="false" title="Two panes (key 2)">Two panes</button></div>
-      <button type="button" id="fbNewDir" title="Make a folder in the folder shown (in the pane you last clicked)">New folder</button>
-      <button type="button" id="fbCalc" title="Work out the size of every folder shown">Calculate sizes</button>
       <span class="mute fbcalcmsg" id="fbCalcMsg"></span>
       <label for="fbFilter" class="vh">Filter by name</label><input type="text" id="fbFilter" placeholder="Filter by name" autocomplete="off">
       <form class="newdir fbnew" id="fbNewBox" hidden><input type="text" id="fbNewName" placeholder="New folder name" maxlength="200" autocomplete="off" aria-label="New folder name"><button type="submit" class="primary">Make folder</button><button type="button" id="fbNewCancel">Cancel</button><span class="err" id="fbNewErr"></span></form>
@@ -3299,20 +3310,37 @@ function fbSizes(p, ask) {
     p.sizing = false;
     const why = { spinning: "Folder sizes are not worked out by themselves on a spinning disk.", network: "Folder sizes are not worked out by themselves on a network share or the cloud.", busy: "Folder sizes wait while a copy is using this disk." }[d.skipped];
     if (d.sizes) { p.sizes = d.sizes; $("fbCalcMsg").textContent = Object.values(d.sizes).some(x => x.partial) ? "Some folders are too big to count quickly: their size is at least what is shown." : ""; }
-    else if (why) { p.sizesFor = ""; $("fbCalcMsg").textContent = why + " Press Calculate sizes."; }
+    else if (why) { p.sizesFor = ""; $("fbCalcMsg").textContent = why + " Press \u03a3 calculate folder size."; }
     else if (d.error) $("fbCalcMsg").textContent = d.error;
     fbDraw(p);
   }).catch(() => { if (p.seq === seq) { p.sizing = false; fbDraw(p); } });
 }
-$("fbCalc").onclick = () => { const p = fbPanes[fbActive] || fbPanes[0]; if (p) { p.sizesFor = ""; fbSizes(p, true); } };
+// v0.2.112: each pane has its own Calculate (in its footer).
+const fbCalcFor = p => { if (p) { fbActive = p.i; fbMark(); p.sizesFor = ""; fbSizes(p, true); } };
 const fbDone = st => ["strong", "proven", "already", "already2"].includes(st);
 const fbBad = st => ["failed", "warning"].includes(st);
 const fbShort = disk => { const m = /^(.)[^0-9]*([0-9]*)/.exec(disk || "?"); return (m[1] + m[2]).toUpperCase(); };
+// v0.2.112: a pane as in the router: its title with a drop-down of every drive
+// and share (and "Add or edit servers…"), the path, its buttons, the list
+// (the only part that scrolls) and a footer with counts and free space.
 function fbPane(i) {
-  const box = el("section", "fbpane"), head = el("div", "fbph"), places = el("div", "fbpl"), crumbs = el("nav", "fcrumbs"), tbl = el("div", "fbt");
-  crumbs.setAttribute("aria-label", "Where you are"); head.append(places, crumbs); box.append(head, tbl);
+  const box = el("section", "fbpane"), head = el("div", "fbph"), top = el("div", "fbtop"), title = el("b", "fbtitle"), places = el("select", "fbsrc"),
+    crumbs = el("nav", "fcrumbs"), bar = el("div", "fbbar"), tbl = el("div", "fbt"), foot = el("div", "fbfoot");
+  places.setAttribute("aria-label", "Drive or server"); crumbs.setAttribute("aria-label", "Where you are");
+  const bt = (label, tip, f, cls) => { const b = el("button", cls || "", label); b.type = "button"; b.title = tip; b.onclick = e => { e.stopPropagation(); fbActive = i; fbMark(); fbTray(); f(); }; return b; };
+  const up = bt("↑ Up", "The folder above", () => { if (p.data && !p.data.top && p.data.parent) fbLoad(p, p.data.parent); });
+  const root = bt("⌂ Root", "The top of this drive", () => { const pl = fbPlaceOf(p); fbLoad(p, pl ? pl.path : ""); });
+  const ref = bt("Refresh", "Read this folder again", () => fbLoad(p, p.path, true));
+  const mk = bt("+ New folder", "Make a folder here", () => { bar.after($("fbNewBox")); $("fbNewBox").hidden = false; $("fbNewName").value = ""; $("fbNewErr").textContent = ""; $("fbNewName").focus(); });
+  const del = bt("Delete…", "Delete what is ticked in this pane (⌘⌫)", () => fbAskDelete(), "danger");
+  bar.append(up, root, ref, mk, del);
+  top.append(title, places); head.append(top, crumbs, bar); box.append(head, tbl, foot);
+  places.onchange = () => {
+    if (places.value === "__servers") { places.value = places.dataset.cur || ""; showTab("settings", "copy"); setTimeout(() => $("srvSet").scrollIntoView({ block: "start" }), 50); return; }
+    fbActive = i; fbMark(); fbLoad(p, places.value);
+  };
   const v = fbLayRead(fbLay)[i];
-  const p = { i, box, places, crumbs, tbl, path: v.path, cols: v.cols, w: v.w, sort: v.sort, data: null, copies: null, sel: new Set(), seq: 0, sizes: {}, sizesFor: "", sizing: false };
+  const p = { i, box, places, title, crumbs, bar, up, del, tbl, foot, path: v.path, cols: v.cols, w: v.w, sort: v.sort, data: null, copies: null, sel: new Set(), seq: 0, sizes: {}, sizesFor: "", sizing: false };
   box.onpointerdown = () => { if (fbActive !== i) { fbActive = i; fbMark(); fbTray(); } };
   return p;
 }
@@ -3361,12 +3389,37 @@ function fbStates(p, f) {
   if (!f.file) { const x = c.folders[f.name]; return c.places.map((pl, k) => !x || !x.files[k] ? "" : x.bad[k] ? "failed" : x.strong[k] >= x.files[k] ? "strong" : x.proven[k] >= x.files[k] ? "proven" : x.proven[k] ? "working" : "waiting"); }
   const x = c.files[f.name]; return c.places.map((pl, k) => x ? x.status[k] || "" : "");
 }
+function fbFoot(p) {
+  const d = p.data; if (!d) return;
+  const all = d.folders || [], dirs = all.filter(f => !f.file).length, files = all.length - dirs, bytes = all.reduce((a, f) => a + (f.file ? f.size || 0 : 0), 0);
+  const left = el("span", "", ""), b = el("b", "", all.length + (all.length === 1 ? " item" : " items"));
+  left.append(b, " (" + dirs + (dirs === 1 ? " folder, " : " folders, ") + files + (files === 1 ? " file)" : " files)") + (bytes ? " · " + size(bytes) + " in files here" : "") + " · ");
+  const calc = el("button", "linkish", p.sizing ? "calculating…" : "Σ calculate folder size"); calc.type = "button"; calc.disabled = !dirs || p.sizing;
+  calc.onclick = e => { e.stopPropagation(); fbCalcFor(p); };
+  left.append(calc);
+  const pl = fbPlaceOf(p) || d.places.find(x => x.kind === "internal");
+  const right = el("span", "", "");
+  if (pl && pl.kind !== "share" && pl.free) right.append(el("b", "", size(pl.free)), " available");
+  p.foot.replaceChildren(left, right);
+}
 function fbDraw(p) {
   const d = p.data; if (!d) return;
-  // Places along the top, then where you are.
-  const pk = JSON.stringify(d.places.map(x => [x.name, x.path]));
-  if (p.places.dataset.k !== pk) { p.places.dataset.k = pk; p.places.replaceChildren(...d.places.map(x => { const b = el("button", "", x.name); b.type = "button"; b.title = x.path; b.onclick = () => fbLoad(p, x.path); return b; })); }
-  p.places.querySelectorAll("button").forEach(b => b.classList.toggle("here", d.path === b.title || d.path.startsWith(b.title + "/") && b.title !== "/"));
+  // The pane's title and its drive or server, then where you are.
+  p.title.textContent = fbPanes.length < 2 ? "Files" : p.i === 0 ? "Source" : "Destination";
+  const kindWord = x => x.kind === "internal" ? "this Mac" : x.kind === "share" ? (x.share === "lucidlink" ? "LucidLink" : "SMB share") : x.kind === "server" ? "server (browse only)" : "drive";
+  const pk = JSON.stringify(d.places.map(x => [x.name, x.path, x.kind]));
+  if (p.places.dataset.k !== pk) {
+    p.places.dataset.k = pk;
+    const opts = d.places.map(x => { const o = el("option", "", x.name + " · " + kindWord(x)); o.value = x.path; return o; });
+    const sep = el("option", "", "──────────"); sep.disabled = true;
+    const srv = el("option", "", "Add or edit servers…"); srv.value = "__servers";
+    p.places.replaceChildren(...opts, sep, srv);
+  }
+  const here = fbPlaceOf(p) || d.places.find(x => x.kind === "internal");
+  p.places.value = p.places.dataset.cur = here ? here.path : "";
+  p.up.disabled = !!d.top || !d.parent;
+  p.del.hidden = !copySet.delete_on; p.del.disabled = !p.sel.size;
+  fbFoot(p);
   p.crumbs.replaceChildren(...(d.crumbs || []).flatMap((c, i, a) => { const b = el("button", "", c.name); b.type = "button"; b.onclick = () => fbLoad(p, c.path); return i < a.length - 1 ? [b, el("span", "", "/")] : [el("b", "", c.name)]; }));
   const words = $("fbFilter").value.toLowerCase().split(/\s+/).filter(Boolean);
   let list = (d.folders || []).filter(f => words.every(w => f.name.toLowerCase().includes(w)));
@@ -3418,7 +3471,8 @@ function fbTray() {
   const p = fbPanes[fbActive]; if (!p || !p.data) return;
   const names = [...p.sel], items = (p.data.folders || []).filter(f => p.sel.has(f.name));
   $("fbTray").hidden = !names.length;
-  $("fbDel").hidden = !copySet.delete_on;
+  $("fbDel").hidden = true; // v0.2.112: Delete is among each pane's buttons
+  fbPanes.forEach(q => { if (q.del) { q.del.hidden = !copySet.delete_on; q.del.disabled = !q.sel.size; } });
   if (!names.length) { $("fbMsg").textContent = ""; return; }
   const bytes = items.reduce((a, f) => a + (f.file ? f.size : 0), 0), dirs = items.filter(f => !f.file).length;
   $("fbSelText").textContent = names.length + (names.length === 1 ? " item ticked" : " items ticked") + (bytes ? " · " + size(bytes) : "") + (dirs ? " (" + dirs + (dirs === 1 ? " folder" : " folders") + ")" : "") + (fbTargets(p).length ? " · copy to:" : "");
@@ -3553,7 +3607,6 @@ document.addEventListener("keydown", e => {
 });
 // New folder, in the folder the active pane shows. Nothing is ever replaced:
 // a name already there is refused by Shuttle.
-$("fbNewDir").onclick = () => { $("fbNewBox").hidden = false; $("fbNewName").value = ""; $("fbNewErr").textContent = ""; $("fbNewName").focus(); };
 $("fbNewCancel").onclick = () => { $("fbNewBox").hidden = true; };
 $("fbNewBox").onsubmit = e => {
   e.preventDefault();

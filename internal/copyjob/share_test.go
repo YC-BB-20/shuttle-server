@@ -1,6 +1,7 @@
 package copyjob
 
 import (
+	"os"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -58,5 +59,48 @@ func TestCopyToShareFlushesAsItGoes(t *testing.T) {
 		if got := n.Load(); share != "" && got < 4 || share == "" && got != 0 {
 			t.Fatalf("share %q: %d flushes along the way", share, got)
 		}
+	}
+}
+
+// A job whose share came back at another mount point follows it there; a
+// share found at its old place, or not found, changes nothing (v0.2.112).
+func TestJobFollowsReconnectedShare(t *testing.T) {
+	root := t.TempDir()
+	m := newManager(t, filepath.Join(root, "state"))
+	j, err := m.Add(Spec{Source: filepath.Join(root, "src0"), Dest: filepath.Join(root, "dst0"), Paused: true})
+	if err != nil {
+		os.MkdirAll(filepath.Join(root, "src0"), 0o755)
+		if j, err = m.Add(Spec{Source: filepath.Join(root, "src0"), Dest: filepath.Join(root, "dst0"), Paused: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	from := "//filer.local/Media"
+	j.mu.Lock()
+	j.st.Spec.Dest, j.st.DestVol = "/Volumes/Media/Day 01", "share:"+from+":/Volumes/Media"
+	j.mu.Unlock()
+	old := findShare
+	t.Cleanup(func() { findShare = old })
+	findShare = func(f string) (diskio.Volume, bool) { return diskio.Volume{}, false }
+	if m.followShare(j, false) {
+		t.Fatal("moved with no share found")
+	}
+	findShare = func(f string) (diskio.Volume, bool) {
+		if f != from {
+			return diskio.Volume{}, false
+		}
+		return diskio.Volume{Mount: "/Volumes/Media-1", Share: diskio.ShareSMB, From: from, ID: "share:" + from + ":/Volumes/Media-1"}, true
+	}
+	if m.followShare(j, true) {
+		t.Fatal("the source is not a share")
+	}
+	if !m.followShare(j, false) || j.st.Spec.Dest != "/Volumes/Media-1/Day 01" || j.st.DestVol != "share:"+from+":/Volumes/Media-1" {
+		t.Fatalf("dest %q vol %q", j.st.Spec.Dest, j.st.DestVol)
+	}
+	saved, err := loadJob(j.dir)
+	if err != nil || saved.st.Spec.Dest != "/Volumes/Media-1/Day 01" {
+		t.Fatalf("not saved: %v", err)
+	}
+	if m.followShare(j, false) {
+		t.Fatal("moved again to where it already is")
 	}
 }

@@ -286,9 +286,16 @@ func (j *Job) verifyScan(ctx context.Context) error {
 			os.Remove(look)
 			continue
 		}
+		cjDest := cj.st.Spec.Dest
+		// v0.2.112: the same share reconnected at another place since that copy.
+		if fa, oa, ok := diskio.ShareFrom(cj.st.DestVol); ok {
+			if fb, nb, ok := diskio.ShareFrom(j.st.DestVol); ok && fa == fb && oa != nb && (cjDest == oa || strings.HasPrefix(cjDest, oa+"/")) {
+				cjDest = nb + strings.TrimPrefix(cjDest, oa)
+			}
+		}
 		for it.Next() {
 			e := it.E
-			full := filepath.Join(cj.st.Spec.Dest, filepath.FromSlash(e.P))
+			full := filepath.Join(cjDest, filepath.FromSlash(e.P))
 			if !inside(full, spec.Dest) {
 				continue
 			}

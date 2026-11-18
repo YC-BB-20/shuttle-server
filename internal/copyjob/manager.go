@@ -681,6 +681,14 @@ func (m *Manager) missing(j *Job) string {
 		return err == nil && d.ID == id && diskio.Present(d)
 	}
 	s, d := j.st.Spec.isLink() || ok(j.st.Spec.Source, j.st.SourceVol), ok(j.st.Spec.Dest, j.st.DestVol) // a link has no source disk
+	// v0.2.112: a share macOS reconnected at another place ("Share-1") is the
+	// same share: the job follows it there instead of waiting forever.
+	if !s && m.followShare(j, true) {
+		s = ok(j.st.Spec.Source, j.st.SourceVol)
+	}
+	if !d && m.followShare(j, false) {
+		d = ok(j.st.Spec.Dest, j.st.DestVol)
+	}
 	switch {
 	case !s && !d:
 		return "both"
@@ -690,6 +698,44 @@ func (m *Manager) missing(j *Job) string {
 		return "destination"
 	}
 	return ""
+}
+
+// findShare is diskio.FindShare; tests replace it.
+var findShare = diskio.FindShare
+
+// followShare moves a job's source (or destination) to where its share is
+// mounted now, when the share was found at another mount point. Only the
+// start of the path changes; the share, and so every file, is the same.
+func (m *Manager) followShare(j *Job, source bool) bool {
+	j.mu.Lock()
+	path, id := j.st.Spec.Dest, j.st.DestVol
+	if source {
+		path, id = j.st.Spec.Source, j.st.SourceVol
+	}
+	j.mu.Unlock()
+	from, old, ok := diskio.ShareFrom(id)
+	if !ok || !(path == old || strings.HasPrefix(path, old+"/")) {
+		return false
+	}
+	v, found := findShare(from)
+	if !found || v.Mount == old {
+		return false
+	}
+	moved := v.Mount + strings.TrimPrefix(path, old)
+	j.mu.Lock()
+	if source {
+		j.st.Spec.Source, j.st.SourceVol = moved, v.ID
+	} else {
+		j.st.Spec.Dest, j.st.DestVol = moved, v.ID
+	}
+	j.mu.Unlock()
+	if err := j.save(); err != nil {
+		return false
+	}
+	if m.Log != nil {
+		m.Log.Info("a share came back at another place; the job follows it", "job", j.st.ID, "share", from, "was", path, "now", moved)
+	}
+	return true
 }
 
 // diskName is the disk's name as the owner knows it, from the path.
