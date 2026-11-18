@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.117 — 18 November 2026
+
+- **The menu bar icon comes back after the Mac sleeps.** When the Mac wakes, Shuttle starts the icon afresh (it could be gone though its helper still ran). And if the icon fails three times in a row — as it can while the Mac is on its lock screen — Shuttle tries again two minutes later, and keeps doing so, instead of giving up for good.
+
 ## 0.2.116 — 17 November 2026
 
 - **Shuttle knows about a Move.** The records of earlier copies follow what was moved — its source folder, its backup folder, or chosen items when all of them moved — so Files still shows the moved items' copies, offers their drives in "copy to", and Delete knows they are backed up. The Move message says how many records followed. A copy of several chosen items of which only some moved stays at the old place, and the message says so.

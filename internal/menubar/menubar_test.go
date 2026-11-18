@@ -187,3 +187,48 @@ func TestUpdateRowTextLevelWithOtherItems(t *testing.T) {
 		t.Error("the update row's text is not level with the other menu items")
 	}
 }
+
+// v0.2.117: after three quick failures the icon is tried again later, not
+// never, so it comes back once the Mac is past its lock screen.
+func TestTriesAgainAfterPausing(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 900*time.Millisecond)
+	defer cancel()
+	var log strings.Builder
+	Run(ctx, Options{Dir: t.TempDir(), Every: 20 * time.Millisecond, RetryAfter: 150 * time.Millisecond,
+		Get:     func() Line { return Line{Level: "ok"} },
+		Log:     slog.New(slog.NewTextHandler(&log, nil)),
+		Command: []string{"/bin/sh", "-c", "exit 1"}})
+	if !strings.Contains(log.String(), "trying again later") || !strings.Contains(log.String(), "trying the menu bar icon again") || strings.Count(log.String(), "restarting") < 4 {
+		t.Fatalf("log:\n%s", log.String())
+	}
+}
+
+// v0.2.117: after the Mac wakes, a helper that still runs is started afresh
+// (its icon may be gone), once per wake.
+func TestStartsAfreshAfterWake(t *testing.T) {
+	old := woke
+	t.Cleanup(func() { woke = old })
+	var n int
+	woke = func(last, now time.Time) bool { n++; return n == 5 } // one wake
+	dir := t.TempDir()
+	ctx, cancel := context.WithTimeout(context.Background(), 600*time.Millisecond)
+	defer cancel()
+	var log strings.Builder
+	Run(ctx, Options{Dir: dir, Every: 20 * time.Millisecond,
+		Get:     func() Line { return Line{Level: "ok"} },
+		Log:     slog.New(slog.NewTextHandler(&log, nil)),
+		Command: []string{"/bin/sh", "-c", "echo started >> " + dir + "/starts; sleep 30"}})
+	b, _ := os.ReadFile(dir + "/starts")
+	if strings.Count(string(b), "started") != 2 || strings.Count(log.String(), "woke from sleep") != 1 {
+		t.Fatalf("starts %q log:\n%s", b, log.String())
+	}
+}
+
+// A normal tick is not a wake, and neither are two times without monotonic
+// readings (Go then compares wall clocks only).
+func TestWokeRule(t *testing.T) {
+	a := time.Now()
+	if woke(a, a.Add(2*time.Second)) || woke(a.Round(0), a.Round(0).Add(time.Hour)) {
+		t.Fatal("not a wake")
+	}
+}

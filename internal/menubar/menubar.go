@@ -46,6 +46,17 @@ type Options struct {
 	// ForgiveAfter: a helper that ran at least this long before quitting does
 	// not count towards giving up (default 30 s).
 	ForgiveAfter time.Duration
+	// RetryAfter (v0.2.117): after three quick failures the icon is tried
+	// again this much later, and so on, instead of never (default 2 min). A
+	// Mac waking to its lock screen can make the helper fail a few times.
+	RetryAfter time.Duration
+}
+
+// woke says whether the Mac slept between two ticks (v0.2.117): the wall
+// clock moved on much more than Go's monotonic clock, which stops while the
+// Mac sleeps. Tests replace it.
+var woke = func(last, now time.Time) bool {
+	return now.Round(0).Sub(last.Round(0))-now.Sub(last) > 20*time.Second
 }
 
 func (o Options) forgiveAfter() time.Duration {
@@ -62,8 +73,11 @@ func Supported() bool { return runtime.GOOS == "darwin" }
 func StatusFile(dir string) string { return filepath.Join(dir, "menubar-status.txt") }
 
 // Run writes the status file and keeps the helper running until ctx ends.
-// If the helper keeps failing it gives up after three tries in ten minutes,
-// says so in the log, and Shuttle carries on without the icon.
+// If the helper keeps failing it pauses after three tries in ten minutes,
+// says so in the log, and tries again RetryAfter later (v0.2.117: it used to
+// give up for good, so the icon could stay gone after a sleep). After the Mac
+// wakes, the helper is started afresh, since its icon may be gone though it
+// still runs.
 func Run(ctx context.Context, o Options) {
 	if o.Every == 0 {
 		o.Every = 2 * time.Second
@@ -103,6 +117,11 @@ func Run(ctx context.Context, o Options) {
 	var mu sync.Mutex
 	var starts []time.Time
 	var startedAt time.Time
+	retry := o.RetryAfter
+	if retry <= 0 {
+		retry = 2 * time.Minute
+	}
+	var retryAt time.Time // set while paused after three failures
 	start := func() {
 		now := time.Now()
 		startedAt = now
@@ -113,8 +132,8 @@ func Run(ctx context.Context, o Options) {
 			}
 		}
 		if len(recent) >= 3 {
-			o.Log.Warn("menu bar icon stopped after failing three times; Shuttle carries on without it")
-			starts = append(recent, now) // stays over the limit: no more tries
+			o.Log.Warn("menu bar icon stopped after failing three times; trying again later", "in", retry)
+			retryAt = now.Add(retry)
 			return
 		}
 		starts = append(recent, now)
@@ -138,6 +157,7 @@ func Run(ctx context.Context, o Options) {
 
 	t := time.NewTicker(o.Every)
 	defer t.Stop()
+	last := time.Now()
 	for {
 		select {
 		case <-ctx.Done():
@@ -149,6 +169,23 @@ func Run(ctx context.Context, o Options) {
 			return
 		case <-t.C:
 			write()
+			now := time.Now()
+			switch {
+			case woke(last, now):
+				o.Log.Info("the Mac woke from sleep: starting the menu bar icon afresh")
+				mu.Lock()
+				c := cur
+				cur = nil
+				mu.Unlock()
+				stop(c, exited)
+				starts, retryAt = nil, time.Time{}
+				start()
+			case !retryAt.IsZero() && now.After(retryAt):
+				o.Log.Info("trying the menu bar icon again")
+				starts, retryAt = nil, time.Time{}
+				start()
+			}
+			last = now
 		case why := <-exited:
 			mu.Lock()
 			cur = nil
