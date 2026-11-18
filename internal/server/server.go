@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/YC-BB-20/shuttle-server/internal/speedtest"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -35,6 +36,7 @@ type Server struct {
 	Speed   *speedtest.Tester // nil in safe mode
 	LogsDir string            // logs/YYYY-MM/shuttle.log, read for a copy's Log tab (v0.2.87)
 	Servers *remote.Store     // file servers such as CTERA (v0.2.96); logins stay in secrets/servers
+	Log     *slog.Logger      // the Delete function's record (v0.2.106); nil: not logged
 	sizes   sizer             // the copy size being counted for the picker
 }
 
@@ -135,6 +137,8 @@ func (s *Server) HTTP() *http.Server {
 	mux.HandleFunc("POST /api/links/info", s.command(s.linksInfo))
 	mux.HandleFunc("POST /api/links/add", s.command(s.linksAdd))
 	mux.HandleFunc("POST /api/mkdir", s.always(s.mkdir))
+	mux.HandleFunc("POST /api/delete", s.command(s.deleteItems))
+	mux.HandleFunc("GET /api/delete", s.deleteStatus)
 	mux.HandleFunc("POST /api/disks/eject", s.command(s.eject))
 	mux.HandleFunc("GET /api/storage", s.storageList)
 	mux.HandleFunc("GET /api/size", s.copySize)

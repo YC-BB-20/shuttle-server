@@ -304,6 +304,11 @@ button { border-color:var(--line2); background:var(--raise); color:var(--fg); bo
 button:hover { border-color:#55555f; }
 button:focus-visible, select:focus-visible, input:focus-visible, .job:focus-visible { outline:2px solid var(--sel); outline-offset:1px; }
 .primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+/* v0.2.106: Delete looks like no other button. */
+.danger { background:color-mix(in srgb, var(--bad) 16%, var(--card)); border-color:color-mix(in srgb, var(--bad) 55%, transparent); color:var(--bad); font-weight:600; }
+.danger:hover { background:color-mix(in srgb, var(--bad) 26%, var(--card)); }
+.delwarn { color:var(--bad); font-weight:600; } .delwarn:empty, #delStep:empty { display:none; }
+#delText { overflow-wrap:anywhere; }
 .primary:hover { background:#8a5ee8; border-color:#8a5ee8; }
 select, input[type=text], input[type=password] { background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:8px; font:inherit; }
 select { padding:5px 8px; }
@@ -508,7 +513,7 @@ dialog .head, .foot { border-color:var(--line); }
 .ihead { position:sticky; top:0; z-index:1; display:flex; gap:10px; align-items:flex-start; padding:16px 18px 12px; background:var(--side); border-bottom:1px solid var(--line); }
 .ihead > div { flex:1; min-width:0; }
 .ihead h2 { margin:0; font-size:17px; overflow-wrap:anywhere; }
-.ist { margin:2px 0 0; color:var(--mute); font-size:13px; }
+.ist { margin:2px 0 0; color:var(--mute); font-size:13px; white-space:pre-line; }
 .ihead button { flex:none; width:30px; height:30px; padding:0; border-radius:15px; background:transparent; }
 .iempty { margin:0; padding:24px 20px; color:var(--mute); }
 .ibody { padding:14px 18px 24px; }
@@ -782,7 +787,7 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
     <div class="fbpanes" id="fbPanes"></div>
     <footer class="fbtray" id="fbTray" hidden>
       <div class="fbsel"><span id="fbSelText"></span><div class="fbplaces" id="fbDests"></div></div>
-      <div class="fbbtns"><button type="button" id="fbOther">Copy to another place…</button><button type="button" id="fbAll"></button><button type="button" class="primary" id="fbMissing"></button></div>
+      <div class="fbbtns"><button type="button" class="danger" id="fbDel" hidden title="Delete what is ticked (⌘⌫)">Delete…</button><button type="button" id="fbOther">Copy to another place…</button><button type="button" id="fbAll"></button><button type="button" class="primary" id="fbMissing"></button></div>
       <p class="mute" id="fbMsg"></p>
     </footer>
   </div>
@@ -814,6 +819,15 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
     <div class="lpos"><label class="opt"><input type="radio" name="safeN" value="1"><span>1 copy</span></label><label class="opt"><input type="radio" name="safeN" value="2"><span>2 copies (recommended)</span></label><label class="opt"><input type="radio" name="safeN" value="3"><span>3 copies</span></label><label class="opt"><input type="radio" name="safeN" value="4"><span>4 copies</span></label></div>
     <p class="mute">A camera card shows SAFE TO UNPLUG once this many of its copies are read back and match, and FULLY VERIFIED once the card has also been read a second time and matched for that many copies. Changes only what the On set view shows; the copies themselves are not touched.</p>
     <p class="err" id="safeErr"></p>
+  </section>
+  <section class="card" id="delSet">
+    <h2>Delete</h2>
+    <label class="opt"><input type="checkbox" id="delOn"><span>Let Shuttle delete files and folders (Files → Delete)</span></label>
+    <p class="mute">They go to the Trash of their disk, so you can get them back from there. Nothing is deleted without asking first.</p>
+    <label class="opt in"><input type="checkbox" id="delShares"><span>Also on LucidLink and SMB shares: there is no Trash there, so they are deleted for good</span></label>
+    <label>Questions before deleting</label>
+    <div class="lpos"><label class="opt"><input type="radio" name="delN" value="1"><span>Ask once</span></label><label class="opt"><input type="radio" name="delN" value="2"><span>Ask twice (recommended)</span></label></div>
+    <p class="err" id="delErr"></p>
   </section>
   <section class="card" id="layoutSet">
     <h2>Folder layout</h2>
@@ -1022,6 +1036,11 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
   <div class="head"><h2>How Shuttle is using this computer</h2><button type="button" data-close>Close</button></div>
   <div class="body"><p class="mute" id="sysVer"></p><div class="sysg" id="sysList"></div></div>
   <div class="foot"><button type="button" id="sysLog">Open the full log</button><button type="button" id="sysUpd">Updates</button><button type="button" id="sysSet">Settings</button></div>
+</dialog>
+<dialog id="delDlg">
+  <div class="head"><h2 id="delTitle">Delete?</h2><button type="button" data-close>Cancel</button></div>
+  <div class="body"><p id="delText"></p><p class="delwarn" id="delWarn"></p><p class="mute" id="delStep"></p><p class="err" id="delDlgErr"></p></div>
+  <div class="foot"><button type="button" data-close>Cancel</button><button type="button" class="danger" id="delGo">Delete</button></div>
 </dialog>
 <dialog id="logDlg">
   <div class="head"><h2>Shuttle's log</h2><button type="button" data-close>Close</button></div>
@@ -2013,6 +2032,14 @@ document.addEventListener("keydown", e => {
   if (picked.size) { picked.clear(); drawPicked(); return; }
   if (document.body.classList.contains("wall")) setWall(false); else if (selId) selectJob(selId); else if (selCard) closeCard(); else if (fbSel) fbCloseFile();
 });
+// v0.2.106: a wait in short lines: what it waits for, how much is left, then why.
+// "Waiting for LucidLink to finish uploading (2.5 GB left) before reading the copies back"
+// becomes three lines; any other reason keeps one line, starting with "Waiting".
+function waitLines(r) {
+  const m = /^Waiting for LucidLink to finish uploading \((.+?) left\) (.+)$/.exec(r);
+  if (m) return "Waiting for LucidLink\n" + m[1] + " left to upload\n" + m[2];
+  return /^waiting\b/i.test(r) ? r : "Waiting · " + r;
+}
 const problemShort = v => [v.failed && v.failed + " failed", v.gone && v.gone + " deleted", v.changed && v.changed + " changed",
   v.added && v.added + " added", v.s2_warnings && v.s2_warnings + " source warnings"].filter(Boolean).join(" · ");
 // The State column: a few words, a tone, and a small second line.
@@ -2138,10 +2165,12 @@ function card(v) {
   q(".k").textContent = kindName(v); // v0.2.95: a download says where it comes from (Frame.io, Vimeo, SoundCloud…)
   q(".k").title = v.kind === "link" ? "Downloaded from " + (v.link_site || "a link") + "; saved into " + (v.dest || "") : "";
   q(".szc").textContent = v.bytes && !scanning ? size(v.bytes) : v.est_bytes ? size(v.est_bytes) : "—";
-  q(".dsub").textContent = sub; q(".dsub").className = "dsub " + subCls.replace("sub", "").trim();
+  // v0.2.106: a wait is told once, at the top of the details, so the Overview does not repeat it.
+  q(".dsub").textContent = v.state === "waiting" ? "" : sub; q(".dsub").className = "dsub " + subCls.replace("sub", "").trim();
   if (selId === v.id) {
     $("inspTitle").textContent = ver ? verKind(v) : jobName(v); $("inspTitle").title = ver ? place : v.source;
-    $("inspState").textContent = [stT, stSmall].filter(Boolean).join(" · "); $("inspState").className = "ist " + stTone;
+    $("inspState").textContent = v.state === "waiting" && !v.missing && v.reason ? waitLines(v.reason) : [stT, stSmall].filter(Boolean).join(" · ");
+    $("inspState").className = "ist " + stTone;
     if (!fv[v.id] && !scanning) toggleFiles(v, c);
   }
   // Details, shown when the row is open.
@@ -2423,6 +2452,9 @@ function showSet(c) {
   const was = SAFE_COPIES(); copySet = c; showSys(c); showLayout(c); document.querySelectorAll('input[name="hashAlgo"]').forEach(r => { r.checked = r.value === (c.hash || "xxh128"); });
   document.querySelectorAll('input[name="safeN"]').forEach(r => { r.checked = +r.value === SAFE_COPIES(); });
   $("onRuleN").textContent = SAFE_COPIES() === 1 ? "1 copy" : SAFE_COPIES() + " copies";
+  $("delOn").checked = !!c.delete_on; $("delShares").checked = !!c.delete_shares; $("delShares").disabled = !c.delete_on;
+  document.querySelectorAll('input[name="delN"]').forEach(r => { r.checked = +r.value === (c.delete_confirms === 1 ? 1 : 2); });
+  if (typeof fbTray === "function") fbTray();
   if (was !== SAFE_COPIES() && latest) renderOnset(latest.jobs || []);
 }
 function showLayout(c) {
@@ -2442,16 +2474,19 @@ function wrapShow() {
 $("ckWrap").onchange = wrapShow;
 function loadSys() { fetch("/api/settings/copy").then(r => r.json()).then(showSet).catch(() => {}); }
 function saveSys(errBox) {
-  $("sysErr").textContent = ""; $("hashErr").textContent = ""; $("layoutErr").textContent = ""; $("safeErr").textContent = "";
+  $("sysErr").textContent = ""; $("hashErr").textContent = ""; $("layoutErr").textContent = ""; $("safeErr").textContent = ""; $("delErr").textContent = "";
   const algo = document.querySelector('input[name="hashAlgo"]:checked');
   post("/api/settings/copy", Object.assign({}, copySet, { skip_system_files: $("skipSys").checked, skip_appledouble_files: $("skipSys").checked && $("skipDot").checked, hash: algo ? algo.value : "xxh128",
     wrap: $("wrapDef").checked, wrap_hash: $("wrapDef").checked && $("wrapHashDef").checked, wrap_name_from: (document.querySelector('input[name="wrapFrom"]:checked') || { value: "folder" }).value,
-    safe_copies: +(document.querySelector('input[name="safeN"]:checked') || { value: SAFE_COPIES() }).value }))
+    safe_copies: +(document.querySelector('input[name="safeN"]:checked') || { value: SAFE_COPIES() }).value,
+    delete_on: $("delOn").checked, delete_shares: $("delOn").checked && $("delShares").checked,
+    delete_confirms: +(document.querySelector('input[name="delN"]:checked') || { value: 2 }).value }))
     .then(showSet).catch(e => { $(errBox).textContent = e.message; loadSys(); });
 }
 $("skipSys").onchange = $("skipDot").onchange = () => saveSys("sysErr"); document.querySelectorAll('input[name="hashAlgo"]').forEach(r => { r.onchange = () => saveSys("hashErr"); });
 $("wrapDef").onchange = $("wrapHashDef").onchange = () => saveSys("layoutErr"); document.querySelectorAll('input[name="wrapFrom"]').forEach(r => { r.onchange = () => saveSys("layoutErr"); });
 document.querySelectorAll('input[name="safeN"]').forEach(r => { r.onchange = () => saveSys("safeErr"); });
+$("delOn").onchange = $("delShares").onchange = () => saveSys("delErr"); document.querySelectorAll('input[name="delN"]').forEach(r => { r.onchange = () => saveSys("delErr"); });
 loadSys();
 
 // Servers (v0.2.96): cloud servers such as CTERA, reached by S3 or WebDAV.
@@ -3313,6 +3348,14 @@ function fbDraw(p) {
     const r = el("div", "fbr" + (p.sel.has(f.name) ? " on" : "") + (fbSel && fbSel.path === f.path ? " foc" : "")), ck = el("input");
     ck.type = "checkbox"; ck.checked = p.sel.has(f.name); ck.setAttribute("aria-label", "Tick " + f.name);
     ck.onchange = () => { ck.checked ? p.sel.add(f.name) : p.sel.delete(f.name); r.classList.toggle("on", ck.checked); fbTray(); syncAll(); };
+    // v0.2.106: like the Finder, Shift-click ticks (or unticks) everything from the last item clicked to this one.
+    ck.onclick = e => { if (e.shiftKey && fbRange(p, list, f.name, ck.checked)) return; p.anchor = f.name; };
+    r.onclick = e => {
+      if (e.target.closest("button, input, a, label")) return;
+      const on = !p.sel.has(f.name);
+      if (e.shiftKey && fbRange(p, list, f.name, on)) return;
+      ck.checked = on; ck.onchange(); p.anchor = f.name;
+    };
     const nm = el("button", "fbn " + (f.file ? "file" : "dir"), f.name); nm.type = "button";
     nm.onclick = () => f.file ? fbOpenFile(p, f) : fbLoad(p, f.path);
     const fz = !f.file && p.sizes[f.name];
@@ -3332,6 +3375,7 @@ function fbTray() {
   const p = fbPanes[fbActive]; if (!p || !p.data) return;
   const names = [...p.sel], items = (p.data.folders || []).filter(f => p.sel.has(f.name));
   $("fbTray").hidden = !names.length;
+  $("fbDel").hidden = !copySet.delete_on;
   if (!names.length) { $("fbMsg").textContent = ""; return; }
   const bytes = items.reduce((a, f) => a + (f.file ? f.size : 0), 0), dirs = items.filter(f => !f.file).length;
   $("fbSelText").textContent = names.length + (names.length === 1 ? " item ticked" : " items ticked") + (bytes ? " · " + size(bytes) : "") + (dirs ? " (" + dirs + (dirs === 1 ? " folder" : " folders") + ")" : "") + (fbTargets(p).length ? " · copy to:" : "");
@@ -3389,8 +3433,78 @@ $("fbTwo").querySelectorAll("button").forEach(btn => btn.onclick = () => fbSetLa
 // Keys 1 and 2 switch between one and two panes in Files (not while typing).
 document.addEventListener("keydown", e => {
   if ($("tabFiles").hidden || e.metaKey || e.ctrlKey || e.altKey || (e.key !== "1" && e.key !== "2") || document.querySelector("dialog[open]")) return;
-  const t = e.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+  const t = e.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && t.type !== "checkbox")) return;
   e.preventDefault(); fbSetLayout(e.key);
+});
+// Shift-click: ticks or unticks every row between the last one clicked and
+// this one, in the order shown. False when there is no earlier click here.
+function fbRange(p, list, name, on) {
+  const a = list.findIndex(x => x.name === p.anchor), b = list.findIndex(x => x.name === name);
+  if (a < 0 || b < 0) return false;
+  list.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(x => on ? p.sel.add(x.name) : p.sel.delete(x.name));
+  p.anchor = name; fbDraw(p); fbTray(); return true;
+}
+// v0.2.106: Delete, after one or two questions (Settings). The server checks
+// everything again and deletes nothing unless every item may go.
+let delStepN = 0, delPane = null;
+function fbPlaceOf(p) {
+  const d = p.data; if (!d) return null;
+  return (d.places || []).filter(x => x.kind !== "home" && x.kind !== "internal" && (d.path === x.path || d.path.startsWith(x.path.replace(/\/$/, "") + "/")))
+    .sort((a, b) => b.path.length - a.path.length)[0] || null;
+}
+function fbAskDelete() {
+  const p = fbPanes[fbActive]; if (!p || !p.data || !copySet.delete_on || $("delDlg").open) return;
+  const items = (p.data.folders || []).filter(f => p.sel.has(f.name)); if (!items.length) return;
+  delPane = p; delStepN = 1;
+  const pl = fbPlaceOf(p), share = !!pl && pl.kind === "share";
+  const bytes = items.reduce((a, f) => a + (f.file ? f.size || 0 : 0), 0), dirs = items.filter(f => !f.file).length;
+  const what = items.length === 1 ? "\u201c" + items[0].name + "\u201d" : items.length + " items";
+  const extra = [bytes ? size(bytes) : "", dirs ? "with everything in " + (dirs === 1 ? "1 folder" : dirs + " folders") : ""].filter(Boolean).join(", ");
+  $("delTitle").textContent = share ? "Delete for good?" : "Move to the Trash?";
+  $("delText").textContent = (share ? "Delete " : "Move ") + what + (extra ? " (" + extra + ")" : "") +
+    (share ? " on " + pl.name + ". There is no Trash there: this cannot be undone." : " to the Trash of " + (pl ? pl.name : "this computer") + ". You can get them back from there.");
+  const none = items.filter(f => !fbStates(p, f).some(fbDone)).length;
+  $("delWarn").textContent = !none ? "" : none === items.length ? (items.length === 1 ? "Shuttle knows of no proven copy of it anywhere else." : "Shuttle knows of no proven copy of any of them anywhere else.")
+    : none + " of them " + (none === 1 ? "has" : "have") + " no proven copy anywhere else that Shuttle knows of.";
+  $("delDlgErr").textContent = share && !copySet.delete_shares ? "Deleting on LucidLink and SMB shares is switched off (Settings → Delete)." : "";
+  $("delGo").disabled = share && !copySet.delete_shares;
+  $("delGo").textContent = share ? "Delete for good" : "Move to the Trash";
+  $("delStep").textContent = copySet.delete_confirms === 1 ? "" : "Question 1 of 2.";
+  $("delDlg").showModal();
+}
+$("fbDel").onclick = fbAskDelete;
+$("delGo").onclick = () => {
+  const p = delPane; if (!p) return;
+  if (copySet.delete_confirms !== 1 && delStepN === 1) {
+    delStepN = 2;
+    $("delStep").textContent = "Question 2 of 2: are you sure? This is the last question.";
+    $("delGo").textContent = $("delGo").textContent === "Delete for good" ? "Yes, delete for good" : "Yes, move to the Trash";
+    return;
+  }
+  const names = (p.data.folders || []).filter(f => p.sel.has(f.name)).map(f => f.name), folder = p.path;
+  $("delGo").disabled = true; $("delDlgErr").textContent = "";
+  post("/api/delete", { folder, names }).then(r => {
+    $("delDlg").close(); p.sel.clear(); p.anchor = null; fbTray();
+    if (r.deleting) fbDelWatch(folder);
+    fbPanes.forEach(q => { if (q.path === folder || q.path.startsWith(folder + "/")) fbLoad(q, q.path, true); });
+  }).catch(e => { $("delDlgErr").textContent = e.message; fbPanes.forEach(q => fbLoad(q, q.path, true)); })
+    .finally(() => { $("delGo").disabled = false; });
+};
+// Deleting for good on a share runs on its own; its progress shows under the bar.
+function fbDelWatch(folder) {
+  fetch("/api/delete").then(r => r.json()).then(st => {
+    $("fbCalcMsg").textContent = st.busy ? "Deleting for good: " + st.done + " of " + st.total + "…" :
+      st.failed ? st.done + " deleted, " + st.failed + " not: " + st.error : "Deleted " + st.done + (st.done === 1 ? " item" : " items") + " for good.";
+    if (st.busy) setTimeout(() => fbDelWatch(folder), 1000);
+    else fbPanes.forEach(q => { if (q.path === folder || q.path.startsWith(folder + "/")) fbLoad(q, q.path, true); });
+  }).catch(() => setTimeout(() => fbDelWatch(folder), 2000));
+}
+// ⌘⌫ asks to delete what is ticked, as in the Finder (not while typing).
+document.addEventListener("keydown", e => {
+  if ($("tabFiles").hidden || !(e.metaKey || e.ctrlKey) || e.key !== "Backspace" || document.querySelector("dialog[open]")) return;
+  const t = e.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && t.type !== "checkbox")) return;
+  if (!copySet.delete_on) return;
+  e.preventDefault(); fbAskDelete();
 });
 // New folder, in the folder the active pane shows. Nothing is ever replaced:
 // a name already there is refused by Shuttle.

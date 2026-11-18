@@ -371,7 +371,7 @@ func Run(opts Options) (code int) {
 			}}
 	}
 	srv := (&server.Server{Page: shuttle.IndexHTML, Speed: speed, PageDir: cfg.PageDir, Hub: hub, Status: status, Jobs: actions, Listen: cfg.Listen,
-		Updates: updater, Restart: restart, Quit: quit, Login: login, LogsDir: filepath.Join(data, "logs"),
+		Updates: updater, Restart: restart, Quit: quit, Login: login, LogsDir: filepath.Join(data, "logs"), Log: log,
 		Servers: &remote.Store{Dir: filepath.Join(data, "secrets", "servers"), Opts: remote.Options{Budget: budget}},
 		About: func() any {
 			return map[string]string{"version": version.Version, "commit": version.Commit, "changelog": shuttle.Changelog}

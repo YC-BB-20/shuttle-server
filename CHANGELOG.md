@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.106 — 17 November 2026
+
+- **Delete, in Files.** Off until you turn it on in Settings → Delete. Tick items and press Delete… (or ⌘⌫). They go to the Trash of their disk, so you can get them back. On LucidLink and SMB shares there is no Trash, so it deletes for good, and needs its own second switch in Settings. Shuttle asks once or twice first (Settings; twice by default), says how much will go, and warns in red when it knows of no proven copy elsewhere. Nothing a copy in the queue still uses, no whole disk, no home folder and nothing of Shuttle's own can be deleted, and if any one item may not go, none is touched. Every delete is written to the log.
+- **Shift-click** ticks or unticks everything between the last item clicked and this one, as in the Finder. Clicking a row (not its name) ticks it too.
+- **A wait is told once,** at the top of the details, in short lines: "Waiting for LucidLink · 2.5 GB left to upload · before reading the copies back".
+
 ## 0.2.105 — 17 November 2026
 
 - **Files: New folder.** Makes a folder in the folder shown (in the pane you last clicked). A name already there is refused; nothing is replaced.

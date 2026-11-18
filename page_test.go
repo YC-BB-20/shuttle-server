@@ -1,6 +1,7 @@
 package shuttle
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -785,5 +786,26 @@ func TestPageV0_2_105(t *testing.T) {
 		if strings.Contains(s, gone) {
 			t.Errorf("page still has %q", gone)
 		}
+	}
+}
+
+func TestPageV0_2_106(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`<section class="card" id="delSet">`, `<input type="checkbox" id="delOn">`, `<input type="checkbox" id="delShares">`, `name="delN" value="2"><span>Ask twice (recommended)`,
+		`delete_on: $("delOn").checked, delete_shares: $("delOn").checked && $("delShares").checked,`,
+		`$("fbDel").hidden = !copySet.delete_on;`, `<dialog id="delDlg">`, `post("/api/delete", { folder, names })`,
+		`if (copySet.delete_confirms !== 1 && delStepN === 1) {`, `$("delGo").disabled = share && !copySet.delete_shares;`,
+		`e.key !== "Backspace"`, `function fbRange(p, list, name, on) {`, `if (e.shiftKey && fbRange(p, list, f.name, ck.checked)) return;`,
+		`function waitLines(r) {`, `/^Waiting for LucidLink to finish uploading \((.+?) left\) (.+)$/`, `q(".dsub").textContent = v.state === "waiting" ? "" : sub;`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	// The page splits the server's LucidLink wait into lines: the two must keep the same shape.
+	b, err := os.ReadFile("internal/copyjob/lucid.go")
+	if err != nil || !strings.Contains(string(b), `"Waiting for LucidLink to finish uploading (" + humanBytes(n) + " left) before reading the copies back"`) {
+		t.Error("the LucidLink wait text changed: update waitLines in the page")
 	}
 }

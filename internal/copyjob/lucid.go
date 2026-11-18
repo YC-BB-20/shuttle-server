@@ -43,6 +43,7 @@ func (j *Job) lucidReady(ctx context.Context, e env) error {
 			}
 			say("Waiting to check the copies: " + err.Error())
 		} else if n > 0 {
+			// The page splits this text into three lines (waitLines, v0.2.106): keep its shape.
 			say("Waiting for LucidLink to finish uploading (" + humanBytes(n) + " left) before reading the copies back")
 		} else if err := e.lucid.Drop(ctx); err != nil {
 			if ctx.Err() != nil {
