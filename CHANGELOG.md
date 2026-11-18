@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.114 — 17 November 2026
+
+- **Move.** Tick files or folders and press Move (to the other pane, or choose a folder with one pane). Within one drive or share it is a rename: a folder with any number of files and subfolders moves at once, nothing is read or written. To another drive Shuttle refuses (use Copy). It never replaces something already there, never moves a folder into itself or anything a copy in the queue uses, and if one item may not move, none does. Every move is written to the log.
+- **The copy bar's buttons:** Copy, Copy to another place…, Move. "Copy only what is missing" is gone: Copy compares what is already there and does not copy it again.
+- **Settings → System:** "How Shuttle is using this computer" comes first; the by-hand undo line and the long Start at login text are gone.
+
 ## 0.2.113 — 17 November 2026
 
 - **The ticked total counts folders:** once a folder's size is known (worked out by itself or with Σ calculate folder size), it is added; until then the bar says how many folders are not sized yet, instead of leaving them out.

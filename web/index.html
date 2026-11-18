@@ -807,7 +807,7 @@ body.on-files #tabFiles { flex:1 1 auto; min-height:360px; }
     <div class="fbpanes" id="fbPanes"></div>
     <footer class="fbtray" id="fbTray" hidden>
       <div class="fbsel"><span id="fbSelText"></span><div class="fbplaces" id="fbDests"></div></div>
-      <div class="fbbtns"><button type="button" class="danger" id="fbDel" hidden title="Delete what is ticked (⌘⌫)">Delete…</button><button type="button" id="fbOther">Copy to another place…</button><button type="button" id="fbAll"></button><button type="button" class="primary" id="fbMissing"></button></div>
+      <div class="fbbtns"><button type="button" class="danger" id="fbDel" hidden title="Delete what is ticked (⌘⌫)">Delete…</button><button type="button" id="fbOther">Copy to another place…</button><button type="button" id="fbMove" title="Move within the same drive: instant, nothing is copied">Move…</button><button type="button" class="primary" id="fbAll">Copy</button><input type="hidden" id="moveTo"></div>
       <p class="mute" id="fbMsg"></p>
     </footer>
   </div>
@@ -894,6 +894,14 @@ body.on-files #tabFiles { flex:1 1 auto; min-height:360px; }
       <p class="err" id="srvErr"></p>
     </div>
   </section>
+  <h2 class="sechead" data-page="updates" style="margin-top:0">How Shuttle is using this computer</h2>
+  <div class="grid resources" data-page="updates" style="margin-bottom:12px">
+    <section class="card"><h2>Memory</h2><p id="mem"></p><div class="bar"><i id="memBar"></i></div><p class="mute" id="memNote"></p></section>
+    <section class="card"><h2>Buffer budget</h2><p id="buf"></p><div class="bar"><i id="bufBar"></i></div><p class="mute" id="bufNote"></p></section>
+    <section class="card"><h2>Free space</h2><p id="disk"></p><p class="mute" id="diskNote"></p></section>
+    <section class="card"><h2>Processor</h2><p id="cpu"></p><p class="mute" id="cpuNote"></p></section>
+    <section class="card"><h2>Open files</h2><p id="files"></p><p class="mute">Pages open: <span id="pages"></span></p></section>
+  </div>
   <section class="card" id="updates" data-page="updates">
     <h2>Updates</h2>
     <p id="updLine">…</p>
@@ -915,18 +923,9 @@ body.on-files #tabFiles { flex:1 1 auto; min-height:360px; }
   <section class="card" id="loginSet" data-page="updates" hidden>
     <h2>Start at login</h2>
     <label class="opt"><input type="checkbox" id="loginOn"><span>Open Shuttle Server when I log in to this Mac</span></label>
-    <p class="mute">Starts Shuttle in the background, with its menu bar icon, each time you log in. It does not start a second copy now, and Stop Shuttle in the menu bar keeps it stopped until the next login. The menu bar icon has the same switch.</p>
     <p class="err" id="loginErr"></p>
   </section>
   <section class="card" data-page="updates"><h2>Data folder</h2><p class="path" id="data"></p><p class="mute">Temp: <span class="path" id="temp"></span></p></section>
-  <h2 class="sechead" data-page="updates">How Shuttle is using this computer</h2>
-  <div class="grid resources" data-page="updates" style="margin-bottom:12px">
-    <section class="card"><h2>Memory</h2><p id="mem"></p><div class="bar"><i id="memBar"></i></div><p class="mute" id="memNote"></p></section>
-    <section class="card"><h2>Buffer budget</h2><p id="buf"></p><div class="bar"><i id="bufBar"></i></div><p class="mute" id="bufNote"></p></section>
-    <section class="card"><h2>Free space</h2><p id="disk"></p><p class="mute" id="diskNote"></p></section>
-    <section class="card"><h2>Processor</h2><p id="cpu"></p><p class="mute" id="cpuNote"></p></section>
-    <section class="card"><h2>Open files</h2><p id="files"></p><p class="mute">Pages open: <span id="pages"></span></p></section>
-  </div>
   <section class="card" id="verSet" data-page="versions">
     <h2>Installed version</h2>
     <p id="verNow">…</p>
@@ -1648,7 +1647,7 @@ const bindPick = b => b.onclick = () => {
 document.querySelectorAll("[data-pick]").forEach(bindPick);
 // v0.2.88: one card to several drives in one step. Each drive gets its own
 // copy in the queue, each read back and proven against the source.
-const isDst = id => /^dst\d*$/.test(id) || id === "linkDst";
+const isDst = id => /^dst\d*$/.test(id) || id === "linkDst" || id === "moveTo";
 const moreDsts = () => [...$("moreDst").querySelectorAll("input")];
 function addDstRow(value) {
   if (moreDsts().length >= 3) return;
@@ -1729,6 +1728,7 @@ const kindIcon = { home: "🏠", internal: "💻", disk: "💽", server: "🌐",
 function useLabel() {
   $("pickUse").textContent = chosen.size ? "Use " + chosen.size + " chosen" : "Use this folder";
   $("pickHint").textContent = pickFor === "ver" ? "Open a folder Shuttle copied to and press Use this folder, or tap one file to verify only that file." :
+    pickFor === "moveTo" ? "Open the folder to move into (on the same drive), then press Use this folder." :
     pickFor !== "src" ? "Open the folder to copy into, then press Use this folder." :
     chosen.size ? chosen.size + " chosen in this folder. Opening another folder clears the choice." :
     "Tick files or folders (or ⌘-click / Ctrl-click them; Shift-click ticks a run) to copy only those, or press Use this folder to copy all of it.";
@@ -1827,6 +1827,7 @@ $("newDirBox").onsubmit = e => {
 };
 $("pickUse").onclick = () => {
   if (pickFor === "ver") { verify(pickAt).then(() => $("pickDlg").close()).catch(e => $("pickErr").textContent = e.message); return; }
+  if (pickFor === "moveTo") { const to = pickAt, p = fbPanes[fbActive]; $("pickDlg").close(); if (p) fbMoveTo(p, to); return; }
   $(pickFor).value = pickAt;
   $("pickDlg").close();
   if (pickFor === "src") setOnly([...chosen], pickAt);
@@ -2453,7 +2454,7 @@ function renderUpdate(u, s) {
   top.onclick = u.available && !u.busy ? () => installUpdate(u, running) : () => showTab("settings", "updates");
   $("updNote").className = u.error ? "err" : "mute";
   $("keyBox").hidden = u.key_set && !$("keyBox").dataset.open;
-  $("undo").textContent = u.undo ? "To undo the last update by hand: " + u.undo : "";
+  $("undo").textContent = ""; // v0.2.114: the owner does not want the by-hand undo line; Versions can install any kept version
   const btns = [];
   const btn = (t, f, cls) => { const b = document.createElement("button"); b.type = "button"; b.textContent = t; b.onclick = f; if (cls) b.className = cls; btns.push(b); };
   if (u.key_set && !u.busy) {
@@ -3372,7 +3373,7 @@ function fbSetLayout(n) {
 function fbMark() { fbPanes.forEach(p => p.box.classList.toggle("act", fbPanes.length > 1 && p.i === fbActive)); }
 function fbLoad(p, path, keepSel) {
   const seq = ++p.seq;
-  fetch("/api/browse?files=1&path=" + encodeURIComponent(path || "")).then(r => r.json()).then(d => {
+  return fetch("/api/browse?files=1&path=" + encodeURIComponent(path || "")).then(r => r.json()).then(d => {
     if (seq !== p.seq) return;
     if (d.path !== p.path || !keepSel) p.sel.clear();
     if (d.path !== p.path) { p.sizes = {}; p.sizesFor = ""; $("fbCalcMsg").textContent = ""; }
@@ -3492,9 +3493,10 @@ function fbTray() {
   const on = dests.filter(t => !fbDestOff.has(t.dest));
   const missing = on.map(t => items.filter(f => t.k < 0 || !fbDone(fbStates(p, f)[t.k])));
   const nCopies = missing.filter(l => l.length).length, mBytes = missing.reduce((a, l) => a + l.reduce((b, f) => b + (f.file ? f.size : 0), 0), 0);
-  $("fbAll").textContent = "Copy all " + names.length; $("fbAll").hidden = !on.length;
-  $("fbMissing").textContent = nCopies ? "Copy only what is missing · " + nCopies + (nCopies === 1 ? " copy" : " copies") + (mBytes ? " · " + size(mBytes) : "") : "Nothing missing on the chosen drives";
-  $("fbMissing").hidden = !on.length; $("fbMissing").disabled = !nCopies;
+  // v0.2.114: Copy (everything ticked; what is already there is compared, not copied again), Copy to another place, Move.
+  $("fbAll").textContent = on.length > 1 ? "Copy to " + on.length + " places" : "Copy"; $("fbAll").hidden = !on.length;
+  const o = fbPanes.find(x => x !== p);
+  $("fbMove").textContent = o ? "Move to the other pane" : "Move…"; $("fbMove").disabled = !!o && (!o.path || o.path === p.path);
 }
 // Where the ticked items can go: each drive that already holds a copy of
 // this folder, and in two panes the other pane's folder.
@@ -3526,8 +3528,25 @@ async function fbCopy(onlyMissing) {
   $("fbMsg").textContent = (n ? n + (n === 1 ? " copy" : " copies") + " added to the queue. Each is read back and the source read again." : "") + (errs.length ? " Not added: " + errs.join(" · ") : "");
   if (n) { p.sel.clear(); setTimeout(() => fbPanes.forEach(x => fbLoad(x, x.path, true)), 1500); }
 }
-$("fbMissing").onclick = () => fbCopy(true);
 $("fbAll").onclick = () => fbCopy(false);
+// v0.2.114: Move renames within one drive or share: instant, nothing read or written. To
+// another drive Shuttle refuses (use Copy). With two panes it goes to the other pane.
+$("fbMove").onclick = () => {
+  const p = fbPanes[fbActive], o = fbPanes.find(x => x !== p); if (!p) return;
+  if (o) { fbMoveTo(p, o.path); return; }
+  pickFor = "moveTo"; $("moveTo").value = p.path; $("pickTitle").textContent = "Choose where to move to"; openPicker();
+};
+async function fbMoveTo(p, to) {
+  const names = (p.data.folders || []).filter(f => p.sel.has(f.name)).map(f => f.name), folder = p.path;
+  if (!names.length || !to) return;
+  const what = names.length === 1 ? "\u201c" + names[0] + "\u201d" : names.length + " items";
+  if (!await confirmBox("Move " + what + "?", "Into " + to + ". Within the same drive this is instant and nothing is copied; to another drive Shuttle will not move (use Copy).", "Move", "Cancel")) return;
+  const say = await post("/api/move", { folder, names, to }).then(r => {
+    p.sel.clear(); p.anchor = null; return "Moved " + r.moved + (r.moved === 1 ? " item" : " items") + " into " + to + ".";
+  }).catch(e => "Not moved: " + e.message);
+  await Promise.all(fbPanes.filter(q => q.path === folder || q.path === to).map(q => fbLoad(q, q.path, true)));
+  fbTray(); $("fbCalcMsg").textContent = say; // after the reload, which clears that line
+}
 $("fbOther").onclick = () => {
   const p = fbPanes[fbActive]; if (!p) return;
   $("src").value = p.path; $("dst").value = ""; $("moreDst").replaceChildren(); $("newBtn").onclick(); setOnly([...p.sel], p.path);

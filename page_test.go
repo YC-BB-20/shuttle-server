@@ -556,7 +556,7 @@ func TestPagePanelTabsStripSystemPalette(t *testing.T) {
 func TestPageOffloadSeveralDrivesCardPanelWall(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
-		`id="addDst"`, `function addDstRow(value)`, `const isDst = id => /^dst\d*$/.test(id) || id === "linkDst";`, `for (const dest of dests)`, `"Start " + n + " copies"`,
+		`id="addDst"`, `function addDstRow(value)`, `const isDst = id => /^dst\d*$/.test(id) || id === "linkDst" || id === "moveTo";`, `for (const dest of dests)`, `"Start " + n + " copies"`,
 		`"Offload a card"`, `function selectCard(src)`, `function cardPanel(g, copies, st, word, why, cls)`, `"Source read a second time"`,
 		`id="wallBtn"`, `function setWall(on)`, `body.wall .ocard .nm`,
 	} {
@@ -571,7 +571,7 @@ func TestPageFiles(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
 		`id="tabFilesBtn"`, `id="tabFiles"`, `fetch("/api/copies?path="`, `function fbDraw(p)`, `function fbTray()`, `async function fbCopy(onlyMissing)`,
-		`"Copy only what is missing · "`, `id="fbTwo"`, `function fbOpenFile(p, f)`, `"Read this file again"`, `Copy to another place…</button>`,
+		`$("fbAll").textContent = on.length > 1 ? "Copy to " + on.length + " places" : "Copy";`, `id="fbTwo"`, `function fbOpenFile(p, f)`, `"Read this file again"`, `Copy to another place…</button>`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
@@ -737,16 +737,16 @@ func TestPageV0_2_102(t *testing.T) {
 		`<button type="button" class="hq" aria-label="Back to the queue order"></button>`, `.jh .hq { grid-column:1 / 3;`,
 		`b.onclick = () => { if (qf.sort !== "queue:1") { qf.sort = "queue:1"; qfChanged(); } }`,
 		`.job.verify.nested { margin-left:0; border-left:0; padding-left:calc(14px + 28px + 3px); position:relative; }`,
-		`<h2 class="sechead" data-page="updates">How Shuttle is using this computer</h2>`, `<div class="grid resources" data-page="updates"`,
+		`<h2 class="sechead" data-page="updates" style="margin-top:0">How Shuttle is using this computer</h2>`, `<div class="grid resources" data-page="updates"`,
 		`#linkDlg .lhint { font-size:12px; margin-right:auto; margin-left:12px; padding-right:16px; min-width:0; }`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
 		}
 	}
-	// The resource cards sit after the Data folder card, on the System page only.
-	if strings.Index(s, `How Shuttle is using this computer</h2>`) < strings.Index(s, `<h2>Data folder</h2>`) {
-		t.Error("resource cards are not on the System page")
+	// v0.2.114: the resource cards head the System page, before Updates.
+	if strings.Index(s, `How Shuttle is using this computer</h2>`) > strings.Index(s, `<section class="card" id="updates" data-page="updates">`) {
+		t.Error("resource cards are not at the top of the System page")
 	}
 }
 
@@ -891,6 +891,23 @@ func TestPageV0_2_113(t *testing.T) {
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("page lacks %q", want)
+		}
+	}
+}
+
+func TestPageV0_2_114(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`id="fbMove"`, `id="fbAll">Copy</button>`, `post("/api/move", { folder, names, to })`, `if (pickFor === "moveTo") {`,
+		`$("undo").textContent = "";`, `return fetch("/api/browse?files=1&path="`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	for _, gone := range []string{`id="fbMissing"`, `To undo the last update by hand`, `Starts Shuttle in the background, with its menu bar icon`} {
+		if strings.Contains(s, gone) {
+			t.Errorf("page still has %q", gone)
 		}
 	}
 }

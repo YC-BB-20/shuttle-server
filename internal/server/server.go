@@ -138,6 +138,7 @@ func (s *Server) HTTP() *http.Server {
 	mux.HandleFunc("POST /api/links/add", s.command(s.linksAdd))
 	mux.HandleFunc("POST /api/mkdir", s.always(s.mkdir))
 	mux.HandleFunc("POST /api/delete", s.command(s.deleteItems))
+	mux.HandleFunc("POST /api/move", s.command(s.moveItems))
 	mux.HandleFunc("GET /api/delete", s.deleteStatus)
 	mux.HandleFunc("POST /api/disks/eject", s.command(s.eject))
 	mux.HandleFunc("GET /api/storage", s.storageList)
