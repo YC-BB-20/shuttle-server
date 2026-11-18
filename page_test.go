@@ -712,8 +712,8 @@ func TestPageV0_2_101(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
 		`const FB_COLS = [["kind", "Kind", ""], ["size", "Size", "r"], ["changed", "Changed", ""], ["created", "Created", ""]];`,
-		`k === "kind" ? (f.file ? "1" : "0") + fbKind(f).toLowerCase()`, `head.oncontextmenu = e => { e.preventDefault(); fbColMenu(e.clientX, e.clientY); };`,
-		`function fbResizer(k, cell)`, `keep("shuttle.fbw", JSON.stringify(fbW))`, `id="fbCalc"`, `function fbSizes(p, ask)`,
+		`k === "kind" ? (f.file ? "1" : "0") + fbKind(f).toLowerCase()`, `head.oncontextmenu = e => { e.preventDefault(); fbColMenu(e.clientX, e.clientY, p); };`,
+		`function fbResizer(k, cell, p)`, `p.w[k] = Math.round(Math.max(k === "name" ? 120 : 50, Math.min(900, w0 + m.clientX - x0))); fbTemplate(p);`, `id="fbCalc"`, `function fbSizes(p, ask)`,
 		`fetch("/api/browse/sizes?path=" + encodeURIComponent(path) + (ask ? "" : "&auto=1"), { signal: ac.signal })`, `fbDraw(p); fbSizes(p, false);`,
 		`data-p="updates" aria-pressed="false">System</button>`, `<section class="card" id="runSet" data-page="updates">`, `$("runBtns").replaceChildren(...rbtns);`,
 		`<section class="card" id="loginSet" data-page="updates" hidden>`, `<section class="card" data-page="updates"><h2>Data folder</h2>`, `<section class="card" id="safeSet" hidden>`,
@@ -760,6 +760,28 @@ func TestPageV0_2_104(t *testing.T) {
 		}
 	}
 	for _, gone := range []string{`Strongest: the copy read back`, `The source is only read, never changed. Files already at the destination`, `" are left out (Settings)."`} {
+		if strings.Contains(s, gone) {
+			t.Errorf("page still has %q", gone)
+		}
+	}
+}
+
+func TestPageV0_2_105(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`.fbnote { margin:0; padding:14px 14px 14px calc(14px + 22px + 12px);`, `el("p", "mute fbnote", words.length ? "Nothing matches." : "This folder is empty.")`,
+		`let fbLay = pref("shuttle.fblayout", "1") === "2" ? "2" : "1";`, `function fbSetLayout(n) {`, `if (fbPanes.length) fbSave(); // the layout being left`,
+		`keep("shuttle.fblay" + fbLay, JSON.stringify({ panes: fbPanes.map(p => ({ path: p.path || "", cols: [...p.cols].join(","), w: p.w, sort: p.sort })) }));`,
+		`(e.key !== "1" && e.key !== "2")`, `e.preventDefault(); fbSetLayout(e.key);`,
+		`id="fbNewDir"`, `<form class="newdir fbnew" id="fbNewBox" hidden>`, `post("/api/mkdir", { parent: p.path, name: $("fbNewName").value })`,
+		`p.sort = { k, dir: p.sort.k === k ? -p.sort.dir : k === "name" || k === "kind" ? 1 : -1 }; fbSave(); fbDraw(p);`, `function fbColMenu(x, y, p) {`, `function fbResizer(k, cell, p) {`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	// A pane's change never reaches the other pane: no shared settings are written any more.
+	for _, gone := range []string{`keep("shuttle.fbsort"`, `keep("shuttle.fbw"`, `keep("shuttle.fbcols2"`, `keep("shuttle.fb" + p.i`, `fbPanes.forEach(fbTemplate)`} {
 		if strings.Contains(s, gone) {
 			t.Errorf("page still has %q", gone)
 		}

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.105 — 17 November 2026
+
+- **Files: New folder.** Makes a folder in the folder shown (in the pane you last clicked). A name already there is refused; nothing is replaced.
+- **Files: keys 1 and 2** switch between one and two panes (not while typing).
+- **Each layout and each pane keeps its own view.** One pane and two panes remember their own folders, columns, widths and sort, and in two panes the left and right are separate: a change on one side never changes the other. All of it is saved as it changes, so switching or reloading brings it back as you left it.
+- "This folder is empty." lines up with the Name column.
+
 ## 0.2.104 — 17 November 2026
 
 - **New copy is wider and does not scroll:** where from and to on the left, proof and folder layout on the right. On a phone it stays one column.

@@ -611,7 +611,10 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
 /* v0.2.89: Files. */
 .fb { display:flex; flex-direction:column; gap:12px; min-height:calc(100vh - 160px); }
 .fbhead { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; }
-.fbhead input { width:200px; padding:6px 10px; margin-left:auto; } .fbcalcmsg { font-size:13px; order:9; flex-basis:100%; } .fbcalcmsg:empty { display:none; }
+.fbhead input { width:200px; padding:6px 10px; margin-left:auto; }
+/* v0.2.105: the New folder form takes its own line under the bar. */
+.fbhead .fbnew { order:8; flex-basis:100%; align-items:center; margin:0; } .fbhead .fbnew[hidden] { display:none; }
+.fbhead .fbnew input { margin-left:0; width:auto; flex:0 1 320px; } .fbnew .err { font-size:13px; min-width:0; overflow-wrap:anywhere; } .fbcalcmsg { font-size:13px; order:9; flex-basis:100%; } .fbcalcmsg:empty { display:none; }
 /* v0.2.100: columns to show, and headings that sort. */
 /* v0.2.101: the column chooser opens where a heading is right-clicked (or held on a phone). */
 .fbcolm[hidden] { display:none; }
@@ -646,6 +649,8 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
 .fbt { overflow-x:auto; }
 .fbr { display:grid; grid-template-columns:var(--fbcols, 22px minmax(0,1fr) 84px 150px 150px); gap:12px; align-items:center; padding:7px 14px; border-bottom:1px solid #1f1f24; min-width:var(--fbmin, 480px); }
 .fbr.on { background:#1f1b2e; } .fbr.foc { box-shadow:inset 3px 0 0 var(--sel); background:#241f35; }
+/* v0.2.105: a note in the file list ("This folder is empty.") lines up with the Name column. */
+.fbnote { margin:0; padding:14px 14px 14px calc(14px + 22px + 12px); overflow-wrap:anywhere; }
 .fbhd { font-size:12px; font-weight:600; color:var(--mute); border-bottom:1px solid var(--line); }
 .fbr .r { text-align:right; } .fbr .mute { font-size:13px; }
 .fbr input { width:16px; height:16px; margin:0; }
@@ -766,10 +771,12 @@ body.wall .cards.table .ocard .nm { font-size:40px; } body.wall .cards.table .oc
   <div id="tabFiles" class="fb" hidden>
     <div class="fbhead">
       <h1 class="vh">Files</h1>
-      <div class="seg" id="fbTwo" role="group" aria-label="Panes"><button type="button" data-n="1" aria-pressed="true">One pane</button><button type="button" data-n="2" aria-pressed="false">Two panes</button></div>
+      <div class="seg" id="fbTwo" role="group" aria-label="Panes"><button type="button" data-n="1" aria-pressed="true" title="One pane (key 1)">One pane</button><button type="button" data-n="2" aria-pressed="false" title="Two panes (key 2)">Two panes</button></div>
+      <button type="button" id="fbNewDir" title="Make a folder in the folder shown (in the pane you last clicked)">New folder</button>
       <button type="button" id="fbCalc" title="Work out the size of every folder shown">Calculate sizes</button>
       <span class="mute fbcalcmsg" id="fbCalcMsg"></span>
       <label for="fbFilter" class="vh">Filter by name</label><input type="text" id="fbFilter" placeholder="Filter by name" autocomplete="off">
+      <form class="newdir fbnew" id="fbNewBox" hidden><input type="text" id="fbNewName" placeholder="New folder name" maxlength="200" autocomplete="off" aria-label="New folder name"><button type="submit" class="primary">Make folder</button><button type="button" id="fbNewCancel">Cancel</button><span class="err" id="fbNewErr"></span></form>
       <div class="fbcolm" id="fbColList" role="menu" aria-label="Columns to show" hidden></div>
     </div>
     <div class="fbpanes" id="fbPanes"></div>
@@ -1739,7 +1746,7 @@ function browse(path, keep) {
       const b = el("button", "", "📁 " + f.name); b.type = "button"; b.onclick = e => { if (!multi(e, i)) browse(f.path); }; row.append(b, el("span", "sz", "›"));
       return row;
     }));
-    if (!d.folders.length && !d.error) $("pickList").replaceChildren(el("p", "mute", pickFor === "src" ? "  This folder is empty." : "  No folders inside."));
+    if (!d.folders.length && !d.error) $("pickList").replaceChildren(el("p", "mute", pickFor === "src" ? "This folder is empty." : "No folders inside."));
     $("pickUp").onclick = () => browse(d.parent); $("pickUp").disabled = !!d.top;
     // New folder: only where copies go, and not on a read-only disk or a server.
     const here = d.places.find(p => p.kind !== "home" && (d.path === p.path || d.path.startsWith(p.path + "/")) && p.kind !== "internal") ||
@@ -3144,22 +3151,42 @@ const FB_W = { name: 0, kind: 110, size: 90, changed: 150, created: 150 };
 let fbW = (() => { try { return Object.assign({}, FB_W, JSON.parse(pref("shuttle.fbw", "{}"))); } catch (e) { return Object.assign({}, FB_W); } })();
 const fbKind = f => { if (!f.file) return "Folder"; const m = /\.([^./]{1,10})$/.exec(f.name); return m ? m[1].toUpperCase() + " file" : "File"; };
 function fbTemplate(p) {
-  const cols = FB_COLS.filter(c => fbCols.has(c[0]));
-  const t = ["22px", fbW.name ? fbW.name + "px" : "minmax(120px,1fr)"].concat(cols.map(c => fbW[c[0]] + "px"));
-  if (fbW.name) t.push("minmax(0,1fr)");
+  const cols = FB_COLS.filter(c => p.cols.has(c[0])), w = p.w;
+  const t = ["22px", w.name ? w.name + "px" : "minmax(120px,1fr)"].concat(cols.map(c => w[c[0]] + "px"));
+  if (w.name) t.push("minmax(0,1fr)");
   p.tbl.style.setProperty("--fbcols", t.join(" "));
-  p.tbl.style.setProperty("--fbmin", fbPanes.length > 1 ? "0px" : (60 + (fbW.name || 160) + cols.reduce((a, c) => a + fbW[c[0]] + 12, 0)) + "px");
+  p.tbl.style.setProperty("--fbmin", fbPanes.length > 1 ? "0px" : (60 + (w.name || 160) + cols.reduce((a, c) => a + w[c[0]] + 12, 0)) + "px");
 }
 let fbSort = (() => { try { const x = JSON.parse(pref("shuttle.fbsort", "")); if (x && x.k && (x.dir === 1 || x.dir === -1)) return x; } catch (e) {} return { k: "name", dir: 1 }; })();
+// v0.2.105: one pane and two panes are separate layouts, and every pane in
+// them keeps its own folder, columns, widths and sort: a change on the left
+// never changes the right. Saved as they change, so switching (or reloading)
+// brings each layout and pane back as it was left. A pane never saved starts
+// from the settings kept before v0.2.105 (fbCols, fbW, fbSort above).
+let fbLay = pref("shuttle.fblayout", "1") === "2" ? "2" : "1";
+const fbView = x => ({
+  path: typeof x.path === "string" ? x.path : "",
+  cols: new Set(String(x.cols != null ? x.cols : [...fbCols].join(",")).split(",").filter(c => FB_COLS.some(y => y[0] === c))),
+  w: Object.assign({}, FB_W, fbW, x.w && typeof x.w === "object" ? x.w : {}),
+  sort: x.sort && x.sort.k && (x.sort.dir === 1 || x.sort.dir === -1) ? x.sort : Object.assign({}, fbSort) });
+function fbLayRead(l) {
+  let x = {};
+  try { x = JSON.parse(pref("shuttle.fblay" + l, "{}")) || {}; } catch (e) {}
+  const panes = Array.isArray(x.panes) ? x.panes : [];
+  return [0, 1].map(i => fbView(panes[i] && typeof panes[i] === "object" ? panes[i] : { path: pref("shuttle.fb" + i, "") }));
+}
+function fbSave() {
+  keep("shuttle.fblay" + fbLay, JSON.stringify({ panes: fbPanes.map(p => ({ path: p.path || "", cols: [...p.cols].join(","), w: p.w, sort: p.sort })) }));
+}
 const fbKey = (f, k, p) => k === "size" ? (f.file ? f.size || 0 : p && p.sizes[f.name] ? p.sizes[f.name].bytes : -1) : k === "changed" ? (f.mtime || "") : k === "created" ? (f.created || "") :
   k === "kind" ? (f.file ? "1" : "0") + fbKind(f).toLowerCase() : f.name.toLowerCase();
-const fbSorted = (list, p) => list.slice().sort((a, b) => { const x = fbKey(a, fbSort.k, p), y = fbKey(b, fbSort.k, p);
-  return (x < y ? -1 : x > y ? 1 : 0) * fbSort.dir || a.name.localeCompare(b.name, undefined, { numeric: true }); });
-function fbColMenu(x, y) {
+const fbSorted = (list, p) => list.slice().sort((a, b) => { const x = fbKey(a, p.sort.k, p), y = fbKey(b, p.sort.k, p);
+  return (x < y ? -1 : x > y ? 1 : 0) * p.sort.dir || a.name.localeCompare(b.name, undefined, { numeric: true }); });
+function fbColMenu(x, y, p) {
   const m = $("fbColList");
-  m.replaceChildren(el("small", "mute", "Columns to show"), ...FB_COLS.map(([k, name]) => { const l = el("label"), c = el("input"); c.type = "checkbox"; c.checked = fbCols.has(k);
-    c.onchange = () => { c.checked ? fbCols.add(k) : fbCols.delete(k); keep("shuttle.fbcols2", [...fbCols].join(",")); fbPanes.forEach(fbDraw); }; l.append(c, name); return l; }));
-  const b = el("button", "", "Usual widths"); b.type = "button"; b.onclick = () => { fbW = Object.assign({}, FB_W); keep("shuttle.fbw", "{}"); fbPanes.forEach(fbDraw); m.hidden = true; };
+  m.replaceChildren(el("small", "mute", "Columns to show"), ...FB_COLS.map(([k, name]) => { const l = el("label"), c = el("input"); c.type = "checkbox"; c.checked = p.cols.has(k);
+    c.onchange = () => { c.checked ? p.cols.add(k) : p.cols.delete(k); fbSave(); fbDraw(p); }; l.append(c, name); return l; }));
+  const b = el("button", "", "Usual widths"); b.type = "button"; b.onclick = () => { p.w = Object.assign({}, FB_W); fbSave(); fbDraw(p); m.hidden = true; };
   m.append(b); m.hidden = false;
   const r = m.getBoundingClientRect();
   m.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 8)) + "px"; m.style.top = Math.max(8, Math.min(y, innerHeight - r.height - 8)) + "px";
@@ -3168,15 +3195,15 @@ function fbColMenu(x, y) {
 document.addEventListener("pointerdown", e => { if (!$("fbColList").hidden && !$("fbColList").contains(e.target)) $("fbColList").hidden = true; });
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("fbColList").hidden) { $("fbColList").hidden = true; e.stopPropagation(); } }, true);
 // A heading's right edge resizes its column.
-function fbResizer(k, cell) {
+function fbResizer(k, cell, p) {
   const z = el("span", "rz"); z.title = "Drag to resize · double-click for the usual width";
   z.onclick = e => e.stopPropagation();
-  z.ondblclick = e => { e.stopPropagation(); fbW[k] = FB_W[k]; keep("shuttle.fbw", JSON.stringify(fbW)); fbPanes.forEach(fbDraw); };
+  z.ondblclick = e => { e.stopPropagation(); p.w[k] = FB_W[k]; fbSave(); fbDraw(p); };
   z.onpointerdown = e => {
     e.preventDefault(); e.stopPropagation(); z.setPointerCapture(e.pointerId); z.classList.add("drag");
-    const x0 = e.clientX, w0 = k === "name" && !fbW.name ? cell.getBoundingClientRect().width + 12 : fbW[k];
-    z.onpointermove = m => { fbW[k] = Math.round(Math.max(k === "name" ? 120 : 50, Math.min(900, w0 + m.clientX - x0))); fbPanes.forEach(fbTemplate); };
-    z.onpointerup = z.onpointercancel = () => { z.onpointermove = z.onpointerup = z.onpointercancel = null; z.classList.remove("drag"); keep("shuttle.fbw", JSON.stringify(fbW)); };
+    const x0 = e.clientX, w0 = k === "name" && !p.w.name ? cell.getBoundingClientRect().width + 12 : p.w[k];
+    z.onpointermove = m => { p.w[k] = Math.round(Math.max(k === "name" ? 120 : 50, Math.min(900, w0 + m.clientX - x0))); fbTemplate(p); };
+    z.onpointerup = z.onpointercancel = () => { z.onpointermove = z.onpointerup = z.onpointercancel = null; z.classList.remove("drag"); fbSave(); };
   };
   return z;
 }
@@ -3206,12 +3233,32 @@ const fbShort = disk => { const m = /^(.)[^0-9]*([0-9]*)/.exec(disk || "?"); ret
 function fbPane(i) {
   const box = el("section", "fbpane"), head = el("div", "fbph"), places = el("div", "fbpl"), crumbs = el("nav", "fcrumbs"), tbl = el("div", "fbt");
   crumbs.setAttribute("aria-label", "Where you are"); head.append(places, crumbs); box.append(head, tbl);
-  const p = { i, box, places, crumbs, tbl, path: pref("shuttle.fb" + i, ""), data: null, copies: null, sel: new Set(), seq: 0, sizes: {}, sizesFor: "", sizing: false };
+  const v = fbLayRead(fbLay)[i];
+  const p = { i, box, places, crumbs, tbl, path: v.path, cols: v.cols, w: v.w, sort: v.sort, data: null, copies: null, sel: new Set(), seq: 0, sizes: {}, sizesFor: "", sizing: false };
   box.onpointerdown = () => { if (fbActive !== i) { fbActive = i; fbMark(); fbTray(); } };
   return p;
 }
 function fbOpen() {
-  if (!fbPanes.length) { fbPanes = [fbPane(0)]; $("fbPanes").replaceChildren(fbPanes[0].box); }
+  if (!fbPanes.length) fbBuild();
+  fbPanes.forEach(p => fbLoad(p, p.path, true));
+}
+// Builds the panes of the current layout from its saved folders.
+function fbBuild() {
+  const two = fbLay === "2";
+  fbPanes = two ? [fbPane(0), fbPane(1)] : [fbPane(0)];
+  if (two && !fbPanes[1].path) fbPanes[1].path = fbPanes[0].path;
+  fbActive = 0;
+  $("fbPanes").replaceChildren(...fbPanes.map(p => p.box));
+  $("fbPanes").classList.toggle("two", two);
+  $("fbTwo").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", (x.dataset.n === "2") === two));
+  fbMark();
+}
+function fbSetLayout(n) {
+  const l = n === "2" ? "2" : "1";
+  if (l === fbLay && fbPanes.length) return;
+  if (fbPanes.length) fbSave(); // the layout being left, exactly as it is
+  fbLay = l; keep("shuttle.fblayout", l);
+  fbBuild(); fbTray();
   fbPanes.forEach(p => fbLoad(p, p.path, true));
 }
 function fbMark() { fbPanes.forEach(p => p.box.classList.toggle("act", fbPanes.length > 1 && p.i === fbActive)); }
@@ -3221,7 +3268,7 @@ function fbLoad(p, path, keepSel) {
     if (seq !== p.seq) return;
     if (d.path !== p.path || !keepSel) p.sel.clear();
     if (d.path !== p.path) { p.sizes = {}; p.sizesFor = ""; $("fbCalcMsg").textContent = ""; }
-    p.path = d.path; p.data = d; keep("shuttle.fb" + p.i, d.path);
+    p.path = d.path; p.data = d; fbSave();
     fbDraw(p); fbSizes(p, false);
     return fetch("/api/copies?path=" + encodeURIComponent(d.path)).then(r => r.json()).then(c => { if (seq === p.seq) { p.copies = c; fbDraw(p); fbTray(); } });
   }).catch(() => { p.tbl.replaceChildren(el("p", "mute", "This folder could not be read.")); });
@@ -3247,20 +3294,20 @@ function fbDraw(p) {
   let list = (d.folders || []).filter(f => words.every(w => f.name.toLowerCase().includes(w)));
   const places = p.copies ? p.copies.places : [];
   list = fbSorted(list, p);
-  const cols = FB_COLS.filter(c => fbCols.has(c[0]));
+  const cols = FB_COLS.filter(c => p.cols.has(c[0]));
   fbTemplate(p);
   const head = el("div", "fbr fbhd"), all = el("input");
   all.type = "checkbox"; all.setAttribute("aria-label", "Tick everything shown"); all.checked = list.length > 0 && list.every(f => p.sel.has(f.name));
   all.onchange = () => { list.forEach(f => all.checked ? p.sel.add(f.name) : p.sel.delete(f.name)); fbDraw(p); fbTray(); };
   const hb = (k, name, cls) => { const b = el("button", cls, name); b.type = "button"; b.title = "Sort by " + name.toLowerCase();
-    if (fbSort.k === k) b.dataset.dir = fbSort.dir;
-    b.onclick = () => { fbSort = { k, dir: fbSort.k === k ? -fbSort.dir : k === "name" || k === "kind" ? 1 : -1 }; keep("shuttle.fbsort", JSON.stringify(fbSort)); fbPanes.forEach(fbDraw); };
-    b.append(fbResizer(k, b)); return b; };
+    if (p.sort.k === k) b.dataset.dir = p.sort.dir;
+    b.onclick = () => { p.sort = { k, dir: p.sort.k === k ? -p.sort.dir : k === "name" || k === "kind" ? 1 : -1 }; fbSave(); fbDraw(p); };
+    b.append(fbResizer(k, b, p)); return b; };
   head.append(all, hb("name", "Name", ""), ...cols.map(c => hb(...c)));
   head.title = "Right-click a heading to choose the columns";
-  head.oncontextmenu = e => { e.preventDefault(); fbColMenu(e.clientX, e.clientY); };
+  head.oncontextmenu = e => { e.preventDefault(); fbColMenu(e.clientX, e.clientY, p); };
   let hold = 0; // a phone has no right-click: hold a heading instead
-  head.ontouchstart = e => { const t = e.touches[0]; clearTimeout(hold); hold = setTimeout(() => fbColMenu(t.clientX, t.clientY), 550); };
+  head.ontouchstart = e => { const t = e.touches[0]; clearTimeout(hold); hold = setTimeout(() => fbColMenu(t.clientX, t.clientY, p), 550); };
   head.ontouchend = head.ontouchmove = () => clearTimeout(hold);
   const rows = list.map(f => {
     const r = el("div", "fbr" + (p.sel.has(f.name) ? " on" : "") + (fbSel && fbSel.path === f.path ? " foc" : "")), ck = el("input");
@@ -3277,8 +3324,8 @@ function fbDraw(p) {
     return r;
   });
   const syncAll = () => { all.checked = list.length > 0 && list.every(f => p.sel.has(f.name)); };
-  const note = d.error ? [el("p", "mute", d.error)] : !list.length ? [el("p", "mute", words.length ? "Nothing matches." : "This folder is empty.")] : [];
-  if (d.truncated) note.push(el("p", "mute", "Only the first part of this folder is shown."));
+  const note = d.error ? [el("p", "mute fbnote", d.error)] : !list.length ? [el("p", "mute fbnote", words.length ? "Nothing matches." : "This folder is empty.")] : [];
+  if (d.truncated) note.push(el("p", "mute fbnote", "Only the first part of this folder is shown."));
   p.tbl.replaceChildren(head, ...rows, ...note);
 }
 function fbTray() {
@@ -3338,14 +3385,26 @@ $("fbOther").onclick = () => {
   $("src").value = p.path; $("dst").value = ""; $("moreDst").replaceChildren(); $("newBtn").onclick(); setOnly([...p.sel], p.path);
 };
 $("fbFilter").oninput = () => fbPanes.forEach(fbDraw);
-$("fbTwo").querySelectorAll("button").forEach(btn => btn.onclick = () => {
-  const two = btn.dataset.n === "2";
-  if (two === fbPanes.length > 1) return;
-  if (two) { const q = fbPane(1); fbPanes.push(q); $("fbPanes").append(q.box); fbLoad(q, q.path || fbPanes[0].path); }
-  else { fbPanes.pop().box.remove(); fbActive = 0; }
-  $("fbTwo").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", (x.dataset.n === "2") === two));
-  $("fbPanes").classList.toggle("two", two); fbMark(); fbTray(); fbPanes.forEach(fbDraw);
+$("fbTwo").querySelectorAll("button").forEach(btn => btn.onclick = () => fbSetLayout(btn.dataset.n));
+// Keys 1 and 2 switch between one and two panes in Files (not while typing).
+document.addEventListener("keydown", e => {
+  if ($("tabFiles").hidden || e.metaKey || e.ctrlKey || e.altKey || (e.key !== "1" && e.key !== "2") || document.querySelector("dialog[open]")) return;
+  const t = e.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+  e.preventDefault(); fbSetLayout(e.key);
 });
+// New folder, in the folder the active pane shows. Nothing is ever replaced:
+// a name already there is refused by Shuttle.
+$("fbNewDir").onclick = () => { $("fbNewBox").hidden = false; $("fbNewName").value = ""; $("fbNewErr").textContent = ""; $("fbNewName").focus(); };
+$("fbNewCancel").onclick = () => { $("fbNewBox").hidden = true; };
+$("fbNewBox").onsubmit = e => {
+  e.preventDefault();
+  const p = fbPanes[fbActive]; if (!p || !p.path) return;
+  post("/api/mkdir", { parent: p.path, name: $("fbNewName").value }).then(() => {
+    $("fbNewBox").hidden = true;
+    fbPanes.forEach(q => { if (q.path === p.path) fbLoad(q, q.path, true); });
+  }).catch(err => { $("fbNewErr").textContent = err.message; });
+};
+$("fbNewName").addEventListener("keydown", e => { if (e.key === "Escape") { e.stopPropagation(); $("fbNewBox").hidden = true; } });
 // ⌘A ticks everything shown in the active pane, ⌘⇧A unticks (not while typing).
 document.addEventListener("keydown", e => {
   if ($("tabFiles").hidden || !(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "a" || /input|textarea|select/i.test((e.target.tagName || "")) || document.querySelector("dialog[open]")) return;
