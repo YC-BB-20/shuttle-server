@@ -687,7 +687,7 @@ func TestPageV0_2_100(t *testing.T) {
 		`.job.verify.nested::before`, `subCls += " lines";`, `.dsub.lines, .sub.lines { white-space:pre-line; }`,
 		`data-tab="proof">Status</button>`, `["Status", proofScheme(v)]`, `return "Copied, hash generated";`,
 		`["created", "Created", ""]];`, `const fbSorted = (list, p) =>`,
-		`"Backups (" + have.length + ")"`, `el("h4", "fsec", "Source")`, `.shell:has(#tabFiles:not([hidden])) .insp:not(.on) { display:none; }`,
+		`"Backups (" + have.length + ")"`, `el("h4", "fsec", "Source")`, `.insp:not(.on) { display:none; }`,
 		`post("/api/disks/eject", { path: d.path })`, `"slowname"`, `function setPage(pg)`, `id="verLog"`,
 	} {
 		if !strings.Contains(s, want) {
@@ -726,5 +726,25 @@ func TestPageV0_2_101(t *testing.T) {
 		if strings.Contains(s, gone) {
 			t.Errorf("page still has %q", gone)
 		}
+	}
+}
+
+func TestPageV0_2_102(t *testing.T) {
+	s := string(IndexHTML)
+	for _, want := range []string{
+		`.insp:not(.on) { display:none; }`, `if ((e.key !== "x" && e.key !== "X") || e.metaKey`, `title="Close (Esc or X)"`,
+		`<button type="button" class="hq" aria-label="Back to the queue order"></button>`, `.jh .hq { grid-column:1 / 3;`,
+		`b.onclick = () => { if (qf.sort !== "queue:1") { qf.sort = "queue:1"; qfChanged(); } }`,
+		`.job.verify.nested { margin-left:0; border-left:0; padding-left:calc(14px + 28px + 3px); position:relative; }`,
+		`<h2 class="sechead" data-page="updates">How Shuttle is using this computer</h2>`, `<div class="grid resources" data-page="updates"`,
+		`#linkDlg .lhint { font-size:12px; margin-right:auto; margin-left:12px; padding-right:16px; min-width:0; }`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	// The resource cards sit after the Data folder card, on the System page only.
+	if strings.Index(s, `How Shuttle is using this computer</h2>`) < strings.Index(s, `<h2>Data folder</h2>`) {
+		t.Error("resource cards are not on the System page")
 	}
 }
