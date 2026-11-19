@@ -3764,7 +3764,7 @@ function fbCloseFile() {
 }
 // Add link (v0.2.90): plain download links, looked up first, then queued as
 // downloads into a folder, at the end of the queue or next.
-let linkSeq = 0, linkTimer = 0, linkOK = [];
+let linkSeq = 0, linkTimer = 0, linkTick = 0, linkOK = [];
 function openLink(text) {
   $("linkErr").textContent = ""; $("linkFound").replaceChildren(); linkOK = []; $("linkGo").disabled = true;
   $("linkPw").value = ""; $("linkPwRow").hidden = $("linkQRow").hidden = true; $("linkQ").replaceChildren();
@@ -3777,8 +3777,12 @@ function lookUpLinks() {
   clearTimeout(linkTimer);
   const text = $("linkIn").value.trim(), seq = ++linkSeq;
   if (!text) { $("linkFound").replaceChildren(); linkOK = []; $("linkGo").disabled = true; return; }
-  $("linkFound").replaceChildren(el("p", "mute", "Looking the links up…"));
-  post("/api/links/info", { urls: text, password: $("linkPw").value }).then(r => {
+  // v0.2.124: a look-up says it is working, with the seconds going by (YouTube can take most of a minute).
+  const yt = /youtu\.?be/i.test(text), t0 = Date.now(), wait = el("p", "mute", "");
+  const tick = () => { if (seq !== linkSeq) return clearInterval(linkTick); wait.textContent = (yt ? "Asking YouTube about the video" : "Looking the links up") + "… " + Math.round((Date.now() - t0) / 1000) + " s" + (yt ? " (YouTube can take up to a minute)" : ""); };
+  clearInterval(linkTick); tick(); linkTick = setInterval(tick, 1000);
+  $("linkFound").replaceChildren(wait);
+  post("/api/links/info", { urls: text, password: $("linkPw").value }).finally(() => { if (seq === linkSeq) clearInterval(linkTick); }).then(r => {
     if (seq !== linkSeq) return;
     const raws = text.split(/\s+/).filter(Boolean);
     linkOK = [];
@@ -3858,12 +3862,12 @@ $("linkGo").onclick = () => {
   const dest = $("linkDst").value.trim();
   if (!dest) { $("linkErr").textContent = "Choose a folder to save to."; return; }
   keep("shuttle.linkdst", dest);
-  $("linkGo").disabled = true; $("linkErr").textContent = "Adding…";
-  post("/api/links/add", { urls: linkOK, dest, next: $("linkNext").checked, before: queueNext, password: $("linkPw").value, quality: $("linkQRow").hidden ? "" : $("linkQ").value }).then(r => {
-    $("linkGo").disabled = false;
-    if (r.errors && r.errors.length) { $("linkErr").textContent = (r.ids.length ? r.ids.length + " added. " : "") + "Not added: " + r.errors.join(" · "); return; }
+  $("linkGo").disabled = true; $("linkErr").textContent = "Adding…"; $("linkGo").textContent = "Adding…"; // v0.2.124: the button itself says so
+  post("/api/links/add", { urls: linkOK, dest, next: $("linkNext").checked, before: queueNext, password: $("linkPw").value, quality: $("linkQRow").hidden ? "" : $("linkQ").value }).finally(() => { $("linkGo").textContent = "Add to queue"; }).then(r => {
+    $("linkGo").disabled = false; $("linkErr").textContent = "";
+    if (r.errors && r.errors.length) { $("linkErr").textContent = (r.ids.length ? r.ids.length + " added. " : "") + "Not added: " + r.errors.join(" · "); $("linkErr").scrollIntoView({ block: "nearest" }); return; }
     $("linkPw").value = ""; $("linkDlg").close(); setStyle("general"); showTab("status");
-  }).catch(e => { $("linkGo").disabled = false; $("linkErr").textContent = e.message; });
+  }).catch(e => { $("linkGo").disabled = false; $("linkErr").textContent = e.message; $("linkErr").scrollIntoView({ block: "nearest" }); });
 };
 // Paste a link anywhere on the page (not into a field) to open Add link with it.
 document.addEventListener("paste", e => {

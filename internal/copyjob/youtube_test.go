@@ -47,7 +47,7 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-if [ $json = 1 ]; then cat <<'JSON'
+if [ $json = 1 ]; then echo x >> "` + tools + `/looks"; cat <<'JSON'
 ` + json + `
 JSON
 exit 0; fi
@@ -79,9 +79,13 @@ func TestYouTubeDownloadIsJoinedIntoOneMP4(t *testing.T) {
 	if in[0].Error != "" || in[0].Site != "youtube" || len(in[0].Qualities) != 3 || in[0].Qualities[0].Label != "1080p · H.264" || in[0].Qualities[2].Ext != "m4a" {
 		t.Fatalf("look-up: %+v", in[0])
 	}
+	// v0.2.124: Add reuses the look-up; yt-dlp is not asked again.
 	j, err := m.AddLink(context.Background(), link, dest, LinkOpts{})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if n := countLookups(t, tools); n != 1 {
+		t.Fatalf("yt-dlp was asked about the video %d times, want 1", n)
 	}
 	v := waitState(t, m, j.st.ID, "finished")
 	if v.LinkSite != "YouTube" || v.LinkHash == "" {
@@ -143,4 +147,9 @@ func TestYouTubeWithoutToolsSaysWhatIsMissing(t *testing.T) {
 	if !strings.Contains(in[1].Error, "one video") {
 		t.Fatalf("playlist: %q", in[1].Error)
 	}
+}
+
+func countLookups(t *testing.T, tools string) int {
+	b, _ := os.ReadFile(filepath.Join(tools, "looks"))
+	return strings.Count(string(b), "x")
 }

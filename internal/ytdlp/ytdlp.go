@@ -76,7 +76,12 @@ func Find(dir string) Tools {
 		return ""
 	}
 	t.YTDLP, t.Deno = look(YTDLPName), look(DenoName)
-	t.Own = dir != "" && t.YTDLP == filepath.Join(dir, YTDLPName)
+	if dir != "" { // the folder build (macOS, v0.2.124) comes first
+		if p := filepath.Join(dir, AppDir, "yt-dlp_macos"); runnable(p) {
+			t.YTDLP = p
+		}
+	}
+	t.Own = dir != "" && (t.YTDLP == filepath.Join(dir, YTDLPName) || strings.HasPrefix(t.YTDLP, filepath.Join(dir, AppDir)+string(filepath.Separator)))
 	return t
 }
 

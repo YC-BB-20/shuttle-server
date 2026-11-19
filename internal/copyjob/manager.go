@@ -65,6 +65,9 @@ type Manager struct {
 
 	setMu sync.Mutex
 	set   *Settings // read from settings.json on first use
+
+	ytMu   sync.Mutex
+	ytSeen map[string]ytLooked // YouTube look-ups kept for Add (v0.2.124)
 }
 
 // Load reads the jobs left from earlier runs. A job that was running when

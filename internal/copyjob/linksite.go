@@ -81,6 +81,10 @@ func (m *Manager) lookUpSite(ctx context.Context, site, raw, password string) (s
 		if id == "" {
 			return siteInfo{}, linkdl.Gone{Msg: "This is a YouTube playlist or channel. Paste the link of one video."}
 		}
+		if in, ok := m.ytCached(id); ok { // v0.2.124: Add reuses the look-up the pop-up just made
+			in.Info.Sub = linkdl.SubFolder(raw)
+			return in, nil
+		}
 		v, err := ytdlp.Look(ctx, m.ytTools(), id)
 		if err != nil {
 			return siteInfo{}, ytErr(err)
@@ -92,8 +96,10 @@ func (m *Manager) lookUpSite(ctx context.Context, site, raw, password string) (s
 		if len(qs) == 0 {
 			return siteInfo{}, linkdl.Gone{Msg: "YouTube offers no MP4 picture and M4A sound for this video"}
 		}
-		return siteInfo{Info: linkdl.Info{Name: ytFileName(v.Title, id, "mp4"), Size: qs[0].Bytes, Type: "video/mp4",
-			Resumable: true, Host: "youtube.com", Sub: linkdl.SubFolder(raw)}, Title: v.Title, Duration: v.Duration, Qualities: qs}, nil
+		in := siteInfo{Info: linkdl.Info{Name: ytFileName(v.Title, id, "mp4"), Size: qs[0].Bytes, Type: "video/mp4",
+			Resumable: true, Host: "youtube.com", Sub: linkdl.SubFolder(raw)}, Title: v.Title, Duration: v.Duration, Qualities: qs}
+		m.ytKeep(id, in)
+		return in, nil
 	case "soundcloud":
 		s, err := openSC(ctx, raw)
 		if err != nil {
@@ -887,4 +893,41 @@ func (m *Manager) fetchYouTube(ctx context.Context, j *Job, d *diskio.Disk, link
 		}
 	}
 	return n, err
+}
+
+// A YouTube look-up runs yt-dlp, which can take most of a minute, so the
+// pop-up's look-up is kept for a while and Add reuses it (v0.2.124). At most
+// ytCacheMax are kept; nothing in them is a secret (no download address).
+const (
+	ytCacheFor = 15 * time.Minute
+	ytCacheMax = 50
+)
+
+type ytLooked struct {
+	at time.Time
+	in siteInfo
+}
+
+func (m *Manager) ytCached(id string) (siteInfo, bool) {
+	m.ytMu.Lock()
+	defer m.ytMu.Unlock()
+	c, ok := m.ytSeen[id]
+	if !ok || time.Since(c.at) > ytCacheFor {
+		return siteInfo{}, false
+	}
+	return c.in, true
+}
+
+func (m *Manager) ytKeep(id string, in siteInfo) {
+	m.ytMu.Lock()
+	defer m.ytMu.Unlock()
+	if m.ytSeen == nil {
+		m.ytSeen = map[string]ytLooked{}
+	}
+	for k, c := range m.ytSeen {
+		if time.Since(c.at) > ytCacheFor || len(m.ytSeen) >= ytCacheMax {
+			delete(m.ytSeen, k)
+		}
+	}
+	m.ytSeen[id] = ytLooked{time.Now(), in}
 }

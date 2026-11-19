@@ -48,10 +48,10 @@ const maxTool = 400 << 20
 // Assets names the release files for a platform.
 func Assets(goos, goarch string) (ytdlp, deno string, err error) {
 	switch goos + "/" + goarch {
-	case "darwin/arm64":
-		return "yt-dlp_macos", "deno-aarch64-apple-darwin.zip", nil
+	case "darwin/arm64": // v0.2.124: the folder build, which starts in a moment; the single file unpacks itself on every run
+		return "yt-dlp_macos.zip", "deno-aarch64-apple-darwin.zip", nil
 	case "darwin/amd64":
-		return "yt-dlp_macos", "deno-x86_64-apple-darwin.zip", nil
+		return "yt-dlp_macos.zip", "deno-x86_64-apple-darwin.zip", nil
 	case "linux/arm64":
 		return "yt-dlp_linux_aarch64", "deno-aarch64-unknown-linux-gnu.zip", nil
 	case "linux/amd64":
@@ -102,10 +102,24 @@ func Update(ctx context.Context, c *http.Client, dir, goos, goarch string, say f
 	if want == "" {
 		return nil, errors.New("yt-dlp's release does not list " + ya)
 	}
-	if want != in.YTDLP || !runnable(filepath.Join(dir, YTDLPName)) {
+	folder := strings.HasSuffix(ya, ".zip")
+	have := runnable(filepath.Join(dir, YTDLPName))
+	if folder {
+		have = runnable(filepath.Join(dir, AppDir, strings.TrimSuffix(ya, ".zip")))
+	}
+	if want != in.YTDLP || !have {
 		say("Downloading yt-dlp")
-		if err := fetchChecked(ctx, c, YTDLPBase+ya, want, filepath.Join(dir, YTDLPName), ""); err != nil {
+		var err error
+		if folder {
+			err = fetchFolder(ctx, c, YTDLPBase+ya, want, dir)
+		} else {
+			err = fetchChecked(ctx, c, YTDLPBase+ya, want, filepath.Join(dir, YTDLPName), "")
+		}
+		if err != nil {
 			return changed, fmt.Errorf("yt-dlp: %w", err)
+		}
+		if folder {
+			os.Remove(filepath.Join(dir, YTDLPName)) // our own single-file build from v0.2.123, replaced by the folder
 		}
 		in.YTDLP = want
 		changed = append(changed, "yt-dlp")
@@ -250,4 +264,105 @@ func unzipOne(zipPath, name, out string) error {
 		return err
 	}
 	return errors.New("the zip does not hold " + name)
+}
+
+// AppDir is the folder build of yt-dlp inside the tools folder (macOS).
+const AppDir = "yt-dlp-app"
+
+// fetchFolder downloads a zipped folder build, checks it, unpacks it beside
+// the one in place and swaps them while no yt-dlp is running.
+func fetchFolder(ctx context.Context, c *http.Client, u, want, dir string) error {
+	tmpZip := filepath.Join(dir, AppDir+".zip.download")
+	defer os.Remove(tmpZip) // our own temporary files
+	if err := fetchChecked(ctx, c, u, want, tmpZip+".ok", ""); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpZip+".ok", tmpZip); err != nil {
+		return err
+	}
+	fresh, old := filepath.Join(dir, AppDir+".new"), filepath.Join(dir, AppDir+".old")
+	os.RemoveAll(fresh) // our own leftovers from a cut-off try
+	os.RemoveAll(old)
+	if err := unzipAll(tmpZip, fresh); err != nil {
+		os.RemoveAll(fresh)
+		return err
+	}
+	if err := take(ctx); err != nil { // never swap under a running yt-dlp
+		os.RemoveAll(fresh)
+		return err
+	}
+	defer give()
+	cur := filepath.Join(dir, AppDir)
+	if _, err := os.Stat(cur); err == nil {
+		if err := os.Rename(cur, old); err != nil {
+			os.RemoveAll(fresh)
+			return err
+		}
+	}
+	if err := os.Rename(fresh, cur); err != nil {
+		os.Rename(old, cur) // put the working one back
+		return err
+	}
+	os.RemoveAll(old)
+	return nil
+}
+
+// unzipAll unpacks a zip into out: regular files and folders only, nothing
+// outside out, with the program bits the zip gives.
+func unzipAll(zipPath, out string) error {
+	z, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return errors.New("the download is not a readable zip")
+	}
+	defer z.Close()
+	if len(z.File) > 5000 {
+		return errors.New("the zip holds more files than expected")
+	}
+	var total int64
+	for _, e := range z.File {
+		name := filepath.FromSlash(e.Name)
+		if !filepath.IsLocal(name) {
+			return errors.New("the zip holds a name outside its folder")
+		}
+		p := filepath.Join(out, name)
+		mode := e.Mode()
+		switch {
+		case mode.IsDir():
+			if err := os.MkdirAll(p, 0o755); err != nil {
+				return err
+			}
+			continue
+		case !mode.IsRegular():
+			return errors.New("the zip holds something other than files and folders")
+		}
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			return err
+		}
+		r, err := e.Open()
+		if err != nil {
+			return err
+		}
+		perm := os.FileMode(0o644)
+		if mode&0o111 != 0 {
+			perm = 0o755
+		}
+		f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_EXCL, perm)
+		if err != nil {
+			r.Close()
+			return err
+		}
+		n, err := io.Copy(f, io.LimitReader(r, maxTool+1-total))
+		total += n
+		r.Close()
+		if err == nil && total > maxTool {
+			err = errors.New("the zip unpacks larger than expected")
+		}
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

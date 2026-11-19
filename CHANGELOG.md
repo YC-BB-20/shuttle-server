@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.125 — 19 November 2026
+
+- **YouTube: Add to queue is immediate.** The look-up made in Add link is kept for 15 minutes and Add uses it, instead of asking YouTube all over again (which took as long as the look-up and showed nothing).
+- **Add link says it is working:** "Asking YouTube about the video… 12 s", counting, while the look-up runs. The button says "Adding…" while a download is added, and a reason it was not added is scrolled into view.
+- **yt-dlp starts faster on a Mac.** Settings → YouTube now installs yt-dlp's folder build, which starts in a moment; the single-file build unpacked itself on every run. Press "Check for updates now" once to switch.
+
 ## 0.2.124 — 19 November 2026
 
 - **Copies to a server hash the source while sending it.** Each file is hashed as it is read for sending (no separate read first, so the upload starts at once), sent under a temporary name, then read back from the server while the source is read a second time. The file gets its real name only when all three match; on S3 too, by a copy on the server. A byte read wrongly during the send shows up in the second read: the file is sent again once, and a source that keeps reading differently fails with a plain reason.

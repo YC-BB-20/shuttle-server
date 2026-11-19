@@ -71,15 +71,26 @@ func release(t *testing.T, yt, denoBin []byte, badSum bool) *httptest.Server {
 	f.Write(denoBin)
 	zw.Close()
 	sum := func(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
-	ytSum := sum(yt)
+	var yb bytes.Buffer // the folder build: the program and its _internal folder
+	yw := zip.NewWriter(&yb)
+	h := &zip.FileHeader{Name: "yt-dlp_macos", Method: zip.Deflate}
+	h.SetMode(0o755)
+	pf, _ := yw.CreateHeader(h)
+	pf.Write(yt)
+	yw.Create("_internal/")
+	lf, _ := yw.Create("_internal/lib.txt")
+	lf.Write([]byte("library"))
+	yw.Close()
+	yzip := yb.Bytes()
+	ytSum := sum(yzip)
 	if badSum {
 		ytSum = strings.Repeat("0", 64)
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/yt/SHA2-256SUMS", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "%s  yt-dlp\n%s  yt-dlp_macos\n", sum([]byte("x")), ytSum)
+		fmt.Fprintf(w, "%s  yt-dlp\n%s  yt-dlp_macos.zip\n", sum([]byte("x")), ytSum)
 	})
-	mux.HandleFunc("/yt/yt-dlp_macos", func(w http.ResponseWriter, r *http.Request) { w.Write(yt) })
+	mux.HandleFunc("/yt/yt-dlp_macos.zip", func(w http.ResponseWriter, r *http.Request) { w.Write(yzip) })
 	mux.HandleFunc("/deno/deno-aarch64-apple-darwin.zip.sha256sum", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "%s  deno-aarch64-apple-darwin.zip\n", sum(zb.Bytes()))
 	})
@@ -95,13 +106,20 @@ func TestUpdateChecksAndKeepsWhatWorks(t *testing.T) {
 	dir := t.TempDir()
 	ctx := context.Background()
 	release(t, []byte("#!/bin/sh\necho 2026.11.01\n"), []byte("#!/bin/sh\necho deno 2.5.0\n"), false)
+	os.WriteFile(filepath.Join(dir, YTDLPName), []byte("#!/bin/sh\necho old\n"), 0o755) // v0.2.123's single file
 	changed, err := Update(ctx, http.DefaultClient, dir, "darwin", "arm64", func(string) {})
 	if err != nil || strings.Join(changed, ",") != "yt-dlp,Deno" {
 		t.Fatalf("install: %v %v", changed, err)
 	}
 	tl := Find(dir)
-	if !tl.Own || tl.Missing() != "" || Version(ctx, tl.YTDLP) != "2026.11.01" {
+	if !tl.Own || tl.Missing() != "" || Version(ctx, tl.YTDLP) != "2026.11.01" || tl.YTDLP != filepath.Join(dir, AppDir, "yt-dlp_macos") {
 		t.Fatalf("after install: %+v", tl)
+	}
+	if _, err := os.Stat(filepath.Join(dir, AppDir, "_internal", "lib.txt")); err != nil {
+		t.Fatal("the folder build was not unpacked whole")
+	}
+	if _, err := os.Stat(filepath.Join(dir, YTDLPName)); err == nil {
+		t.Fatal("the old single-file yt-dlp was left beside the folder build")
 	}
 	if changed, err := Update(ctx, http.DefaultClient, dir, "darwin", "arm64", func(string) {}); err != nil || len(changed) != 0 {
 		t.Fatalf("nothing new: %v %v", changed, err)
@@ -111,7 +129,7 @@ func TestUpdateChecksAndKeepsWhatWorks(t *testing.T) {
 	if _, err := Update(ctx, http.DefaultClient, dir, "darwin", "arm64", func(string) {}); err == nil || !strings.Contains(err.Error(), "checksum") {
 		t.Fatalf("a bad checksum was accepted: %v", err)
 	}
-	if Version(ctx, filepath.Join(dir, YTDLPName)) != "2026.11.01" {
+	if Version(ctx, filepath.Join(dir, AppDir, "yt-dlp_macos")) != "2026.11.01" {
 		t.Fatal("the working yt-dlp was replaced")
 	}
 	if es, _ := os.ReadDir(dir); len(es) != 3 {
@@ -135,5 +153,22 @@ func TestProblemsInPlainWords(t *testing.T) {
 	var g Gone
 	if !errors.As(problem("ERROR: Private video"), &g) {
 		t.Error("a private video should not be tried again")
+	}
+}
+
+func TestUnzipAllRefusesNamesOutside(t *testing.T) {
+	var b bytes.Buffer
+	w := zip.NewWriter(&b)
+	f, _ := w.Create("../evil")
+	f.Write([]byte("x"))
+	w.Close()
+	p := filepath.Join(t.TempDir(), "z.zip")
+	os.WriteFile(p, b.Bytes(), 0o644)
+	out := filepath.Join(t.TempDir(), "out")
+	if err := unzipAll(p, out); err == nil {
+		t.Fatal("a name outside the folder was unpacked")
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(out), "evil")); err == nil {
+		t.Fatal("a file was written outside the folder")
 	}
 }
