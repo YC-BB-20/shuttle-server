@@ -49,3 +49,25 @@ func TestServersKeepTheLoginOffThePage(t *testing.T) {
 		t.Fatalf("after remove: %s", rec.Body)
 	}
 }
+
+// YouTube's tools: the page sees whether they are there; installing needs the Shuttle header.
+func TestYouTubeToolsStatus(t *testing.T) {
+	s, _ := newTest()
+	s.ToolsDir = t.TempDir()
+	t.Setenv("PATH", t.TempDir())
+	h := s.HTTP().Handler
+	req := httptest.NewRequest("GET", "/api/youtube", nil)
+	req.Host = "localhost:8470"
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"yt_dlp":false`) || !strings.Contains(rec.Body.String(), "Settings") {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+	req = httptest.NewRequest("POST", "/api/youtube/update", nil)
+	req.Host = "localhost:8470"
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("an install without the Shuttle header: %d", rec.Code)
+	}
+}

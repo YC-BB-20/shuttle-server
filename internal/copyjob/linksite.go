@@ -3,6 +3,7 @@ package copyjob
 import (
 	"bufio"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"github.com/YC-BB-20/shuttle-server/internal/fsx"
 	"github.com/YC-BB-20/shuttle-server/internal/linkdl"
 	"github.com/YC-BB-20/shuttle-server/internal/mp4"
+	"github.com/YC-BB-20/shuttle-server/internal/ytdlp"
 )
 
 // Vimeo and SoundCloud links (v0.2.91), rebuilt from what Shuttle Router
@@ -30,8 +32,12 @@ import (
 // site.init, the joined header; site.moofs, each piece's table), so a stopped
 // download continues from the last piece kept, not from the start.
 
-// siteOf says which site a pasted link is for: "vimeo", "soundcloud" or "".
+// siteOf says which site a pasted link is for: "vimeo", "soundcloud",
+// "youtube" or "".
 func siteOf(raw string) string {
+	if ytdlp.IsYouTube(raw) {
+		return "youtube" // v0.2.123; a playlist or channel is refused at the look-up
+	}
 	if id, _ := linkdl.VimeoID(raw); id != "" {
 		return "vimeo"
 	}
@@ -70,6 +76,24 @@ func (m *Manager) lookUpSite(ctx context.Context, site, raw, password string) (s
 		qs := v.Qualities()
 		return siteInfo{Info: linkdl.Info{Name: linkdl.VimeoFileName(v.Title, v.ID), Size: qs[0].Bytes, Type: "video/mp4",
 			Resumable: true, Host: "vimeo.com", Sub: linkdl.SubFolder(raw)}, Title: v.Title, Duration: v.Duration, Qualities: qs}, nil
+	case "youtube":
+		id := ytdlp.VideoID(raw)
+		if id == "" {
+			return siteInfo{}, linkdl.Gone{Msg: "This is a YouTube playlist or channel. Paste the link of one video."}
+		}
+		v, err := ytdlp.Look(ctx, m.ytTools(), id)
+		if err != nil {
+			return siteInfo{}, ytErr(err)
+		}
+		var qs []linkdl.Quality
+		for _, c := range v.Choices() {
+			qs = append(qs, linkdl.Quality{ID: c.ID, Label: c.Label, Bytes: c.Bytes, Height: c.Height, Ext: c.Ext})
+		}
+		if len(qs) == 0 {
+			return siteInfo{}, linkdl.Gone{Msg: "YouTube offers no MP4 picture and M4A sound for this video"}
+		}
+		return siteInfo{Info: linkdl.Info{Name: ytFileName(v.Title, id, "mp4"), Size: qs[0].Bytes, Type: "video/mp4",
+			Resumable: true, Host: "youtube.com", Sub: linkdl.SubFolder(raw)}, Title: v.Title, Duration: v.Duration, Qualities: qs}, nil
 	case "soundcloud":
 		s, err := openSC(ctx, raw)
 		if err != nil {
@@ -120,6 +144,10 @@ func (m *Manager) siteSpec(ctx context.Context, site, raw string, o LinkOpts) (*
 	}
 	ls := &LinkSpec{Name: in.Info.Name, Sub: in.Info.Sub, Size: -1, Resumable: true, Host: in.Info.Host, Site: site,
 		Quality: q.ID, Height: q.Height, Est: q.Bytes, Title: in.Title}
+	if site == "youtube" {
+		ls.Duration = in.Duration
+		ls.Name = ytFileName(in.Title, ytdlp.VideoID(raw), q.Ext)
+	}
 	if site == "soundcloud" {
 		ext := q.Ext
 		if q.ID == "original" && ext == "" { // the artist's file: its name says what it is
@@ -669,4 +697,194 @@ func scList(ctx context.Context, sc *linkdl.SC, u string) (string, []string, err
 		return "", nil, linkdl.Retry{Msg: "SoundCloud sent an empty stream list"}
 	}
 	return init, segs, nil
+}
+
+// YouTube (v0.2.123): yt-dlp downloads the chosen picture stream and the
+// best M4A sound beside the file, as <name>.shuttle-dl.shuttle-yt-video and
+// …-audio (it continues them after a pause or a restart); Shuttle then joins
+// them into one ordinary MP4 as two pieces of a site download, so a join that
+// was cut off continues too. Sound only is the M4A, made into an ordinary file
+// the same way. The two stream files are removed once the file is joined.
+
+func (m *Manager) ytTools() ytdlp.Tools { return ytdlp.Find(m.Tools) }
+
+// ytErr turns a yt-dlp problem that trying again cannot fix into Gone.
+func ytErr(err error) error {
+	var g ytdlp.Gone
+	if errors.As(err, &g) {
+		return linkdl.Gone{Msg: string(g)}
+	}
+	return err
+}
+
+// ytFileName is the video's title as a file name.
+func ytFileName(title, id, ext string) string {
+	n := linkdl.VimeoFileName(title, id) // the same cleaning: "Title.mp4"
+	n = strings.TrimSuffix(n, ".mp4")
+	if strings.TrimSpace(title) == "" {
+		n = "YouTube " + id
+	}
+	if ext == "" {
+		ext = "mp4"
+	}
+	return n + "." + ext
+}
+
+// ytTemps are the stream files of a YouTube download (ours to remove).
+func ytTemps(part string) []string {
+	var out []string
+	for _, k := range []string{"video", "audio"} {
+		p := part + ".shuttle-yt-" + k
+		out = append(out, p, p+".part", p+".ytdl")
+	}
+	return out
+}
+
+// readInit reads a stream file's header: its boxes up to and including the moov.
+func readInit(p string) ([]byte, error) {
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var out []byte
+	hdr := make([]byte, 16)
+	for len(out) < 64<<20 {
+		if _, err := io.ReadFull(f, hdr[:8]); err != nil {
+			return nil, errors.New("the stream has no header")
+		}
+		size, h := int64(binary.BigEndian.Uint32(hdr)), 8
+		typ := string(hdr[4:8])
+		if size == 1 {
+			if _, err := io.ReadFull(f, hdr[8:16]); err != nil {
+				return nil, errors.New("the stream has no header")
+			}
+			size, h = int64(binary.BigEndian.Uint64(hdr[8:])), 16
+		}
+		if size < int64(h) || size > 64<<20 && typ != "mdat" {
+			return nil, errors.New("the stream's header is damaged")
+		}
+		if typ != "ftyp" && typ != "moov" {
+			if _, err := f.Seek(size-int64(h), io.SeekCurrent); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		b := make([]byte, size)
+		copy(b, hdr[:h])
+		if _, err := io.ReadFull(f, b[h:]); err != nil {
+			return nil, errors.New("the stream's header is cut short")
+		}
+		out = append(out, b...)
+		if typ == "moov" {
+			return out, nil
+		}
+	}
+	return nil, errors.New("the stream has no moov")
+}
+
+// fetchYouTube downloads a YouTube video into part as one MP4 (or M4A) and
+// returns its size.
+func (m *Manager) fetchYouTube(ctx context.Context, j *Job, d *diskio.Disk, link, part string) (int64, error) {
+	ls := j.st.Spec.Link
+	t := m.ytTools()
+	if miss := t.Missing(); miss != "" {
+		return 0, linkdl.Gone{Msg: miss}
+	}
+	id := ytdlp.VideoID(link)
+	if id == "" {
+		return 0, linkdl.Gone{Msg: "This is not the link of one YouTube video"}
+	}
+	vfid, afid, both := strings.Cut(ls.Quality, "+")
+	if !both {
+		vfid, afid = "", vfid
+	}
+	if !diskio.VolumeMounted(j.st.Spec.Dest) {
+		return 0, diskio.ErrGone
+	}
+	if err := os.MkdirAll(filepath.Dir(part), 0o755); err != nil {
+		return 0, err
+	}
+	vfile, afile := part+".shuttle-yt-video", part+".shuttle-yt-audio"
+	est := max(ls.Est, 1)
+	var got int64
+	grab := func(fid, out, stage string) error {
+		if fi, err := os.Stat(out); err == nil { // yt-dlp finished it earlier
+			got += fi.Size()
+			return nil
+		}
+		base := got
+		j.setLive(func(l *live) { l.stage, l.done, l.size = stage, base, est })
+		var last int64
+		err := ytdlp.Download(ctx, t, id, fid, out, func(done, total int64) {
+			if done > last {
+				j.dstBytes.Add(done - last)
+				last = done
+			}
+			j.setLive(func(l *live) { l.done = base + done })
+		})
+		if err != nil {
+			if ctx.Err() != nil {
+				return context.Cause(ctx)
+			}
+			if !diskio.Present(d) {
+				return diskio.ErrGone
+			}
+			return ytErr(err)
+		}
+		if fi, err := os.Stat(out); err == nil {
+			got += fi.Size()
+		}
+		return nil
+	}
+	pieces, first := []string{afile}, afile
+	if vfid != "" {
+		if err := grab(vfid, vfile, "Downloading the picture from YouTube"); err != nil {
+			return 0, err
+		}
+		pieces, first = []string{vfile, afile}, vfile
+	}
+	if err := grab(afid, afile, "Downloading the sound from YouTube"); err != nil {
+		return 0, err
+	}
+	vinit, err := readInit(first)
+	if err != nil {
+		os.Remove(first) // our own: downloaded again
+		return 0, linkdl.Retry{Msg: "YouTube's stream could not be read (" + err.Error() + "); downloading it again"}
+	}
+	var ainit []byte
+	if vfid != "" {
+		if ainit, err = readInit(afile); err != nil {
+			os.Remove(afile)
+			return 0, linkdl.Retry{Msg: "YouTube's sound could not be read (" + err.Error() + "); downloading it again"}
+		}
+	}
+	moov, vid, aid, err := mp4.MergeInit(vinit, ainit, ls.Duration)
+	if err != nil {
+		return 0, linkdl.Gone{Msg: "YouTube's streams cannot be joined (" + err.Error() + ")"}
+	}
+	tracks := []uint32{vid, aid}
+	j.setLive(func(l *live) { l.stage, l.done, l.size = "Joining the picture and the sound", 0, got })
+	s, err := m.openSite(ctx, j, d, part, "youtube "+ls.Quality, "YouTube", func() ([]byte, []byte, int, error) {
+		room := mp4.Room(ls.Duration, 60, 48000)
+		head := append(append(append([]byte(nil), mp4.FTYP...), mp4.Reserve(room)...), mp4.MdatHead(0)...)
+		return head, moov, room, nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	defer s.end()
+	for s.st.Next < len(pieces) {
+		p := pieces[s.st.Next]
+		if err := s.piece(ctx, func(int) (io.ReadCloser, error) { return os.Open(p) }, true, tracks[s.st.Next]); err != nil {
+			return 0, err
+		}
+	}
+	n, err := s.finish(ctx)
+	if err == nil {
+		for _, p := range ytTemps(part) {
+			os.Remove(p) // our own stream files, now joined
+		}
+	}
+	return n, err
 }

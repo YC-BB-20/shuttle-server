@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"github.com/YC-BB-20/shuttle-server/internal/speedtest"
 	"io"
+	"log/slog"
 	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -34,6 +36,7 @@ import (
 	"github.com/YC-BB-20/shuttle-server/internal/sysinfo"
 	"github.com/YC-BB-20/shuttle-server/internal/update"
 	"github.com/YC-BB-20/shuttle-server/internal/version"
+	"github.com/YC-BB-20/shuttle-server/internal/ytdlp"
 )
 
 // Exit codes.
@@ -206,11 +209,12 @@ func Run(opts Options) (code int) {
 	var jobs *copyjob.Manager
 	jobsDone := make(chan struct{})
 	servers := &remote.Store{Dir: filepath.Join(data, "secrets", "servers"), Opts: remote.Options{Budget: budget}}
+	tools := filepath.Join(data, "tools") // v0.2.123: yt-dlp and Deno for YouTube
 	disks := diskio.NewRegistry(1, 60*time.Second)
 	if !safe {
 		jobs = &copyjob.Manager{Dir: filepath.Join(stateDir, "jobs"), Budget: budget, Disks: disks,
 			Accepting: wd.AcceptingNewWork, Log: log, Floor: cfg.FloorBytes(), Secrets: filepath.Join(data, "secrets", "links"),
-			Lucid: lucid.New(cfg.LucidCommand), LucidMax: int64(cfg.LucidMaxWaitingGB * 1e9), Servers: servers}
+			Lucid: lucid.New(cfg.LucidCommand), LucidMax: int64(cfg.LucidMaxWaitingGB * 1e9), Servers: servers, Tools: tools}
 		if v, err := diskio.VolumeOf(data); err == nil {
 			jobs.FloorVol = v.ID // the free-space floor is kept on the internal disk
 		}
@@ -229,6 +233,14 @@ func Run(opts Options) (code int) {
 				}
 				return false
 			}}).Run(ctx)
+			go keepYouTubeTools(ctx, log, tools, func() bool {
+				for _, v := range jobs.Views() {
+					if v.State == "running" || v.State == "waiting" {
+						return true
+					}
+				}
+				return false
+			})
 		}
 	}
 
@@ -383,7 +395,7 @@ func Run(opts Options) (code int) {
 	}
 	srv := (&server.Server{Page: shuttle.IndexHTML, Speed: speed, PageDir: cfg.PageDir, Hub: hub, Status: status, Jobs: actions, Listen: cfg.Listen,
 		Updates: updater, Restart: restart, Quit: quit, Login: login, LogsDir: filepath.Join(data, "logs"), Log: log,
-		Servers: servers,
+		Servers: servers, ToolsDir: tools,
 		About: func() any {
 			return map[string]string{"version": version.Version, "commit": version.Commit, "changelog": shuttle.Changelog}
 		}}).HTTP()
@@ -541,4 +553,30 @@ func progressHeadline(v *copyjob.View) string {
 		s += fmt.Sprintf(" · %d already there, verified", v.Identical)
 	}
 	return s
+}
+
+// keepYouTubeTools updates yt-dlp and Deno once a day, when Shuttle installed
+// them itself and nothing in the queue is running (DESIGN.md section 9):
+// YouTube changes often, and an old yt-dlp soon stops working.
+func keepYouTubeTools(ctx context.Context, log *slog.Logger, dir string, busy func() bool) {
+	t := time.NewTicker(time.Hour)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		if !ytdlp.Find(dir).Own || time.Since(ytdlp.LastChecked(dir)) < 24*time.Hour || busy() {
+			continue
+		}
+		uctx, cancel := context.WithTimeout(ctx, time.Hour)
+		changed, err := ytdlp.Update(uctx, ytdlp.Client(), dir, runtime.GOOS, runtime.GOARCH, func(string) {})
+		cancel()
+		if err != nil {
+			log.Warn("YouTube tools: the daily update failed; it will try again", "err", err)
+		} else if len(changed) > 0 {
+			log.Info("YouTube tools updated", "changed", strings.Join(changed, ", "))
+		}
+	}
 }

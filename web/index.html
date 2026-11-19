@@ -901,6 +901,13 @@ body.on-files .shell { min-height:0; } body.on-files .shell > main { min-height:
       <p class="err" id="srvErr"></p>
     </div>
   </section>
+  <section class="card" id="ytSet">
+    <h2>YouTube</h2>
+    <p class="mute">YouTube links in Add link are read by yt-dlp, with Deno as its JavaScript engine. Shuttle installs the official builds in its own folder, checks each against its release's checksum, and updates them once a day while nothing is copying. Only for videos you may download.</p>
+    <p class="mute" id="ytState">Looking…</p>
+    <div class="btns" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button type="button" id="ytUpd">Install yt-dlp and Deno</button></div>
+    <p class="err" id="ytErr"></p>
+  </section>
   <h2 class="sechead" data-page="updates" style="margin-top:0">How Shuttle is using this computer</h2>
   <div class="grid resources" data-page="updates" style="margin-bottom:12px">
     <section class="card"><h2>Memory</h2><p id="mem"></p><div class="bar"><i id="memBar"></i></div><p class="mute" id="memNote"></p></section>
@@ -1057,7 +1064,7 @@ body.on-files .shell { min-height:0; } body.on-files .shell > main { min-height:
   <div class="body">
     <label for="linkIn">Links</label>
     <textarea id="linkIn" rows="3" spellcheck="false" autocomplete="off" placeholder="https://… one link per line (up to 50)"></textarea>
-    <p class="mute">Direct download links to a file, such as Frame.io's "Download in Browser" links, or a Vimeo video or SoundCloud track. Each link stays on this computer only, is never shown again, and is removed once its file has arrived.</p>
+    <p class="mute">Direct download links to a file, such as Frame.io's "Download in Browser" links, or a Vimeo video, YouTube video or SoundCloud track. Each link stays on this computer only, is never shown again, and is removed once its file has arrived.</p>
     <div class="lfound" id="linkFound"></div>
     <div class="lsite" id="linkPwRow" hidden><label for="linkPw">Vimeo password</label><input type="password" id="linkPw" autocomplete="off" placeholder="Only for a video with a password"><p class="mute">Used to open the video, kept with the link and removed with it. Never shown or logged.</p></div>
     <div class="lsite" id="linkQRow" hidden><label for="linkQ">Quality</label><select id="linkQ"></select></div>
@@ -1168,6 +1175,7 @@ function setPage(pg) {
   if (!["copy", "updates", "versions"].includes(pg)) pg = "copy";
   $("tabSettings").dataset.show = pg;
   $("setNav").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.p === pg));
+  if (pg === "copy") loadYT();
   if (pg === "versions") {
     if (!$("histList").childElementCount) loadHistory();
     fetch("/api/about").then(r => r.json()).then(a => { $("verNow").textContent = "Shuttle Server " + a.version + " (" + a.commit + ")"; $("verLog").textContent = a.changelog; })
@@ -2624,6 +2632,20 @@ function srvRow(p) {
   b.append(test, ch, rm); d.append(b);
   return d;
 }
+// v0.2.123: YouTube's tools, shown when Settings opens (asking their versions runs them).
+let ytPoll = 0;
+function loadYT() {
+  fetch("/api/youtube").then(r => r.json()).then(d => {
+    const v = [d.yt_dlp ? "yt-dlp " + (d.yt_dlp_version || "") : "yt-dlp not installed", d.deno ? "Deno " + (d.deno_version || "") : "Deno not installed"].map(x => x.trim());
+    $("ytState").textContent = d.working ? (d.step || "Working") + "…" : v.join(" · ") +
+      (d.own ? " · installed by Shuttle" + (d.checked ? ", last checked " + when(d.checked) : "") : d.yt_dlp || d.deno ? " · found on this Mac" : "");
+    $("ytUpd").textContent = d.yt_dlp && d.deno ? (d.own ? "Check for updates now" : "Install Shuttle's own copies") : "Install yt-dlp and Deno";
+    $("ytUpd").disabled = !!d.working;
+    $("ytErr").textContent = d.error ? "Not updated: " + d.error : "";
+    clearTimeout(ytPoll); if (d.working) ytPoll = setTimeout(loadYT, 1500);
+  }).catch(() => {});
+}
+$("ytUpd").onclick = () => { $("ytUpd").disabled = true; post("/api/youtube/update", {}).then(() => setTimeout(loadYT, 300)).catch(e => { $("ytErr").textContent = e.message; $("ytUpd").disabled = false; }); };
 function loadServers() {
   fetch("/api/servers").then(r => r.json()).then(list => {
     list.forEach(x => { srvNames[x.id] = x.name; }); // v0.2.122: names for server places in the queue
@@ -3787,7 +3809,7 @@ function lookUpLinks() {
 }
 const linkRel = x => (x.sub ? x.sub + "/" : "") + x.name;
 function linkFacts(x) {
-  if (x.site) return [x.site === "vimeo" ? "Vimeo video" : "SoundCloud track", x.duration > 0 ? linkDur(x.duration) : "", x.qualities && x.qualities.length ? "about " + size(x.qualities[0].bytes || 0) + " at the best quality" : "", "continues after a break"].filter(Boolean).join(" · ");
+  if (x.site) return [x.site === "vimeo" ? "Vimeo video" : x.site === "youtube" ? "YouTube video" : "SoundCloud track", x.duration > 0 ? linkDur(x.duration) : "", x.qualities && x.qualities.length ? "about " + size(x.qualities[0].bytes || 0) + " at the best quality" : "", "continues after a break"].filter(Boolean).join(" · ");
   return [x.host, x.size >= 0 ? size(x.size) : "size not given", x.resumable ? "can continue after a break" : "starts again after a break", x.share ? "from " + x.share : ""].filter(Boolean).join(" · ");
 }
 // The order of the Files tab, which is also the order the files download in:

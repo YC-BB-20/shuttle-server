@@ -75,7 +75,7 @@ func (f Folder) Path(rel string) string { return filepath.Join(f.Dir, filepath.F
 // IsShuttleTemp reports Shuttle's own temporary and failed-copy names, which
 // a walk never copies.
 func IsShuttleTemp(name string) bool {
-	return strings.HasSuffix(name, ".shuttle-part") || strings.Contains(name, ".shuttle-failed")
+	return strings.HasSuffix(name, ".shuttle-part") || strings.Contains(name, ".shuttle-failed") || strings.Contains(name, ".shuttle-yt-")
 }
 
 // Walk visits every regular file. Directories are read in batches and only a

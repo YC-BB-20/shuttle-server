@@ -48,6 +48,9 @@ type Manager struct {
 	// to upload before copying to LucidLink pauses (0: no limit).
 	Lucid    LucidClient
 	LucidMax int64
+	// Tools is Shuttle's tools folder, where yt-dlp and Deno are installed
+	// for YouTube (v0.2.123); they are also looked for in the usual places.
+	Tools string
 	// Servers opens the servers added in Settings (v0.2.122); nil: copies
 	// to and from servers are refused.
 	Servers Servers

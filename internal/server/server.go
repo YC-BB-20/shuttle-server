@@ -22,22 +22,23 @@ import (
 
 // Server holds what the handlers need.
 type Server struct {
-	Page    []byte // built-in page
-	PageDir string // if set, index.html is read from here on every request
-	Hub     *events.Hub
-	Status  func() any
-	About   func() any
-	Jobs    Actions // nil in safe mode
-	Listen  string
-	Updates Updates // works in safe mode too
-	Restart func()
-	Quit    func()
-	Login   Login             // nil where starting at login is not supported
-	Speed   *speedtest.Tester // nil in safe mode
-	LogsDir string            // logs/YYYY-MM/shuttle.log, read for a copy's Log tab (v0.2.87)
-	Servers *remote.Store     // file servers such as CTERA (v0.2.96); logins stay in secrets/servers
-	Log     *slog.Logger      // the Delete function's record (v0.2.106); nil: not logged
-	sizes   sizer             // the copy size being counted for the picker
+	Page     []byte // built-in page
+	PageDir  string // if set, index.html is read from here on every request
+	Hub      *events.Hub
+	Status   func() any
+	About    func() any
+	Jobs     Actions // nil in safe mode
+	Listen   string
+	Updates  Updates // works in safe mode too
+	Restart  func()
+	Quit     func()
+	Login    Login             // nil where starting at login is not supported
+	Speed    *speedtest.Tester // nil in safe mode
+	LogsDir  string            // logs/YYYY-MM/shuttle.log, read for a copy's Log tab (v0.2.87)
+	Servers  *remote.Store     // file servers such as CTERA (v0.2.96); logins stay in secrets/servers
+	ToolsDir string            // v0.2.123: where yt-dlp and Deno are installed for YouTube
+	Log      *slog.Logger      // the Delete function's record (v0.2.106); nil: not logged
+	sizes    sizer             // the copy size being counted for the picker
 }
 
 // Login is starting Shuttle when the owner logs in.
@@ -167,6 +168,8 @@ func (s *Server) HTTP() *http.Server {
 	mux.HandleFunc("GET /api/update/history", s.history)
 	mux.HandleFunc("POST /api/update/{action}", s.always(s.updateAction))
 	mux.HandleFunc("POST /api/jobs/bulk", s.command(s.bulkAction))
+	mux.HandleFunc("GET /api/youtube", s.youtubeStatus)
+	mux.HandleFunc("POST /api/youtube/update", s.always(s.youtubeUpdate))
 	mux.HandleFunc("GET /api/servers", s.serverList)
 	mux.HandleFunc("POST /api/servers", s.always(s.serverSave))
 	mux.HandleFunc("POST /api/servers/{id}/{action}", s.always(s.serverAction))

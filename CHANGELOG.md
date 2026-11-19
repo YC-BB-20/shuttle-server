@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.123 — 19 November 2026
+
+- **YouTube downloads.** Paste a YouTube video's link in Add link, choose a quality (the best H.264 first, which opens everywhere; higher ones in AV1; or the sound alone as M4A), and it joins the queue like any download. The picture and the sound are joined into one ordinary MP4 by Shuttle itself, so ffmpeg is not needed. The file is read back and hashed before it gets its name. A paused or cut-off download continues where it stopped.
+- **Settings → YouTube** installs yt-dlp and Deno (its JavaScript engine) in Shuttle's own folder with one button, checks each against the checksum its release publishes, and keeps them up to date once a day while nothing is copying. yt-dlp or Deno already on the Mac is used too.
+- A playlist, a channel or a live stream is refused with a plain reason; so is a private or age-restricted video.
+
 ## 0.2.122 — 18 November 2026
 
 - **Servers are places.** Every server added in Settings (S3 or WebDAV) is in Files' drive drop-down and the folder picker, beside the drives: browse it, make a folder on it (WebDAV), and copy to it, from it or between two servers.

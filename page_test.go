@@ -596,7 +596,7 @@ func TestPageAddLink(t *testing.T) {
 func TestPageSitesViewsSafeCount(t *testing.T) {
 	s := string(IndexHTML)
 	for _, want := range []string{
-		`id="linkPw"`, `type="password" id="linkPw" autocomplete="off"`, `id="linkQ"`, `x.site === "vimeo" ? "Vimeo video" : "SoundCloud track"`, `function linkDur(s)`,
+		`id="linkPw"`, `type="password" id="linkPw" autocomplete="off"`, `id="linkQ"`, `x.site === "vimeo" ? "Vimeo video" : x.site === "youtube" ? "YouTube video" : "SoundCloud track"`, `id="ytSet"`, `function loadYT()`, `function linkDur(s)`,
 		`id="qView"`, `data-v="active"`, `>Done today <span`, `>Only problems <span`, `function jobProblem(v)`, `function inView(v, view)`,
 		`name="safeN"`, `function SAFE_COPIES() { return (copySet && copySet.safe_copies) || 2; }`, `const need = SAFE_COPIES(), short`, `id="onRuleN"`,
 	} {

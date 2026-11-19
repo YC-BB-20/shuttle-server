@@ -47,6 +47,8 @@ type LinkSpec struct {
 	Height  int    `json:"height,omitempty"`  // a Vimeo stream's height, to find it again
 	Est     int64  `json:"est,omitempty"`     // expected size, for the bar
 	Title   string `json:"title,omitempty"`
+	// Duration (v0.2.123): a YouTube video's length, for the joined file's header.
+	Duration float64 `json:"duration,omitempty"`
 }
 
 var linkClient = linkdl.Client()
@@ -439,6 +441,10 @@ func (m *Manager) runLink(ctx context.Context, j *Job) {
 		if got, hash, err = m.fetchSC(jctx, j, dd, link, part); err == nil && hash == "" {
 			hash, err = m.readBack(jctx, j, dd, part, got, "")
 		}
+	case "youtube":
+		if got, err = m.fetchYouTube(jctx, j, dd, link, part); err == nil {
+			hash, err = m.readBack(jctx, j, dd, part, got, "")
+		}
 	default:
 		got, hash, err = m.download(jctx, j, dd, link, part, st.Spec.Link)
 	}
@@ -455,6 +461,9 @@ func (m *Manager) runLink(ctx context.Context, j *Job) {
 	switch {
 	case stopped:
 		os.Remove(part) // our own partial file
+		for _, p := range ytTemps(part) {
+			os.Remove(p) // a YouTube download's stream files, also ours
+		}
 		m.dropLink(st.ID)
 		m.dropSiteState(j)
 		m.finishStopped(j)
@@ -491,6 +500,9 @@ func (m *Manager) runLink(ctx context.Context, j *Job) {
 		j.setLive(func(l *live) { l.reason, l.missing, l.stage = "", "", "" })
 	case errors.As(err, &gone):
 		os.Remove(part)
+		for _, p := range ytTemps(part) {
+			os.Remove(p)
+		}
 		m.dropSiteState(j)
 		if m.itemDone(j, LinkResult{Err: gone.Msg}) {
 			m.Log.Warn("one file of a link download job failed; going on with the next", "job", st.ID, "why", gone.Msg)
@@ -518,12 +530,19 @@ type LinkResult struct {
 // linkNeed is the room a link job still needs: the files not yet
 // downloaded, as far as the sites said.
 func linkNeed(st state) int64 {
+	need := func(ls LinkSpec) int64 {
+		n := max(0, ls.Size, ls.Est)
+		if ls.Site == "youtube" {
+			n *= 2 // the two streams stay beside the joined file until it is done
+		}
+		return n
+	}
 	if len(st.Spec.Items) == 0 {
-		return max(st.Spec.Link.Size, st.Spec.Link.Est)
+		return need(*st.Spec.Link)
 	}
 	var n int64
 	for _, it := range st.Spec.Items[min(st.LinkAt, len(st.Spec.Items)):] {
-		n += max(0, it.Size, it.Est)
+		n += need(it)
 	}
 	return n
 }
@@ -870,6 +889,8 @@ func siteName(ls LinkSpec) string {
 		return "Vimeo"
 	case "soundcloud":
 		return "SoundCloud"
+	case "youtube":
+		return "YouTube"
 	}
 	h := strings.TrimPrefix(strings.ToLower(ls.Host), "www.")
 	if h == "frame.io" || strings.HasSuffix(h, ".frame.io") || strings.Contains(h, "frameio") || ls.Share != "" { // #rq-share comes from the Frame.io links bookmark
