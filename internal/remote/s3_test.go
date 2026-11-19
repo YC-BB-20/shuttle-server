@@ -579,3 +579,89 @@ func TestSplitPlace(t *testing.T) {
 		t.Error("Place")
 	}
 }
+
+// orderedReader records the offsets it is read at.
+type orderedReader struct {
+	b    []byte
+	mu   sync.Mutex
+	offs []int64
+}
+
+func (o *orderedReader) ReadAt(p []byte, off int64) (int, error) {
+	o.mu.Lock()
+	o.offs = append(o.offs, off)
+	o.mu.Unlock()
+	n := copy(p, o.b[off:])
+	if n < len(p) {
+		return n, io.EOF
+	}
+	return n, nil
+}
+
+// v0.2.124: pieces are read in order (so the file can be hashed as it is
+// sent), still sent several at once, and a piece sent again is not read again.
+func TestS3ReadsPiecesInOrder(t *testing.T) {
+	f := newFakeS3()
+	var mu sync.Mutex
+	failed := map[string]bool{}
+	f.fail = func(r *http.Request) int {
+		pn := r.URL.Query().Get("partNumber")
+		if pn == "" {
+			return 0
+		}
+		time.Sleep(time.Duration(len(pn)*7+int(pn[len(pn)-1]%3)*15) * time.Millisecond) // pieces finish out of order
+		mu.Lock()
+		defer mu.Unlock()
+		if pn == "2" && !failed[pn] {
+			failed[pn] = true
+			return 503 // once: sent again from memory
+		}
+		return 0
+	}
+	srv := httptest.NewServer(f)
+	defer srv.Close()
+	r, _ := New(s3Config(srv.URL), testOpts())
+	data := source(23 << 20) // 5 pieces of 5 MB
+	src := &orderedReader{b: data}
+	var st UploadState
+	if err := r.Upload(context.Background(), "big.mov", int64(len(data)), src, &st, func(UploadState) error { return nil }, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(f.objs["big.mov"], data) {
+		t.Fatal("the uploaded object differs")
+	}
+	if len(src.offs) != 5 {
+		t.Fatalf("pieces read %d times, want 5: %v", len(src.offs), src.offs)
+	}
+	for i := 1; i < len(src.offs); i++ {
+		if src.offs[i] <= src.offs[i-1] {
+			t.Fatalf("pieces read out of order: %v", src.offs)
+		}
+	}
+}
+
+// v0.2.124: an address on this network may be typed bare and use plain http;
+// one on the internet still needs https.
+func TestLocalAddresses(t *testing.T) {
+	for in, want := range map[string]string{
+		"192.168.8.1":           "http://192.168.8.1",
+		"10.0.0.5:5005/dav":     "http://10.0.0.5:5005/dav",
+		"nas.local/webdav":      "http://nas.local/webdav",
+		"portal.example.com":    "https://portal.example.com",
+		"https://192.168.8.1":   "https://192.168.8.1",
+		" http://192.168.8.1/ ": "http://192.168.8.1/",
+	} {
+		if got := NormalizeURL(in); got != want {
+			t.Errorf("%q: got %q want %q", in, got, want)
+		}
+	}
+	ok := Config{Name: "Home", Kind: KindWebDAV, URL: "http://192.168.8.1", User: "u", Secret: "p"}
+	if err := ok.Valid(); err != nil {
+		t.Errorf("a LAN address over http refused: %v", err)
+	}
+	bad := ok
+	bad.URL = "http://8.8.8.8/dav"
+	if err := bad.Valid(); err == nil || !strings.Contains(err.Error(), "https") {
+		t.Errorf("an internet address over http accepted: %v", err)
+	}
+}

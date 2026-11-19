@@ -138,7 +138,7 @@ func (s *Store) List() ([]Public, error) {
 func (s *Store) Save(in Config) (Public, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	in.Name, in.URL, in.User = strings.TrimSpace(in.Name), strings.TrimSpace(in.URL), strings.TrimSpace(in.User)
+	in.Name, in.URL, in.User = strings.TrimSpace(in.Name), NormalizeURL(in.URL), strings.TrimSpace(in.User)
 	in.Bucket, in.Region, in.Folder = strings.TrimSpace(in.Bucket), strings.TrimSpace(in.Region), strings.Trim(strings.TrimSpace(in.Folder), "/")
 	if in.ID != "" {
 		old, err := s.read(in.ID)

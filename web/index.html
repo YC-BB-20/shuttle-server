@@ -2020,7 +2020,7 @@ function shareNotes(v) {
 function proofScheme(v) {
   if (v.kind === "verify") return verKind(v);
   if (v.kind === "link") return (v.files > 1 ? "Each file downloaded" : "Downloaded") + ", size checked, read back from the disk and hashed";
-  if (v.kind === "server") return srvId(v.dest) ? "Source read in full, sent, read back from the server" : "Downloaded and hashed, read back from the disk" + (v.s2 === "now" ? ", the server read a second time" : "");
+  if (v.kind === "server") return srvId(v.dest) ? "Hashed while sent, read back from the server" + (v.s2 === "now" ? ", source read a second time" : "") : "Downloaded and hashed, read back from the disk" + (v.s2 === "now" ? ", the server read a second time" : "");
   if (v.check === "none") return "Copied, hash generated";
   if (v.dest_share === "lucidlink" && v.lucid_read === "cache") return "Copied first; read back from LucidLink's cache on this Mac, then waits for the upload" + (v.s2 === "now" ? ", source read a second time" : "");
   if (v.dest_share === "lucidlink") return "Copied first; read back once LucidLink has uploaded everything" + (v.s2 === "now" ? ", source read a second time" : "");
@@ -2029,8 +2029,8 @@ function proofScheme(v) {
 // v0.2.122: what a copy to or from a server reads, in the Proof tab.
 function serverProofText(v) {
   const a = algoName[v.algo] || "XXH128";
-  if (srvId(v.dest)) return "Every file is read in full from the source and hashed with " + a + ", then sent to " + diskOf(v.dest) +
-    " under a temporary name, downloaded again from the server and hashed. Only when both match does it get its real name, never over a file already there. The source is read twice: once for the hash, once to send.";
+  if (srvId(v.dest)) return "Every file is hashed with " + a + " as it is read and sent to " + diskOf(v.dest) + " under a temporary name, then downloaded again from the server" +
+    (v.s2 === "now" ? " while the source is read a second time; all three must match" : "; both must match") + ". Only then does it get its real name, never over a file already there.";
   return "Every file is downloaded from " + diskOf(v.source) + " and hashed with " + a + " as it is written, flushed, then read back from the disk" +
     (v.s2 === "now" ? " while the server's file is downloaded a second time; all three must match" : "; both must match") + ". Only then does it get its real name, never over a file already there.";
 }
@@ -2582,7 +2582,7 @@ function srvFormKind() {
   $("srvUserL").textContent = s3 ? "Access key" : "User name";
   $("srvSecretL").textContent = s3 ? "Secret key" : "Password";
   $("srvUrl").placeholder = s3 ? "https://s3.portal.example.com" : "https://portal.example.com/webdav";
-  $("srvUrlHelp").textContent = s3 ? "The S3 address the CTERA administrator gives with the keys." : "For CTERA: the portal's address followed by /webdav.";
+  $("srvUrlHelp").textContent = s3 ? "The S3 address the CTERA administrator gives with the keys." : "For CTERA: the portal's address followed by /webdav. On this network an IP works too, such as 192.168.8.1 (add /path if the server needs one).";
 }
 document.querySelectorAll("input[name=srvKind]").forEach(r => r.onchange = srvFormKind);
 function srvOpen(p) {

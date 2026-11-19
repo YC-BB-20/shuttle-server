@@ -252,8 +252,8 @@ func (c Config) Valid() error {
 	if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return errors.New("type the address without a user name, ? or #; the login goes in its own boxes")
 	}
-	if u.Scheme == "http" && !loopback(u.Hostname()) {
-		return errors.New("the address must start with https://, so the login is never sent unencrypted")
+	if u.Scheme == "http" && !Local(u.Hostname()) {
+		return errors.New("an address on the internet must start with https://, so the login is never sent unencrypted (plain http:// is only for this network, such as 192.168.8.1)")
 	}
 	if c.Kind == KindS3 {
 		if strings.TrimSpace(c.Bucket) == "" {
@@ -275,9 +275,37 @@ func (c Config) Valid() error {
 	return nil
 }
 
-func loopback(h string) bool {
-	ip := net.ParseIP(h)
-	return h == "localhost" || (ip != nil && ip.IsLoopback())
+// Local reports an address on this computer or the local network: a
+// private or link-local IP, or a name such as nas.local, router.lan or a
+// single word. A login may go there over plain http (v0.2.124).
+func Local(h string) bool {
+	h = strings.ToLower(strings.TrimSuffix(h, "."))
+	if ip := net.ParseIP(h); ip != nil {
+		return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
+	}
+	return h == "localhost" || !strings.Contains(h, ".") || strings.HasSuffix(h, ".local") || strings.HasSuffix(h, ".lan") ||
+		strings.HasSuffix(h, ".home.arpa") || strings.HasSuffix(h, ".internal")
+}
+
+// NormalizeURL adds what an address typed without it needs: "192.168.8.1"
+// becomes "http://192.168.8.1" (this network), "portal.example.com"
+// "https://portal.example.com".
+func NormalizeURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || strings.Contains(raw, "://") {
+		return raw
+	}
+	host := raw
+	if i := strings.IndexAny(host, "/?#"); i >= 0 {
+		host = host[:i]
+	}
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	if Local(strings.Trim(host, "[]")) {
+		return "http://" + raw
+	}
+	return "https://" + raw
 }
 
 func noRedirect(*http.Request, []*http.Request) error {

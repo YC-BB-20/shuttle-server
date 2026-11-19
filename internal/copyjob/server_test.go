@@ -190,7 +190,7 @@ func TestServerCopiesUpDownAndAcross(t *testing.T) {
 		t.Fatalf("not a server copy: %+v", j.st.Spec)
 	}
 	v := waitState(t, m, j.st.ID, "finished")
-	if v.Verified != len(files) || v.Failed != 0 {
+	if v.Verified != len(files) || v.Strong != len(files) || v.Failed != 0 {
 		t.Fatalf("up: %+v", v)
 	}
 	for rel, want := range files {
@@ -210,7 +210,7 @@ func TestServerCopiesUpDownAndAcross(t *testing.T) {
 		t.Fatal(err)
 	}
 	v = waitState(t, m, j.st.ID, "finished")
-	if v.Verified != len(files) || v.Failed != 0 {
+	if v.Verified != len(files) || v.Strong != len(files) || v.Failed != 0 {
 		t.Fatalf("across: %+v", v)
 	}
 	for rel, want := range files {
@@ -310,5 +310,70 @@ func TestServerPauseResumesDownload(t *testing.T) {
 	checkDest(t, dst, map[string][]byte{"card/big.mov": big})
 	if s.resumed == 0 {
 		t.Error("the download started again from zero after a pause")
+	}
+}
+
+// v0.2.124: a byte read wrongly for the send is hashed wrongly too, so the
+// server's copy matches C; only the second read of the source shows it. The
+// file is sent again once; a source that keeps reading differently fails.
+func TestServerBadReadWhileSendingIsCaughtBySecondRead(t *testing.T) {
+	for _, always := range []bool{false, true} {
+		root := t.TempDir()
+		src := filepath.Join(root, "src")
+		os.MkdirAll(src, 0o755)
+		data := bytes.Repeat([]byte("frame 0123456789 "), 40000)
+		os.WriteFile(filepath.Join(src, "a.mov"), data, 0o644)
+		s := newMem()
+		m := newManager(t, filepath.Join(root, "state"))
+		m.Servers = memServers{"s": s}
+		var mu sync.Mutex
+		damaged := false
+		m.CopyRead = func(b []byte) { // sees only the bytes read for the send
+			mu.Lock()
+			defer mu.Unlock()
+			if len(b) > 10 && (always || !damaged) {
+				b[5] ^= 0x40
+				damaged = true
+			}
+		}
+		startRun(t, m)
+		j, err := m.Add(Spec{Source: src, Dest: "srv:s"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if always {
+			v := waitState(t, m, j.st.ID, "asking")
+			if v.Failed != 1 {
+				t.Fatalf("always bad: %+v", v)
+			}
+			if _, ok := s.files["a.mov"]; ok {
+				t.Fatal("a copy that did not match the source got its real name")
+			}
+			continue
+		}
+		v := waitState(t, m, j.st.ID, "finished")
+		if v.Strong != 1 || v.Failed != 0 {
+			t.Fatalf("once bad: %+v", v)
+		}
+		if !bytes.Equal(s.files["a.mov"], data) {
+			t.Fatal("the server holds the badly read copy")
+		}
+	}
+}
+
+func TestSendHasherCoversGapsAndRepeats(t *testing.T) {
+	data := bytes.Repeat([]byte("0123456789abcdef"), 1000)
+	want := newHasher("")
+	want.Write(data)
+	h := &sendHasher{ctx: context.Background(), ra: bytes.NewReader(data), hs: newHasher(""), buf: make([]byte, 100)}
+	b := make([]byte, 4000)
+	h.ReadAt(b, 8000)  // a resume: pieces before 8000 are on the server already
+	h.ReadAt(b, 8000)  // the same piece sent again
+	h.ReadAt(b, 12000) // the next one
+	if err := h.fill(int64(len(data))); err != nil {
+		t.Fatal(err)
+	}
+	if h.hs.Sum() != want.Sum() {
+		t.Fatal("the hash of the bytes sent differs from the file's")
 	}
 }

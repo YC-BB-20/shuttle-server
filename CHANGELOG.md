@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.124 — 19 November 2026
+
+- **Copies to a server hash the source while sending it.** Each file is hashed as it is read for sending (no separate read first, so the upload starts at once), sent under a temporary name, then read back from the server while the source is read a second time. The file gets its real name only when all three match; on S3 too, by a copy on the server. A byte read wrongly during the send shows up in the second read: the file is sent again once, and a source that keeps reading differently fails with a plain reason.
+- **S3 reads a file's pieces in order** while still sending several at once, and a piece sent again is not read again.
+- **A server on this network can be added by its IP**, such as 192.168.8.1, with or without http://. Plain http is allowed only for this network (private IPs, .local and .lan names); an address on the internet still needs https.
+
 ## 0.2.123 — 19 November 2026
 
 - **YouTube downloads.** Paste a YouTube video's link in Add link, choose a quality (the best H.264 first, which opens everywhere; higher ones in AV1; or the sound alone as M4A), and it joins the queue like any download. The picture and the sound are joined into one ordinary MP4 by Shuttle itself, so ffmpeg is not needed. The file is read back and hashed before it gets its name. A paused or cut-off download continues where it stopped.

@@ -508,10 +508,23 @@ func (s *s3) sendParts(ctx context.Context, k string, size int64, src io.ReaderA
 	for _, p := range st.Parts {
 		have[p.N] = true
 	}
-	todo := make(chan int, n)
+	// v0.2.124: pieces are read from the source strictly in order, each in
+	// its turn, while several are sent at once. So the bytes can be hashed as
+	// they are read (Shuttle hashes the file while sending it), and a spinning
+	// disk is read in order. Only the piece whose turn it is takes memory, so
+	// waiting for a turn can never hold memory another piece needs.
+	type job struct {
+		n         int
+		turn, end chan struct{}
+	}
+	todo := make(chan job, n)
+	prev := make(chan struct{})
+	close(prev)
 	for i := 1; i <= n; i++ {
 		if !have[i] {
-			todo <- i
+			next := make(chan struct{})
+			todo <- job{i, prev, next}
+			prev = next
 		}
 	}
 	close(todo)
@@ -528,13 +541,14 @@ func (s *s3) sendParts(ctx context.Context, k string, size int64, src io.ReaderA
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for i := range todo {
+			for jb := range todo {
 				if ctx.Err() != nil {
 					return
 				}
+				i := jb.n
 				off := int64(i-1) * st.PieceSize
 				ln := min(st.PieceSize, size-off)
-				etag, err := s.sendPart(ctx, k, st.UploadID, i, src, off, ln)
+				etag, err := s.sendPart(ctx, k, st.UploadID, i, src, off, ln, jb.turn, jb.end)
 				if err != nil {
 					cancel(err)
 					return
@@ -561,18 +575,32 @@ func (s *s3) sendParts(ctx context.Context, k string, size int64, src io.ReaderA
 	return ctx.Err()
 }
 
-func (s *s3) sendPart(ctx context.Context, k, id string, n int, src io.ReaderAt, off, ln int64) (string, error) {
+// sendPart waits for its turn, reads its piece, hands the turn on, then
+// sends the piece (tried again from memory, never read again).
+func (s *s3) sendPart(ctx context.Context, k, id string, n int, src io.ReaderAt, off, ln int64, turn, end chan struct{}) (string, error) {
+	select {
+	case <-turn:
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
 	l, err := s.h.o.Budget.Acquire(ctx, ln)
 	if err != nil {
 		return "", err
 	}
 	defer s.h.o.Budget.Release(l)
 	buf := l.B[:ln]
-	var etag string
 	err = retry(ctx, s.h.o.Tries, func() error {
 		if err := readFull(src, buf, off); err != nil {
 			return &Error{Msg: err.Error(), Temp: true}
 		}
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	close(end) // the next piece may be read
+	var etag string
+	err = retry(ctx, s.h.o.Tries, func() error {
 		req, err := s.req(ctx, "PUT", k, url.Values{"partNumber": {strconv.Itoa(n)}, "uploadId": {id}}, buf, nil)
 		if err != nil {
 			return err

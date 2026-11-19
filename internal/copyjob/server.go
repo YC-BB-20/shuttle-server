@@ -24,11 +24,10 @@ import (
 // computer; nothing is stored here on the way between two servers.
 //
 // Proof, per file:
-//   - To a server: the source is read and hashed on its own first (S1),
-//     sent under a temporary name, then downloaded from the server and
-//     hashed (D1). Only when S1 equals D1 does the file get its real name.
-//     Two separate reads of the source (S1 and the one sent) and one of the
-//     server's copy.
+//   - To a server (v0.2.124): the source is hashed as it is read for sending
+//     (C), sent under a temporary name, then the server's copy is downloaded
+//     and hashed (D1) while the source is read a second time (S2). Only when
+//     C, D1 and S2 agree does the file get its real name.
 //   - From a server: the download is hashed as it is written (C), flushed,
 //     read back from the disk (D1) while the server is read a second time
 //     (S2, unless skipped). The file gets its real name only when they agree.
@@ -270,7 +269,7 @@ func (m *Manager) runServer(ctx context.Context, j *Job) {
 		}
 	}()
 	j.startWork(time.Now())
-	e := env{budget: m.Budget, src: src.disk, dst: dst.disk, log: m.Log}
+	e := env{budget: m.Budget, src: src.disk, dst: dst.disk, log: m.Log, copyRead: m.CopyRead}
 	if e.src == nil {
 		e.src = noDisk
 	}
@@ -507,7 +506,10 @@ func (j *Job) sourceHash(ctx context.Context, e env, src srvEnd, en *entry, stag
 	return h, size, mtime, nil
 }
 
-// toServer copies one file to a server and proves it (S1, send, D1).
+// toServer copies one file to a server and proves it (v0.2.124): the source
+// is hashed as it is read for sending (C); then the server's copy is read
+// back (D1) while the source is read a second time (S2). The file gets its
+// real name only when all three agree.
 func (j *Job) toServer(ctx context.Context, e env, src, dst srvEnd, en *entry) (Rec, error) {
 	final := dst.path(en.P)
 	tmp := final + remote.TempSuffix
@@ -531,8 +533,7 @@ func (j *Job) toServer(ctx context.Context, e env, src, dst srvEnd, en *entry) (
 	} else if !errors.Is(err, remote.ErrNotFound) {
 		return Rec{}, serverWait(err, dst.name)
 	}
-	j.setLive(func(l *live) { l.stage = "Reading the source before sending it" })
-	s1, size, mtime, err := j.sourceHash(ctx, e, src, en, "s1")
+	size, mtime, err := j.sourceStat(ctx, src, en)
 	if err != nil {
 		return Rec{}, err
 	}
@@ -540,32 +541,56 @@ func (j *Job) toServer(ctx context.Context, e env, src, dst srvEnd, en *entry) (
 	if err := dst.r.Mkdir(ctx, path.Dir(final)); err != nil {
 		return Rec{}, serverWait(err, dst.name)
 	}
-	var d1 sum
+	skipS2 := j.st.Spec.S2 == "skip"
+	var c, d1, s2 sum
+	tries := 1
 	for try := 1; ; try++ {
-		if err := j.send(ctx, e, src, dst, en, tmp, size, mtime); err != nil {
+		tries = try
+		if c, err = j.send(ctx, e, src, dst, en, tmp, size, mtime); err != nil {
 			return Rec{}, err
 		}
-		j.setLive(func(l *live) { l.stage = "Reading back from " + dst.name })
-		d1, err = j.hashRemote(ctx, e, dst.r, dst.name, tmp, size, 0, en.I, "d1", true, false)
-		if err != nil {
-			return Rec{}, err
+		var errD, errS error
+		var wg sync.WaitGroup
+		if !skipS2 {
+			j.setLive(func(l *live) { l.stage = "Reading back from " + dst.name + " and the source" })
+			wg.Add(1)
+			go func() { defer wg.Done(); s2, errS = j.sourceRead(ctx, e, src, en, size, mtime) }()
+		} else {
+			j.setLive(func(l *live) { l.stage = "Reading back from " + dst.name })
 		}
-		if d1 == s1 {
-			break
+		d1, errD = j.hashRemote(ctx, e, dst.r, dst.name, tmp, size, 0, en.I, "d1", true, false)
+		wg.Wait()
+		if errD != nil {
+			return Rec{}, errD
 		}
-		// Read the server's copy once more before believing a difference.
-		j.dropCheckpoint(en.I, "d1")
-		j.setLive(func(l *live) { l.stage = "Reading back from " + dst.name + " again" })
-		again, err := j.hashRemote(ctx, e, dst.r, dst.name, tmp, size, 0, en.I, "d1", true, false)
-		if err != nil {
-			return Rec{}, err
+		if errS != nil {
+			return Rec{}, errS
 		}
-		if again == s1 {
+		if d1 != c { // read the server's copy once more before believing a difference
+			j.dropCheckpoint(en.I, "d1")
+			j.setLive(func(l *live) { l.stage = "Reading back from " + dst.name + " again" })
+			again, err := j.hashRemote(ctx, e, dst.r, dst.name, tmp, size, 0, en.I, "d1", true, false)
+			if err != nil {
+				return Rec{}, err
+			}
 			d1 = again
+		}
+		if d1 == c && (skipS2 || s2 == c) {
 			break
+		}
+		if d1 == c && j.sourceChanged(ctx, src, en, size, mtime) {
+			// A proven copy of what was read; the source is different now.
+			if err := j.giveName(ctx, dst, tmp, final); err != nil {
+				return Rec{}, err
+			}
+			return Rec{I: en.I, St: "verified", N: size, C: c.String(), D1: d1.String(), S2: s2.String(), A: try, Chg: true,
+				Err: "the source changed after the copy; the copy on the server is a proven copy of the file as it was read"}, nil
 		}
 		if try == 2 {
-			return Rec{}, perFile("the copy on the server read back differently from the source twice; it was left there as %s", path.Base(tmp))
+			if d1 != c {
+				return Rec{}, perFile("the copy on the server read back differently from what was sent, twice; it was left there as %s", path.Base(tmp))
+			}
+			return Rec{}, perFile("the source read differently the second time, twice; its disk or cable may be failing. The copy was left on the server as %s", path.Base(tmp))
 		}
 		// Send it again once: our own unproven upload is replaced.
 		j.dropCheckpoints(en.I)
@@ -573,24 +598,124 @@ func (j *Job) toServer(ctx context.Context, e env, src, dst srvEnd, en *entry) (
 			return Rec{}, serverWait(err, dst.name)
 		}
 	}
-	// The source must still be what S1 read.
-	if !src.onServer() {
-		if s, m, err := statSM(src.path(en.P)); err != nil || s != size || m != mtime {
-			return Rec{}, perFile("the source changed while it was being sent; the copy on the server was left as %s", path.Base(tmp))
-		}
+	if err := j.giveName(ctx, dst, tmp, final); err != nil {
+		return Rec{}, err
 	}
-	j.setLive(func(l *live) { l.stage = "Giving the copy its name on " + dst.name })
-	if err := dst.r.Rename(ctx, tmp, final); err != nil {
-		if errors.Is(err, remote.ErrExists) {
-			return Rec{}, perFile("a file with this name appeared on the server during the copy; the copy was left as %s", path.Base(tmp))
-		}
-		return Rec{}, serverWait(err, dst.name)
+	r := Rec{I: en.I, St: "strong", N: size, C: c.String(), D1: d1.String(), S2: s2.String(), A: tries}
+	if skipS2 {
+		r.St, r.S2 = "verified", ""
 	}
-	r := Rec{I: en.I, St: "verified", N: size, S1: s1.String(), D1: d1.String(), A: 1}
 	if chg {
 		r.Chg, r.Err = true, "the source differed from the list when its turn came; it was copied as found"
 	}
 	return r, nil
+}
+
+// giveName renames a proven upload to its real name, never over a file.
+func (j *Job) giveName(ctx context.Context, dst srvEnd, tmp, final string) error {
+	j.setLive(func(l *live) { l.stage = "Giving the copy its name on " + dst.name })
+	if err := dst.r.Rename(ctx, tmp, final); err != nil {
+		if errors.Is(err, remote.ErrExists) {
+			return perFile("a file with this name appeared on the server during the copy; the copy was left as %s", path.Base(tmp))
+		}
+		return serverWait(err, dst.name)
+	}
+	return nil
+}
+
+// sourceStat is a source file's size and time now.
+func (j *Job) sourceStat(ctx context.Context, src srvEnd, en *entry) (int64, int64, error) {
+	p := src.path(en.P)
+	if src.onServer() {
+		st, err := src.r.Stat(ctx, p)
+		if errors.Is(err, remote.ErrNotFound) {
+			return 0, 0, perFile("no longer on the server")
+		}
+		if err != nil {
+			return 0, 0, serverWait(err, src.name)
+		}
+		return st.Size, st.Mod.UnixNano(), nil
+	}
+	size, mtime, err := statSM(p)
+	if err != nil {
+		if !diskio.Present(src.disk) {
+			return 0, 0, diskio.ErrGone
+		}
+		return 0, 0, perFile("could not read: %v", err)
+	}
+	return size, mtime, nil
+}
+
+// sourceChanged reports whether the source's size or time differ from
+// what they were when the copy began.
+func (j *Job) sourceChanged(ctx context.Context, src srvEnd, en *entry, size, mtime int64) bool {
+	s, m, err := j.sourceStat(ctx, src, en)
+	return err == nil && (s != size || m != mtime)
+}
+
+// sourceRead reads a source file a second time and hashes it (S2).
+func (j *Job) sourceRead(ctx context.Context, e env, src srvEnd, en *entry, size, mtime int64) (sum, error) {
+	if src.onServer() {
+		return j.hashRemote(ctx, e, src.r, src.name, src.path(en.P), size, mtime, en.I, "s2", false, true)
+	}
+	return j.hashFileOpt(ctx, e, src.disk, src.path(en.P), en.I, "s2", true, false)
+}
+
+// sendHasher hashes the bytes read for an upload, in order (C). A read at
+// the next byte not yet hashed is hashed; a read further on (pieces the
+// server already holds, after a resume) first reads the gap itself; a read
+// of bytes already hashed (a try sent again) passes through. The copy is
+// proven against the server's read-back and a second read of the source, so
+// a byte sent differently from what was hashed shows up there.
+type sendHasher struct {
+	ctx  context.Context
+	ra   io.ReaderAt
+	hs   *hasher
+	buf  []byte // for reading a gap
+	hook func([]byte)
+	mu   sync.Mutex
+	next int64
+}
+
+func (h *sendHasher) ReadAt(b []byte, off int64) (int, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if off > h.next {
+		if err := h.fill(off); err != nil {
+			return 0, err
+		}
+	}
+	n, err := h.ra.ReadAt(b, off)
+	if n > 0 && h.hook != nil {
+		h.hook(b[:n])
+	}
+	if end := off + int64(n); n > 0 && off <= h.next && end > h.next {
+		h.hs.Write(b[h.next-off : n])
+		h.next = end
+	}
+	return n, err
+}
+
+// fill reads and hashes the source from the next byte up to to.
+func (h *sendHasher) fill(to int64) error {
+	for h.next < to {
+		if err := h.ctx.Err(); err != nil {
+			return err
+		}
+		k := min(int64(len(h.buf)), to-h.next)
+		n, err := h.ra.ReadAt(h.buf[:k], h.next)
+		if n > 0 {
+			h.hs.Write(h.buf[:n])
+			h.next += int64(n)
+		}
+		if n < int(k) {
+			if err == nil || err == io.EOF {
+				err = errors.New("the source became shorter while it was being sent")
+			}
+			return err
+		}
+	}
+	return nil
 }
 
 // uploadRec is the unfinished upload of one file, kept so a cut-off upload
@@ -611,8 +736,9 @@ func (j *Job) loadUpload() (uploadRec, bool) {
 	return u, json.Unmarshal(b, &u) == nil
 }
 
-// send uploads one source file to tmp on the destination server.
-func (j *Job) send(ctx context.Context, e env, src, dst srvEnd, en *entry, tmp string, size, mtime int64) error {
+// send uploads one source file to tmp on the destination server and returns
+// the hash of the bytes read for it (C).
+func (j *Job) send(ctx context.Context, e env, src, dst srvEnd, en *entry, tmp string, size, mtime int64) (sum, error) {
 	var st remote.UploadState
 	if u, ok := j.loadUpload(); ok && u.I == en.I && u.Size == size && u.Mtime == mtime && u.State.Path == tmp && dst.r.Resumable() {
 		st = u.State
@@ -621,7 +747,7 @@ func (j *Job) send(ctx context.Context, e env, src, dst srvEnd, en *entry, tmp s
 		if _, err := dst.r.Stat(ctx, tmp); err == nil {
 			// Our own unfinished upload from an earlier try: sent again from the start.
 			if err := dst.r.RemoveTemp(ctx, tmp); err != nil {
-				return serverWait(err, dst.name)
+				return sum{}, serverWait(err, dst.name)
 			}
 		}
 	}
@@ -638,13 +764,19 @@ func (j *Job) send(ctx context.Context, e env, src, dst srvEnd, en *entry, tmp s
 		f, err := diskio.OpenRead(src.path(en.P))
 		if err != nil {
 			if !diskio.Present(src.disk) {
-				return diskio.ErrGone
+				return sum{}, diskio.ErrGone
 			}
-			return perFile("could not open: %v", err)
+			return sum{}, perFile("could not open: %v", err)
 		}
 		defer f.Close()
 		ra = diskReaderAt{ctx: ctx, d: src.disk, f: f}
 	}
+	lease, err := e.budget.Acquire(ctx, min(1<<20, e.budget.Total()))
+	if err != nil {
+		return sum{}, err
+	}
+	defer e.budget.Release(lease)
+	sh := &sendHasher{ctx: ctx, ra: ra, hs: newHasher(j.algo()), buf: lease.B, hook: e.copyRead}
 	start := time.Now()
 	j.copySince.Store(start.UnixNano())
 	defer func() { j.copySince.Store(0); j.copyNs.Add(int64(time.Since(start))) }()
@@ -661,19 +793,27 @@ func (j *Job) send(ctx context.Context, e env, src, dst srvEnd, en *entry, tmp s
 		j.setLive(func(l *live) { l.done = n })
 	}
 	done(st.Done())
-	j.setLive(func(l *live) { l.stage, l.temp, l.size = "Sending to "+dst.name, tmp, size })
-	err := dst.r.Upload(ctx, tmp, size, ra, &st, save, done)
+	j.setLive(func(l *live) {
+		l.stage, l.temp, l.size = "Sending to "+dst.name+" (the source is hashed as it is read)", tmp, size
+	})
+	err = dst.r.Upload(ctx, tmp, size, sh, &st, save, done)
+	if err == nil {
+		err = sh.fill(size) // pieces sent before a resume, or none at all for an empty file
+	}
 	if err != nil {
 		if ctx.Err() != nil {
-			return context.Cause(ctx)
+			return sum{}, context.Cause(ctx)
 		}
 		if errors.Is(err, remote.ErrExists) {
-			return perFile("could not send: a file named %s is in the way on the server", path.Base(tmp))
+			return sum{}, perFile("could not send: a file named %s is in the way on the server", path.Base(tmp))
 		}
-		return serverWait(err, dst.name)
+		if errors.Is(err, diskio.ErrGone) || errors.Is(err, diskio.ErrStalled) {
+			return sum{}, err
+		}
+		return sum{}, serverWait(err, dst.name)
 	}
 	os.Remove(j.path("upload.json"))
-	return nil
+	return sh.hs.Sum(), nil
 }
 
 // fromServer copies one file from a server to this computer and proves it
